@@ -1,0 +1,17 @@
+# Simulateur Dobot Magician - dependances
+#
+#   pip install -r requirements.txt
+#
+numpy>=1.20
+pyqtgraph>=0.12.4
+PyQt5>=5.15
+
+# Rendu 3D materiel. Si PyOpenGL est absent ou si la machine n'a pas de
+# pilote OpenGL, le simulateur bascule automatiquement sur des vues 2D.
+PyOpenGL>=3.1.5
+
+# Liaison avec le Dobot REEL (port serie USB, pont CH340). Facultatif :
+# sans pyserial, le simulateur fonctionne mais le panneau Robot reel ne
+# trouve aucun port. Aucune DLL ni DobotStudio n'est necessaire, le
+# protocole officiel est implemente directement dans dobot_sim/liaison.py.
+pyserial>=3.5

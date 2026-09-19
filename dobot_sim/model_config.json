@@ -1,0 +1,96 @@
+{
+  "nom": "Dobot Magician - modele 3D",
+
+  "_note": [
+    "source : 'urdf' (description ROS officielle du constructeur) ou 'obj'",
+    "         (maillages OBJ d'origine, recales a la main). En mode urdf,",
+    "         un echec bascule automatiquement sur obj.",
+    "",
+    "MODE URDF -------------------------------------------------------------",
+    "fichier   : motif glob du .urdf / .urdf.xacro a charger.",
+    "couleurs  : remplace la couleur declaree dans l'URDF, corps par corps.",
+    "Les STL sont deja exprimes dans le repere de leur corps : aucune pose",
+    "d'assemblage a identifier. Le repere porteur de chaque corps est trouve",
+    "automatiquement, en cherchant celui qui rend constante la transformation",
+    "entre les deux modeles sur plusieurs configurations.",
+    "",
+    "MODE OBJ --------------------------------------------------------------",
+    "repere    : 0 base, 1 colonne, 2 bras arriere, 3 avant-bras, 4 poignet.",
+    "rotation_z_deg / translation : redressement du repere CAO sur le repere",
+    "            robot, puis mise a l'origine sur l'axe J1 au plan de pose.",
+    "couleurs_groupes : couleur par groupe 'g' du fichier OBJ.",
+    "pose_assemblage_deg : configuration dans laquelle les OBJ ont ete",
+    "            exportes, identifiee sur la geometrie des maillages."
+  ],
+
+  "source": "urdf",
+
+  "urdf": {
+    "fichier": "magician.urdf.xacro",
+    "racine_recherche": ".",
+    "couleurs": {
+      "magician_servos": [0.13, 0.14, 0.16, 1.0],
+      "magician_link2_surface": [0.16, 0.17, 0.19, 1.0],
+      "magician_link3_surface": [0.16, 0.17, 0.19, 1.0],
+      "magician_base_surface": [0.55, 0.56, 0.59, 1.0],
+      "magician_base": [0.93, 0.93, 0.94, 1.0],
+      "magician_link1": [0.95, 0.95, 0.96, 1.0],
+      "magician_link2": [0.95, 0.95, 0.96, 1.0],
+      "magician_link3": [0.94, 0.94, 0.95, 1.0],
+      "magician_link4": [0.20, 0.21, 0.23, 1.0]
+    }
+  },
+
+  "obj": {
+    "racine_recherche": "Modele3D",
+    "echelle": 1.0,
+    "rotation_z_deg": 90.0,
+    "pose_assemblage_deg": [0.0, 25.17, 28.96, 0.0],
+    "pieces": [
+      {
+        "nom": "socle",
+        "fichier": "*2-5.obj",
+        "repere": 0,
+        "translation": [51.0, 4.5, 19.2],
+        "couleur": [0.94, 0.94, 0.95, 1.0],
+        "couleurs_groupes": {
+          "object_5": [0.62, 0.63, 0.66, 1.0]
+        }
+      },
+      {
+        "nom": "colonne tournante",
+        "fichier": "*2-4.obj",
+        "repere": 1,
+        "translation": [51.0, 4.5, 19.2],
+        "couleur": [0.95, 0.95, 0.96, 1.0],
+        "couleurs_groupes": {
+          "object_1": [0.13, 0.14, 0.16, 1.0]
+        }
+      },
+      {
+        "nom": "bras arriere",
+        "fichier": "*2-3.obj",
+        "repere": 2,
+        "translation": [51.0, 4.5, 14.0],
+        "couleur": [0.95, 0.95, 0.96, 1.0],
+        "couleurs_groupes": {
+          "object_2": [0.15, 0.16, 0.18, 1.0]
+        }
+      },
+      {
+        "nom": "avant-bras",
+        "fichier": "*2-2.obj",
+        "repere": 3,
+        "translation": [51.0, 4.5, 14.0],
+        "couleur": [0.93, 0.93, 0.94, 1.0]
+      },
+      {
+        "nom": "effecteur",
+        "fichier": "*-1.obj",
+        "repere": 4,
+        "translation": [51.0, 4.5, 14.0],
+        "couleur": [0.16, 0.17, 0.19, 1.0]
+      }
+    ]
+  }
+}

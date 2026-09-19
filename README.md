@@ -1,0 +1,1508 @@
+# Simulateur Dobot Magician
+
+Logiciel de pilotage **virtuel** d'un Dobot Magician à partir de son modèle CAO.
+Tout est construit sur les **matrices homogènes 4×4** : modèle géométrique
+direct, modèle inverse, jacobienne, et programmation de trajectoires
+**articulaires** et **cartésiennes**.
+
+---
+
+## 1. Installation
+
+Python 3.8 ou plus récent.
+
+```powershell
+pip install -r requirements.txt
+python main.py
+```
+
+Contrôle de l'installation, sans interface graphique :
+
+```powershell
+python main.py --verifier
+```
+
+Cette commande vérifie les dépendances, teste la cohérence MGD/MGI sur
+2000 configurations tirées au hasard, compare la jacobienne analytique aux
+différences finies, et liste les pièces du modèle 3D effectivement trouvées.
+
+> Si `PyOpenGL` est absent ou si la machine n'a pas de pilote OpenGL
+> exploitable, le simulateur bascule automatiquement sur deux projections 2D
+> (vue méridienne et vue de dessus). Toutes les autres fonctions restent
+> identiques.
+
+---
+
+## 2. Organisation
+
+```
+APPS_DOBOT/
+├── main.py                    point d'entrée  (--verifier pour le diagnostic)
+├── mon_programme.py           VOTRE script : F5 dans VS Code et le robot bouge
+├── requirements.txt
+├── .vscode/                   configurations de lancement prêtes à l'emploi
+├── dobot_sim/
+│   ├── liaison.py            protocole série officiel du Magician
+│   ├── reel.py               pont simulateur → machine réelle
+│   ├── passerelle.py         un script envoie son programme au simulateur ouvert
+│   ├── homogeneous.py         algèbre SE(3) : matrices homogènes, DH, SLERP
+│   ├── robot.py               MGD, MGI, jacobienne, butées, espace de travail
+│   ├── trajectory.py          lois horaires + segments MOVJ / MOVL / MOVC
+│   ├── program.py             programme éditable, JSON, export robot réel
+│   ├── pilote.py              API de script (movj, movl, movc, simuler…)
+│   ├── outils.py              catalogue d'outils : ventouse, pince, stylo, laser
+│   ├── es.py                  entrées / sorties tout-ou-rien (20 ports EIO)
+│   ├── urdf.py                lecture de la description ROS officielle + STL
+│   ├── meshes.py              chargement des maillages, OBJ de secours
+│   ├── model_config.json      choix de la source 3D et couleurs
+│   ├── viewer3d.py            vue OpenGL
+│   ├── viewer2d.py            vue de secours en projections
+│   └── ui.py                  interface graphique
+├── examples/
+│   ├── exemple_matrices.py    matrices homogènes, MGD, MGI, jacobienne
+│   └── exemple_pick_place.py  trajectoires et export
+├── tests/
+│   └── test_kinematics.py     tests unitaires (python -m unittest discover -s tests)
+├── Modele3D/                  OBJ d'origine (source de secours)
+└── Magician & Accessories-2D&3D files/
+                               dossier constructeur : URDF officiel, table DH,
+                               cotes d'effecteur, STEP des accessoires
+```
+
+---
+
+## 3. Modèle géométrique
+
+### Paramètres (mm)
+
+| Symbole | Valeur | Signification | Source |
+|---------|--------|---------------|--------|
+| `d1` | 139   | hauteur de l'axe d'épaule au-dessus du plan de pose | URDF : 56,9 + 82,1 |
+| `l1` | 135   | bras arrière : épaule → coude | URDF **et** table DH |
+| `l2` | 147   | avant-bras : coude → poignet | URDF **et** table DH |
+| `l3` | 59,7  | déport horizontal poignet → axe de l'outil | table DH (`a₄`) |
+| `lt` | 0     | déport vertical de la pointe d'outil | dépend de l'outil monté |
+
+Ces valeurs viennent des documents constructeur du dossier
+`Magician & Accessories-2D&3D files`. La table de Denavit-Hartenberg
+publiée par Dobot y figure ; elle est reprise dans `robot.DH_CONSTRUCTEUR` :
+
+| L | θᵢ | αᵢ | dᵢ | aᵢ |
+|---|----|----|----|----|
+| 1 | θ₁ | −π/2 | 8 | 0 |
+| 2 | θ₂ | 0 | 0 | 135 |
+| 3 | θ₃ | 0 | 0 | 147 |
+| 4 | θ₄ | −π/2 | 0 | 59,7 |
+
+> Elle décrit le **bras seul** : la hauteur du socle n'y figure pas, et son
+> repère 0 n'est pas le nôtre (d'où le `d₁ = 8`). Nous gardons la chaîne
+> explicite ci-dessous, qui part du plan de pose — mais les longueurs, elles,
+> sont bien celles de cette table.
+
+### Variables articulaires
+
+| Axe | Plage | Convention |
+|-----|-------|------------|
+| J1 | −135° … +135° | rotation de la colonne autour de la verticale |
+| J2 | 0° … 85° | bras arrière, **0° = vertical**, positif vers l'avant |
+| J3 | −10° … 95° | avant-bras, **0° = horizontal**, positif vers le bas |
+| J4 | −90° … +90° | rotation de l'outil autour de la verticale |
+
+### Chaîne de transformations
+
+```
+T01 = Rz(q1)                        base       -> colonne
+T12 = Tz(d1) . Ry(q2)               colonne    -> bras arrière
+T23 = Tz(l1) . Ry(q3 - q2 + 90°)    bras arr.  -> avant-bras
+T34 = Tz(l2) . Ry(-90° - q3)        avant-bras -> poignet
+T45 = Tx(l3) . Rz(q4)               poignet    -> axe outil
+T5T = repère OUTIL                  axe outil  -> TCP (z dirigé vers le bas)
+      par défaut Tz(-lt) . Rx(180°)
+
+T0_TCP = T01 . T12 . T23 . T34 . T45 . T5T
+```
+
+La somme des rotations autour de Y vaut exactement zéro :
+
+```
+q2 + (q3 - q2 + 90°) + (-90° - q3) = 0
+```
+
+C'est la traduction algébrique du **parallélogramme** du Magician : l'axe de
+l'outil reste vertical quelles que soient les valeurs de J2 et J3. Le robot
+n'a donc que 4 degrés de liberté utiles : `x, y, z` et l'orientation `r`
+autour de la verticale, avec `r = J1 + J4` (même convention que l'API Dobot).
+
+### Modèle géométrique inverse
+
+Solution analytique fermée :
+
+```
+q1 = atan2(y, x)
+rp = hypot(x, y) - l3                zp = z + lt - d1
+D  = hypot(rp, zp)
+cos β = (l1² + D² - l2²) / (2 l1 D)          loi des cosinus
+q2 = recentrer( atan2(rp, zp) ∓ β )
+q3 = recentrer( atan2(l1 cos q2 - zp, rp - l1 sin q2) )
+q4 = recentrer( r - q1 )
+```
+
+**Deux subtilités**, l'une et l'autre vérifiées par les tests.
+
+*Le choix de branche.* Le triangle épaule–coude–poignet admet deux
+solutions, selon le côté de la droite épaule–poignet où se place le coude.
+En notant `γ = 90° + q3 − q2` la flexion du coude, la solution physique est
+celle du signe de `sin γ` : « coude haut » pour `γ ∈ ]0°, 180°[`. Or les
+butées du Magician autorisent `γ ∈ [−5°, 185°]`, donc deux minces bandes
+d'hyperextension et d'hyperflexion ne sont atteignables qu'avec l'autre
+branche. Le mode `coude="auto"` (défaut) prend la solution coude haut et ne
+bascule que si elle viole les butées ; aux deux singularités les deux
+solutions se confondent, le raccordement est donc continu. `coude="haut"`
+ou `"bas"` force une branche.
+
+*Le recentrage des angles.* Bras complètement replié, `β` vaut 180° et
+`atan2(rp, zp) − β` sort de `]−180°, 180°]` : sans recentrage le MGI renvoie
+par exemple −356° au lieu de +4°.
+
+### Plage utile en z
+
+Le point de référence (`lt = 0`) est au niveau de l'**axe du poignet**, pas
+à la pointe de l'outil. Avec les butées ci-dessus, il descend au plus bas
+vers z ≈ 3 mm, et seulement autour de ρ ≈ 200 mm :
+
+| rayon ρ | 150 | 180 | 200 | 240 | 280 | 300 |
+|---------|-----|-----|-----|-----|-----|-----|
+| z min   | 80  | 16  | 4   | 12  | 32  | 49  |
+| z max   | 158 | 190 | 230 | 295 | 276 | 260 |
+
+Renseignez `Geometrie.lt` (ou `robot.avec_outil(65)`) avec la longueur de
+votre ventouse ou de votre stylo pour que `z` désigne la pointe : c'est
+ainsi que l'on atteint la table.
+
+### Jacobienne
+
+`[vx vy vz ωz]ᵀ = J(q) · [q̇1 q̇2 q̇3 q̇4]ᵀ`, forme analytique validée par
+différences finies. `manipulabilite()` renvoie la mesure de Yoshikawa
+`√det(J Jᵀ)`, qui s'effondre au voisinage des singularités (TCP sur l'axe
+vertical, bras tendu ou complètement replié).
+
+---
+
+## 4. Trajectoires
+
+Deux notions **indépendantes**, combinables librement.
+
+**La loi horaire** donne l'abscisse curviligne normalisée `s(t) ∈ [0,1]` :
+
+| Nom | Comportement |
+|-----|--------------|
+| `lineaire` | vitesse constante, échelons de vitesse aux extrémités |
+| `trapeze` | accélération constante, palier, freinage |
+| `polynome5` | `10u³ − 15u⁴ + 6u⁵`, vitesse **et** accélération nulles aux bouts |
+| `sinus` | loi en cosinus surélevé, accélération continue |
+
+**Le segment** donne la géométrie du chemin :
+
+| Type | Espace interpolé | Chemin du TCP |
+|------|------------------|---------------|
+| `MOVJ` | angles articulaires | courbe quelconque, jamais singulier |
+| `MOVL` | matrice homogène (position linéaire + SLERP) puis MGI | **droite** |
+| `MOVC` | arc de cercle par 3 points, orientation en SLERP | **arc** |
+
+### Vitesse, accélération, lissage
+
+Chaque instruction se cadence de deux façons.
+
+**Durée imposée** — on donne le temps, la vitesse en découle.
+
+**Vitesse + accélération** — on donne `v_max` et `a_max`, la durée se
+**déduit** de la longueur du chemin. C'est le mode par défaut. Chaque loi
+horaire connaît le maximum de `s'` et de `s''` sur une course unitaire, d'où
+
+```
+T ≥ K_V · L / v_max        et        T ≥ √( K_A · L / a_max )
+```
+
+| Loi | `K_V` | `K_A` | durée pour L = 200 mm à 100 mm/s |
+|-----|-------|-------|----------------------------------|
+| `lineaire` | 1 | — | 2,00 s |
+| `trapeze` | *adapté* | *adapté* | 2,25 s |
+| `sinus` | π/2 ≈ 1,571 | π²/2 ≈ 4,935 | 3,14 s |
+| `polynome5` | 15/8 = 1,875 | 10/√3 ≈ 5,774 | 3,75 s |
+
+Le trapèze est traité à part : sa durée `L/v + v/a` et sa part
+d'accélération sont calculées pour saturer **exactement** les deux
+contraintes (il bascule tout seul en triangle si `L < v²/a`).
+
+> **Attention aux unités.** Un `MOVJ` interpole des *angles* : sa vitesse est
+> en deg/s, et elle **ne borne pas** la vitesse du TCP, qui dépend du bras de
+> levier. Un `MOVL` ou un `MOVC` interpole des *millimètres* : là, la consigne
+> est bien la vitesse de l'outil. C'est pourquoi `Pilote` a deux jeux de
+> réglages séparés.
+
+**Lissage** — l'arrondi du raccord avec l'instruction suivante, de 0 à 100 %.
+Deux segments consécutifs se **recouvrent** pendant une durée `tb`, et sur
+cette fenêtre la consigne est le mélange pondéré des deux :
+
+```
+q(t) = (1 − w)·q_i(t) + w·q_i+1(t),     w quintique, de 0 à 1
+```
+
+`w` ayant une dérivée nulle aux deux bords, la vitesse reste continue : le
+robot **coupe le coin** au lieu de s'arrêter. C'est le principe des *zones*
+d'ABB ou du *CNT* de Fanuc. Sur un angle droit à 120 mm/s :
+
+| lissage | 0 % | 20 % | 40 % | 60 % | 80 % | 100 % |
+|---------|-----|------|------|------|------|-------|
+| coin coupé (trapèze) | 0,0 mm | 0,4 | 1,7 | 3,7 | 6,5 | 10,0 mm |
+| durée | 2,70 s | 2,61 | 2,51 | 2,41 | 2,32 | 2,22 s |
+
+Le point de passage n'est donc plus atteint exactement : c'est le prix du
+lissage, et la durée totale diminue d'autant. Une `ATTENTE` n'est jamais
+absorbée par un lissage. Mesuré sur le cycle de `mon_programme.py` : **35,1 s
+→ 28,8 s**, sans que la vitesse maximale augmente d'un seul mm/s.
+
+`Trajectoire.controler()` échantillonne le mouvement complet et signale les
+dépassements de butées, les points hors d'atteinte, les **collisions** et
+les vitesses excessives.
+
+### Butées frôlées
+
+Une pose peut être **dans** les butées et refusée par la machine. Le modèle
+travaille sur la table nominale ; les butées d'un exemplaire réel n'y sont
+jamais exactement, et une prise d'origine approximative suffit à consommer
+les quelques degrés qui restent.
+
+`butees_frolees(q)` signale donc les articulations à moins de **5°** de leur
+butée — seuil réglable par `Limites.marge_alerte`, mis à 0 pour le
+désactiver. C'est un avertissement **ambre**, pas un refus : la pose reste
+réalisable pour le modèle.
+
+```python
+robot.marges(q)            # distance de chaque axe a sa butee, en degres
+robot.butees_frolees(q)    # ceux qui passent sous le seuil
+```
+
+> **Le cas qui a motivé ce contrôle.** La cible `(175, 0, 0)` avec la
+> ventouse exige `J3 = 90,05°` pour une butée à 95 : **4,95° de marge**. Le
+> simulateur l'acceptait sans un mot ; le vrai contrôleur l'a refusée et
+> s'est mis en défaut au milieu du programme. Deux autres pièges du même
+> genre : une cible sur l'axe **+y** avec `r = 0` impose `J4 = −90°`,
+> exactement sur la butée, et une cible sur **−y** impose `J4 = +90°`.
+
+### Collisions
+
+Le bras est confronté à trois volumes, dont les dimensions sont **mesurées
+sur les maillages du modèle CAO officiel** (boîtes englobantes des pièces de
+`magician_description`) :
+
+| volume | dimensions | d'où elles viennent |
+|--------|-----------|---------------------|
+| **plan de pose** | z = 0 | le plan sur lequel l'embase repose |
+| **embase** | boîte 158 × 158 mm, haute de 58 mm | `magician_base` : x, y ∈ [−79 ; 79], z ∈ [0 ; 57,9] |
+| **colonne** | cylindre r = 69,5 mm, haut de 176 mm | `magician_link1` : r ≤ 69,5, z ∈ [57 ; 176,2] |
+
+```python
+robot.collisions(q)          # liste de messages, vide si la pose est saine
+robot.collisions(q, marge=10)  # alerte 10 mm AVANT le contact
+robot.defauts(q)             # butees + collisions, dans cet ordre
+```
+
+Seul le squelette **mobile** est testé — coude, poignet, axe outil, TCP. Le
+bras arrière est exclu volontairement : il est solidaire de la colonne, la
+butée J2 l'empêche d'atteindre table comme embase, et l'inclure ferait
+signaler l'épaule elle-même, qui vit légitimement *à l'intérieur* de la
+colonne (l'axe d'épaule est à 139 mm, la colonne monte à 176).
+
+Ces trois interférences sont **réellement atteignables** dans les butées —
+vérifié par balayage de l'espace articulaire :
+
+| | atteignable ? |
+|---|---|
+| plan de pose | seulement **avec un outil** : bride nue, le point le plus bas reste à +3,8 mm ; ventouse −58 mm ; pince −74 mm |
+| colonne | oui, à 33 mm de l'axe sous l'épaule |
+| embase | oui, jusqu'à 33 mm du centre avec la pince |
+
+> **Ce que ce modèle ne couvre pas.** C'est une enveloppe simple, pas un
+> moteur de collision : ni la forme exacte des maillages, ni les servos qui
+> dépassent latéralement à l'épaule, ni aucun obstacle extérieur au robot.
+> `Encombrement` expose toutes les cotes, modifiables.
+
+---
+
+## 5. L'interface
+
+| Zone | Contenu |
+|------|---------|
+| **Centre** | vue 3D : maillages CAO, repères des liaisons, squelette, chemin théorique, trace réelle du TCP, enveloppe de l'espace de travail |
+| **Gauche** | dock **Commande** : quatre sections **visibles en même temps**, chacune repliable par sa case à cocher : **Articulaire** (J1…J4, curseurs bornés aux butées), **Cartésien** (X, Y, Z, Rz, MGI appliqué en continu), **Outil** (ventouse, pince, stylo, laser) et **Repères** (repères outil et objet en X, Y, Z, Rx, Ry, Rz) ; état des butées, portée, manipulabilité |
+| **Droite** | dock **Programme** : barre d'édition en pictogrammes, liste des instructions, formulaire **repliable** (type, cible et point de passage en `(X, Y, Z, Rx, Ry, Rz)`, **cadence**, **lissage**, loi horaire) et lecteur : lire / pause, arrêter, pas à pas, facteur de vitesse, barre de temps |
+| **Bas** | onglet **Matrices homogènes** (les six matrices élémentaires, le produit, la jacobienne, det J), onglet **Courbes** (angles et vitesse du TCP en fonction du temps), onglet **Entrées / Sorties** (20 voyants de sortie, 20 boutons d'entrée), onglet **Journal** |
+
+### Un code couleur unique
+
+**x rouge, y vert, z bleu**, partout : le trièdre du repère de base dans la
+vue 3D (étiqueté, et dessiné par-dessus la scène comme un gizmo de CAO), les
+repères des liaisons, ceux des cibles, et les étiquettes des curseurs
+cartésiens — **X (avant)**, **Y (gauche)**, **Z (hauteur)**. `Rz (outil)`
+est en bleu clair : c'est une rotation *autour de* z, et c'est la seule
+orientation commandable. Une note grisée rappelle sous les curseurs que
+`Rx = 180°` et `Ry = 0°` sont imposés par le parallélogramme.
+
+Le signalement d'une consigne irréalisable se fait alors par le **fond** de
+l'étiquette, pour ne pas écraser la couleur de l'axe.
+
+### Des pictogrammes plutôt que des mots
+
+Les instructions portent leur **dessin**, dans la liste comme dans le
+catalogue d'ajout, et ce dessin est le **chemin parcouru** — c'est-à-dire
+exactement ce qui distingue les trois mouvements :
+
+| | |
+|---|---|
+| `MOVJ` | courbe en pointillés — chemin libre, on interpole les angles |
+| `MOVL` | segment de droite |
+| `MOVC` | arc passant par trois points |
+| `ATTENTE` | horloge |
+| `OUTIL` | ventouse (tige + cuvette) |
+| `SORTIE` / `ENTREE` | flèche sortant du, ou entrant dans le contrôleur |
+
+Les pictogrammes sont **dessinés par le programme** (`_icone()` dans
+[ui.py](dobot_sim/ui.py)) : aucun fichier d'icône à installer, et ils
+suivent la couleur du thème.
+
+Deux barres d'outils remplacent les neuf boutons en toutes lettres qui
+imposaient à eux seuls la largeur du panneau : **édition** (ajouter,
+dupliquer, supprimer, monter, descendre) au-dessus de la liste,
+**exécution** (lire/pause, arrêter, pas précédent, pas suivant, facteur de
+vitesse) en dessous. La flèche du `+` ouvre le catalogue des sept types.
+
+### Faire de la place aux courbes
+
+Le formulaire *Instruction sélectionnée* est **repliable** par sa case à
+cocher : déplié il occupe ≈ 660 px de haut, replié 37. **Fenêtres ▸
+Agrandir les courbes** (`Ctrl+Maj+C`) fait les deux gestes d'un coup —
+courbes au premier plan, plus de la moitié de la hauteur, formulaire
+replié. **Disposition par défaut** revient en arrière.
+
+### L'agencement des panneaux
+
+Chaque panneau latéral démarre à la largeur dont son contenu a **besoin** —
+son `minimumSizeHint`, pas son `sizeHint` —, bornée à 32 % de la fenêtre
+pour que la vue 3D garde sa place.
+
+> **La nuance a son importance.** Une première version visait la largeur
+> *minimale du dock*, une constante choisie à la main. Résultat : huit
+> champs de saisie des curseurs se retrouvaient 250 px hors du panneau,
+> derrière une barre de défilement — donc impossibles à cliquer. Un
+> panneau qu'on ne peut pas utiliser ne fait pas gagner de place.
+
+> **Et le `sizeHint` n'est pas le bon critère non plus** : c'est la largeur
+> *préférée*, qu'une seule étiquette de texte long fait exploser. Sur ce
+> projet, une annotation collée aux valeurs du repère objet portait la
+> ligne à 74 caractères en police fixe et imposait **614 px** à tout le
+> panneau. Elle est passée sur sa propre ligne, et les formats d'affichage
+> ont été resserrés à 34 caractères.
+
+**Ce qui partage un jeu d'onglets** se choisit sur l'usage, pas sur la
+proximité :
+
+| | |
+|---|---|
+| **Commande** | seul à gauche — les curseurs doivent rester visibles |
+| **Programme** et **Robot réel** | à droite, en onglets : on édite un programme *ou* on pilote la machine, jamais les deux en même temps |
+| bas | Matrices, Courbes, E/S, Journal |
+
+*Robot réel* était initialement en onglet avec *Commande* : piloter le bras
+à la main demandait alors de basculer sans cesse entre les curseurs et
+l'arrêt d'urgence.
+
+### Pas à pas et inspection
+
+Trois façons de parcourir un programme sans le rejouer en entier :
+
+- **Pas suivant / Pas précédent** (`Ctrl+→`, `Ctrl+←`) avancent d'une
+  instruction et s'arrêtent **sur sa cible**, pas sur son point de départ ;
+- **cliquer une ligne** du programme y amène directement le robot, si
+  *se positionner sur la ligne sélectionnée* est coché ;
+- le menu **Exécution** regroupe tout cela, plus `Espace` pour lancer ou
+  mettre en pause.
+
+Éditer une instruction ne déplace jamais le robot : seule une sélection
+faite à la main le fait.
+
+Les deux jeux de curseurs restent en permanence d'accord : bouger un axe
+articulaire met à jour x, y, z, r par le MGD, et inversement par le MGI.
+C'est la façon la plus directe de faire sentir la différence entre les deux
+espaces — et de voir la portée et la manipulabilité s'effondrer quand on
+approche d'une singularité.
+
+Quand un point demandé sort de l'espace atteignable, le robot **ne bouge
+pas**, les quatre axes cartésiens passent en rouge et le bandeau d'état
+indique la cause (par exemple : *distance épaule-poignet = 284,3 mm,
+admissible [12 ; 282]*). Le bouton **Resynchroniser** recopie la pose
+courante du robot dans les curseurs ; décocher *appliquer le MGI en continu*
+permet de composer une consigne complète avant de la valider.
+
+Un **programme** dont les cibles sortent de l'espace atteignable, ou qui
+envoie le bras dans la table, est signalé par un **bandeau** au-dessus de la
+vue 3D dès le chargement ; le détail reste dans le *Journal*. Deux niveaux,
+car tous les avertissements ne pèsent pas pareil :
+
+| | |
+|---|---|
+| **rouge** | le robot ne peut pas y aller — butée dépassée, point hors d'atteinte, **collision**, programme non compilable |
+| **ambre** | le mouvement se fait, mais avec une réserve — arc dégénéré exécuté en droite, survitesse |
+
+Il disparaît dès que le programme redevient sain.
+
+### Arrêt de sécurité
+
+À la lecture, l'animation **s'arrête net** dès que la pose commandée sort
+des butées ou entre en collision. Le robot **reste sur la pose fautive** :
+c'est en la voyant qu'on comprend ce qui cloche. Une boîte d'alerte non
+modale nomme l'instant, l'instruction et le défaut.
+
+`Exécution ▸ Arrêt de sécurité` (coché par défaut) permet de **décocher**
+pour laisser la faute se produire et l'observer se dérouler — utile en
+démonstration.
+
+### Rouvrir une fenêtre fermée
+
+Les six panneaux (**Commande**, **Programme**, **Matrices homogènes**,
+**Courbes**, **Entrées / Sorties**, **Journal**) sont détachables et se
+ferment par leur croix. Le menu **Fenêtres** les liste toutes, cochées ou
+non : un clic rouvre celle qu'on a fermée par mégarde, et **Tout réafficher**
+(`Ctrl+Maj+R`) les ramène toutes d'un coup. Fermer *Commande* ou *Programme*
+n'est donc plus un aller simple.
+
+Menu **Affichage** : maillages CAO ou modèle simplifié, repères des
+liaisons, squelette, grille, espace de travail, vues normalisées, calibrage
+du modèle 3D.
+
+**Cibles du programme** affiche un marqueur à chaque point visé.
+**Repères des cibles** y ajoute le trièdre de la situation commandée : on
+voit alors l'orientation `r` de chaque cible, et l'axe z dirigé vers le bas
+qui est la direction d'approche. Masquer les marqueurs masque aussi les
+trièdres.
+
+**Zoom avant / arrière** (`Ctrl++`, `Ctrl+-`) et **Recadrer** (`Ctrl+0`)
+doublent la molette, plus commode au pavé tactile ; les touches `+`, `-` et
+`0` agissent aussi directement dans la vue. Le zoom est borné entre 90 et
+2600 mm de distance, et **changer d'angle de vue le conserve** — seul
+*Recadrer* le remet à zéro.
+
+Menu **Fichier** : programme en JSON, export **script Dobot** (API officielle
+`DobotDllType`, celle de DobotStudio) et export **CSV** des consignes
+échantillonnées.
+
+---
+
+## 6. Le modèle 3D
+
+### Source principale : la description ROS du constructeur
+
+Le dossier `Magician & Accessories-2D&3D files` contient un paquet ROS
+`magician_description` : un URDF décrivant la chaîne cinématique et **un STL
+par corps**. C'est de loin la meilleure source, et c'est celle utilisée par
+défaut (`"source": "urdf"` dans `model_config.json`).
+
+Son avantage décisif : **les maillages sont déjà exprimés dans le repère de
+leur corps**. Il n'y a plus aucune pose d'assemblage à identifier — le sujet
+qui occupait la version précédente disparaît.
+
+Le raccordement est **automatique et auto-vérifié**. Pour chaque corps de
+l'URDF, on cherche le repère `k` de notre chaîne tel que
+
+```
+C = inverse(T_k(q)) · Tz(d1) · T_urdf(q)
+```
+
+soit **constant** — testé sur trois configurations très différentes. Le corps
+est rattaché au repère qui minimise la variation ; si aucun ne convient, il
+est signalé et ignoré plutôt que placé au hasard.
+
+Résultat mesuré :
+
+```
+magician_base          repère 0   9630 facettes  (écart 0,0e+00)
+magician_link1         repère 1   5294 facettes  (écart 1,1e-16)
+magician_link2         repère 2   4242 facettes  (écart 2,2e-16)
+magician_link3         repère 3   3130 facettes  (écart 1,4e-14)
+magician_link4         repère 4    828 facettes  (écart 5,7e-14)
+magician_link2_surface repère 2    898 facettes  (écart 2,2e-16)
+magician_link3_surface repère 3   2112 facettes  (écart 1,4e-14)
+magician_servos        repère 1   1560 facettes  (écart 1,1e-16)
+magician_base_surface  repère 0    288 facettes  (écart 0,0e+00)
+```
+
+Un écart de 10⁻¹⁴ mm, c'est la précision machine : **notre chaîne
+cinématique et celle publiée par Dobot décrivent le même robot**. Ce n'est
+pas qu'un chargeur de maillages, c'est une validation croisée du modèle.
+
+Les couleurs sont lues corps par corps dans l'URDF, et surchargeables dans
+`model_config.json` (les carters de moteur et les capots, noirs sur la
+machine, y sont explicitement assombris).
+
+### Source de secours : les OBJ d'origine
+
+`"source": "obj"` bascule sur les maillages du dossier `Modele3D`, recalés à
+la main sur une pose d'assemblage identifiée géométriquement
+(`pose_assemblage_deg`, rotation, translations). Le repli est **automatique**
+si l'URDF est absent. Cette voie reste documentée dans `model_config.json` :
+elle est plus détaillée par endroits (le logo DOBOT en relief), mais son
+recalage n'est juste qu'à quelques millimètres près.
+
+Les OBJ utilisés sont ceux de
+`Modele3D/DobotMagician_obj（separate moving parts）/` — cinq pièces mobiles
+séparées, environ 50 000 facettes au total, mises en cache en `.npz` au
+premier lancement.
+
+### Comment le recalage est fait
+
+Les fichiers CAO décrivent le robot dans **une seule pose d'assemblage**.
+Pour l'animer, chaque pièce doit être exprimée dans le repère de son propre
+corps. Si `q0` est la configuration de la pose d'assemblage :
+
+```
+M_k = inverse(T0k(q0)) · Trans(t) · Rz(α)
+```
+
+Les valeurs sont dans `dobot_sim/model_config.json` :
+
+| Paramètre | Valeur | Origine |
+|-----------|--------|---------|
+| `rotation_z_deg` | 90° | le bras pointe vers −y dans le repère CAO |
+| axe J1 | x = −51, y = −4,5 mm | plan de symétrie et centre de la colonne |
+| plan de pose | z = −19,2 mm | dessous du socle |
+| `pose_assemblage_deg` | (0 ; 25,17 ; 28,96 ; 0) | identifiée sur la géométrie |
+
+> **À savoir.** Le socle mesure 158 × 158 mm dans le modèle, ce qui
+> correspond exactement au Magician : l'échelle est donc sûre (millimètres).
+> En revanche la pose d'assemblage `q0` a été **identifiée** à partir de la
+> géométrie des maillages (plan de symétrie, contact colonne/bras, position
+> du support d'effecteur), et non lue dans un fichier d'assemblage. Le
+> recalage est cohérent à quelques millimètres près. Si un décalage visuel
+> vous gêne, **Affichage ▸ Calibrer le modèle 3D…** permet d'ajuster `q0`,
+> la rotation et les translations pièce par pièce, puis d'enregistrer.
+>
+> Ce recalage n'affecte **que l'affichage**. La cinématique, elle, repose sur
+> les paramètres constructeur (138 / 135 / 147 / 61 mm) et reste exacte.
+
+### Couleurs
+
+Les OBJ livrés sont découpés en groupes (`g`), et ce découpage sépare le
+corps blanc des pièces noires. `model_config.json` affecte donc une couleur
+**par groupe** :
+
+| Fichier | Groupe | Ce que c'est | Couleur |
+|---------|--------|--------------|---------|
+| colonne | `object_1` | les deux carters de moteur (traverse toute la largeur, y −93 → +84) | noir |
+| bras arrière | `object_2` | la bielle du parallélogramme | noir |
+| effecteur | — | support d'outil | noir |
+| tout le reste | — | corps de la machine | blanc |
+
+Le nuanceur livré avec pyqtgraph n'a que 0,2 d'ambiant et une seule source :
+un corps blanc y apparaît gris foncé. `viewer3d.py` en enregistre donc un
+autre, à éclairage frontal plus lumière haute, qui rend le blanc de la
+machine. Un repli automatique sur `shaded` est prévu si la compilation
+échoue.
+
+### Enveloppe de travail
+
+**Affichage ▸ Espace de travail** balaie le contour du domaine articulaire
+autour de l'axe J1, entre les butées de J1 : on voit le volume atteignable
+et, très nettement, le secteur mort de 90° à l'arrière. L'enveloppe est
+**recalculée à chaque changement d'outil**, puisque `lt` la décale.
+
+**Affichage ▸ Basculer modèle CAO / simplifié** affiche un robot construit
+uniquement à partir de `d1, l1, l2, l3` : par construction toujours en accord
+parfait avec la cinématique, il sert de référence pour juger du recalage.
+
+---
+
+## 7. Outils et entrées / sorties
+
+### Le catalogue d'outils
+
+| Outil | Longueur | État commandé | Commande sur le robot réel |
+|-------|----------|---------------|----------------------------|
+| `aucun` | 0 mm | — | bride nue |
+| `ventouse` | 62 mm | aspiration / relâchée | `SetEndEffectorSuctionCup` |
+| `pince` | 78 mm | fermée / ouverte | `SetEndEffectorGripper` |
+| `stylo` | 70 mm | — | aucun actionneur |
+| `laser` | 56 mm | allumé / éteint | `SetEndEffectorLaser` |
+
+Le point essentiel n'est pas le décor : c'est que **la longueur de l'outil
+devient le déport `lt` du modèle géométrique**. Une fois l'outil monté, `z`
+désigne sa **pointe** et non plus la bride — c'est ainsi qu'on vient
+effleurer la table. Le MGI change donc, et l'enveloppe de travail avec lui.
+
+### Mesurer la vraie longueur de votre outil
+
+Les longueurs ci-dessus sont **nominales**. Un montage particulier — cuvette
+différente, rallonge, embase imprimée — décale toute la coordonnée z, et le
+robot descend trop bas ou pas assez.
+
+La mesure tient en trois gestes : amenez la **pointe au contact** du plan de
+travail, lisez le `z` annoncé par le modèle, ajoutez-le à la longueur
+courante.
+
+Puis inscrivez-la dans le programme, juste après le constructeur :
+
+```python
+robot = Pilote(nom="cycle", outil="ventouse")
+robot.regler_longueur_outil(79.3)      # APRES monter_outil, qui remet 62
+```
+
+> **La longueur voyage avec le programme.** Elle est inscrite dans le
+> `Programme` et sérialisée en JSON, parce que le nom seul ne suffit pas :
+> sans elle, le simulateur et le robot réel rechargeraient la valeur du
+> catalogue et le `z` ne désignerait plus le même point. Un JSON antérieur,
+> qui n'en porte pas, revient proprement au catalogue.
+
+> **Pourquoi pas un fichier de configuration machine ?** Essayé, puis
+> retiré. Faire lire une longueur mesurée par `outils.outil()` la rendait
+> globale : le modèle, les exemples et six tests unitaires changeaient de
+> résultat selon la machine. Le catalogue reste donc **nominal et pur**, et
+> la mesure appartient au programme — c'est-à-dire à l'endroit où elle est
+> visible et versionnée. Pour un TP, mettez la ligne dans le squelette que
+> les étudiants recopient.
+
+> Sur la machine d'essai, pointe au contact, le modèle annonçait **+17,3 mm**
+> : la ventouse montée était 17,3 mm plus longue que les 62 mm du catalogue.
+
+> **Vérifiez que c'est bien l'outil.** Une erreur de longueur d'outil est
+> **constante** : elle vaut pareil partout sur la table. Un défaut d'origine
+> articulaire, lui, **varie avec la configuration** — à J2 = 71°, un degré
+> d'erreur déplace le z de 2,2 mm. Refaites donc le contact en deux ou trois
+> endroits bien séparés. Même valeur partout → c'est l'outil, le réglage
+> ci-dessus suffit. Valeur différente → c'est l'origine qu'il faut reprendre.
+
+```python
+robot = Pilote(outil="ventouse")     # lt = 62 mm
+robot.movl(cible(220, 0, 5))         # la VENTOUSE se pose à 5 mm de la table
+robot.actionner(True)                # aspiration
+```
+
+> **Maillages paramétriques, pas importés.** Les STEP d'outils fournis
+> (`ventouse.stp`, `Support_outil.stp`) sont des B-Rep exacts, sans
+> facettes : les tesseller demanderait un noyau géométrique. Les outils
+> sont donc construits par assemblage de primitives, aux dimensions Dobot à
+> quelques millimètres près. Vous pouvez les retoucher dans
+> `dobot_sim/outils.py` ; seule la **longueur** entre dans le calcul.
+
+### Entrées / sorties tout-ou-rien
+
+Le contrôleur expose 20 ports EIO. Le simulateur modélise le tout-ou-rien,
+qui couvre l'essentiel des TP : commander un vérin ou un voyant, attendre
+l'acquittement d'un capteur, se synchroniser avec un convoyeur.
+
+| Instruction | Effet |
+|-------------|-------|
+| `SORTIE` port, état | met `EIOn` à 0 ou 1 → `SetIODO` |
+| `ENTREE` port, état, délai | **suspend** le programme jusqu'à ce que `EIOn` prenne l'état voulu → boucle sur `GetIODI` |
+
+```python
+robot.sortie(1, True, "voyant de marche")
+robot.attendre_entree(5, True, timeout=15.0, "capteur magasin")
+```
+
+La distinction est celle du terrain : **une sortie est un ordre, une entrée
+est une information venue de la cellule**. Dans le panneau *Entrées /
+Sorties*, les sorties sont des voyants pilotés par le programme, et les
+entrées des boutons sur lesquels **vous** cliquez — vous jouez le rôle des
+capteurs. À la lecture, le robot se **fige** sur chaque `ENTREE` jusqu'à ce
+que vous basculiez le port, puis repart ; passé le délai, il continue et le
+journal le signale.
+
+> Conséquence à connaître : une attente **neutralise le lissage** de ses
+> voisins. On ne peut pas arrondir un angle autour d'un arrêt. Le rapport de
+> `mon_programme.py` le signale explicitement.
+
+L'export vers le robot réel configure le multiplexage des ports utilisés
+(`SetIOMultiplexing`, 2 = sortie, 3 = entrée) et traduit l'attente en
+vidage de la file de commandes suivi d'une scrutation de `GetIODI`.
+
+---
+
+## 8. Écrire un programme dans VS Code
+
+Ouvrez [`mon_programme.py`](mon_programme.py) et appuyez sur **F5**. La
+fenêtre de simulation s'ouvre et le robot joue le mouvement. C'est tout.
+
+### Le simulateur déjà ouvert reçoit le programme
+
+Presser `F5` dans VS Code démarre un **nouveau processus** Python. Il ne
+voit pas la fenêtre déjà ouverte — et s'il en ouvrait une seconde, le port
+série, tenu par la première, lui serait refusé. Il fallait donc fermer le
+simulateur avant chaque exécution.
+
+`simuler()` frappe maintenant à la porte avant tout : si un simulateur
+tourne, il lui **envoie** le programme et s'arrête là.
+
+```
+programme envoye au simulateur deja ouvert (4 instructions)
+```
+
+La fenêtre garde sa liaison série, ses réglages et sa place à l'écran ;
+elle remonte au premier plan avec le nouveau programme chargé. Trois cas,
+dans cet ordre :
+
+| | |
+|---|---|
+| un simulateur tourne dans un **autre** processus | on lui envoie le programme |
+| un simulateur tourne dans **ce** processus (console, menu *Fichier*) | on y charge le programme |
+| il n'y en a pas | on ouvre une fenêtre, comme avant |
+
+Le transport est un **socket local** — tube nommé sous Windows, socket UNIX
+ailleurs. Pas de port TCP : rien à ouvrir dans un pare-feu, aucune
+collision possible. Le nom du tube porte celui de l'utilisateur, pour que
+deux comptes sur la même machine ne se marchent pas dessus. Un tube
+orphelin, laissé par un simulateur fermé brutalement, n'est retiré
+**qu'après** avoir vérifié que personne ne répond derrière.
+
+### Les cibles sont des matrices homogènes
+
+Une cible n'est pas un triplet de nombres : c'est la **situation** d'un
+repère, position et orientation ensemble. Deux constructeurs :
+
+| Fonction | Construit | Axe z |
+|----------|-----------|-------|
+| `repere_travail(x, y, z, rz)` | `Trans · Rz` | vers le **haut** — un plan de travail |
+| `cible(x, y, z, rz, repere=…)` | `Trans · Rz · Rx(180°)` | vers le **bas** — la direction d'approche de l'outil |
+
+```python
+import numpy as np
+from dobot_sim import Pilote, cible, repere_travail
+from dobot_sim import homogeneous as hg
+
+# Deux repères posés sur la table. Déplacer physiquement le magasin ne
+# demandera de changer qu'une seule ligne.
+MAGASIN = repere_travail(x=215, y=-95, z=25)
+PALETTE = repere_travail(x=205, y=75, z=25, rz=20)     # palette de biais
+
+PRISE = cible(repere=MAGASIN)                          # matrice 4×4
+def case(i):                                           # coordonnées locales
+    return cible(x=0, y=i * 24, z=0, repere=PALETTE)
+
+# Dégagement de 85 mm vers le haut. Post-multiplier, c'est se déplacer dans
+# le repère de l'OUTIL ; son axe z pointant vers le bas, monter s'écrit
+# avec un z négatif.
+DEGAGEMENT = hg.translation(0, 0, -85)
+
+robot = Pilote(vitesse=140, acceleration=600,          # MOVL/MOVC : mm/s
+               vitesse_articulaire=50)                 # MOVJ      : deg/s
+
+robot.repli()
+robot.movj(PRISE @ DEGAGEMENT, lissage=70)
+robot.movl(PRISE, vitesse=50, profil="trapeze")        # descente lente
+robot.ventouse(True)
+robot.attendre(0.3)
+robot.movl(PRISE @ DEGAGEMENT, lissage=80)
+robot.movc(via=cible(265, 0, 135), T=case(0) @ DEGAGEMENT, vitesse=180)
+robot.movl(case(0))
+robot.ventouse(False)
+robot.repli()
+
+print(robot.resume())        # durées, avertissements, butées
+robot.simuler()              # ouvre la fenêtre et lance l'animation
+```
+
+**Pré- ou post-multiplication**, c'est toute la différence. La palette étant
+inclinée de 20°, un décalage de 30 mm selon x ne donne pas le même point
+selon le repère où on l'exprime :
+
+```
+case(0)                              (205,0 ; 75,0 ; 25)
+case(0) @ Trans(30, 0, 0)            (233,2 ; 85,3 ; 25)   repère OUTIL
+Trans(30, 0, 0) @ case(0)            (235,0 ; 75,0 ; 25)   repère BASE
+```
+
+Une cible dont l'axe d'outil n'est pas vertical est **refusée** avec un
+message explicite, plutôt que silencieusement projetée : c'est une
+contrainte mécanique du parallélogramme, pas une approximation.
+
+> **Un piège à connaître.** L'axe z de l'outil pointant vers le bas,
+> `cible(…, rz=20) @ rot_z(30°)` donne **r = −10°**, pas +50° : la rotation
+> post-multipliée s'applique autour d'un axe inversé. C'est mathématiquement
+> juste — et instructif — mais pour fixer une orientation, utilisez
+> l'argument `rz=` plutôt qu'une composition.
+
+Trois points de confort :
+
+- **les coordonnées omises sont conservées** — `robot.movl(z=25)` descend à
+  la verticale sans qu'on répète `x` et `y`, et `robot.movl(PRISE, z=60)`
+  part d'une matrice en forçant une composante ;
+- **chaque commande accepte** `vitesse`, `acceleration`, `lissage`, `profil`,
+  `duree` et `commentaire`, qui surchargent les réglages du constructeur ;
+  passer `duree=` bascule cette instruction en durée imposée ;
+- `robot.resume()` affiche le programme, les durées réellement calculées et
+  les avertissements **sans rien ouvrir** — pratique dans le terminal.
+
+> Le programme enregistré stocke `(x, y, z, r)` et non la matrice : sur ce
+> robot l'orientation est imposée par la mécanique, les deux formes sont
+> donc équivalentes et le JSON reste lisible. `Instruction.matrice()`
+> reconstruit la matrice à la demande.
+
+### Deux formes, deux usages
+
+| | forme |
+|---|---|
+| **écriture dans un script Python** | matrice homogène 4×4 — cibles, points de passage, repère outil, repère objet |
+| **affichage et saisie dans l'interface** | `(X, Y, Z, Rx, Ry, Rz)` |
+
+L'interface ne montre jamais de matrice 4×4 : c'est la forme de travail du
+script, pas celle de l'opérateur. Elle affiche les six composantes usuelles
+en robotique industrielle — et **Rx et Ry y sont en lecture seule**, parce
+qu'ils ne sont pas commandables : le parallélogramme impose Rx = 180°,
+Ry = 0° pour une cible et pour le repère outil, Rx = Ry = 0 pour le repère
+objet. Les montrer rend la contrainte visible plutôt que tacite.
+
+`vers_xyzrpy(T)` et `depuis_xyzrpy(X, Y, Z, Rx, Ry, Rz)` font la conversion
+dans les deux sens, en millimètres et degrés.
+
+### Repère outil et repère objet
+
+Deux repères que le script peut donner en matrice 4×4, et que l'onglet
+**Repères** affiche et modifie en six composantes. Ce ne sont pas des
+commodités d'affichage : ils entrent dans le modèle géométrique.
+
+| Repère | Va de | Rôle | Contrainte |
+|--------|-------|------|------------|
+| **outil** | axe de rotation de l'outil → pointe | déport **latéral** et rotation propre, que la seule longueur ne décrit pas | axe z vers le bas |
+| **objet** | base → plan de travail | les cibles marquées `repere="objet"` y sont exprimées | axe z vers le haut |
+
+```python
+robot.definir_repere_outil(                     # pince déportée de 18 mm
+    hg.composer(hg.translation(18, -6, -78), hg.rot_x(np.pi)))
+
+robot.definir_repere_objet(repere_travail(205, 75, 25, rz=20))
+robot.movl(cible(0, 48, 0), repere="objet")     # coordonnées locales
+```
+
+Le MGI retire d'abord le repère outil — le triangle se résout sur **l'axe
+outil**, pas sur la pointe — puis résout comme avant. Avec le repère par
+défaut cela revient exactement à remonter de `lt`, donc rien ne change pour
+un outil classique ; avec un déport latéral, l'aller-retour MGD/MGI sur la
+pointe reste exact à 2·10⁻¹³ mm.
+
+Déplacer physiquement le montage ne demande alors de changer **qu'une
+matrice** : toutes les cibles exprimées dans le repère objet suivent.
+
+> Une **inclinaison** est refusée dans les deux cas, avec un message :
+> le parallélogramme maintient l'axe d'outil vertical, un plan de travail
+> incliné rendrait toutes ses cibles inatteignables.
+
+> À l'export, les cibles du repère objet sont converties en **coordonnées
+> absolues** — le contrôleur Dobot ne connaît pas cette notion — et un
+> avertissement est inséré si un repère outil déporté est en place, car le
+> contrôleur ne gère qu'un déport vertical.
+
+### Tester ses cibles avant de bouger
+
+`mon_programme.py` contient deux sections de contrôle, à garder ou à
+supprimer selon l'usage. La première vérifie les **matrices** avant même de
+construire le mouvement — une erreur de repère se voit là, pas en regardant
+le robot partir de travers :
+
+```
+4. CONTROLE DES CIBLES
+  PRISE                  x=  215.0 y=  -95.0 z=  25.0 r=   0.0   ok  (ecart MGD/MGI 6e-14)
+  case(1)                x=  196.8 y=   97.6 z=  25.0 r=  20.0   ok  (ecart MGD/MGI 9e-14)
+  ...
+  inverse(PALETTE) @ case(i)  ->  coordonnees locales
+    case(1) : [ 0. 24.  0.]   (attendu [0 24 0])
+  cible inclinee de 25 deg        : correctement refusee
+```
+
+Chaque cible est contrôlée sur quatre points : matrice homogène valide,
+orientation réalisable, atteignabilité dans les butées, et surtout
+`MGD(MGI(T)) = T` — le robot rejoint-il *exactement* la situation demandée ?
+L'écart tombe à 10⁻¹⁴ mm. L'inversion du repère de travail redonne les
+coordonnées locales, ce qui valide d'un coup la chaîne de composition.
+
+La seconde section mesure la distance minimale du TCP à chaque cible **sur
+la trajectoire échantillonnée** :
+
+```
+6. CONTROLE DU MOUVEMENT
+    03 MOVL  descente lente                  0.00 mm   atteinte
+    06 MOVL  remontee                        1.28 mm   coin coupe, lissage 80 %
+    07 MOVC  transfert en arc                1.94 mm   coin coupe, lissage 80 %
+```
+
+Les cibles sans lissage sont atteintes à **0,00 mm**, celles qui en portent
+sont volontairement manquées de 1 à 2 mm. C'est la vérification de bout en
+bout : matrice → MGI → trajectoire → position réelle de l'outil.
+
+Le dossier `.vscode/` contient quatre configurations de lancement :
+*Simuler le fichier ouvert*, *Simuler mon_programme.py*, *Ouvrir le
+simulateur* et *Diagnostic de l'installation*.
+
+### Depuis le simulateur déjà ouvert
+
+**Fichier ▸ Exécuter un script Python…** (Ctrl+R) exécute un script dans la
+fenêtre courante, et **F5** rejoue le dernier. `simuler()` détecte alors la
+fenêtre existante et y charge le programme au lieu d'en ouvrir une seconde :
+le même fichier fonctionne dans les deux sens. C'est la boucle de travail la
+plus rapide — on modifie le script dans VS Code, on revient au simulateur, F5.
+
+### Sans interface
+
+```python
+traj = robot.trajectoire()            # compile sans rien afficher
+e = traj.echantillonner(0.01)         # t, Q, dQ, P, V, R
+print(e["V"].max(), "mm/s")
+print(robot.controler())              # butées, points hors d'atteinte
+robot.exporter_python("cycle_reel.py")
+```
+
+---
+
+## 9. Utilisation comme bibliothèque
+
+```python
+from dobot_sim import DobotMagician, homogeneous as hg
+
+robot = DobotMagician()
+
+T = robot.mgd([30, 20, 35, -15])      # modèle géométrique direct
+print(hg.formater(T, 3, "T0_TCP"))
+
+q = robot.mgi(T)                      # modèle géométrique inverse
+x, y, z, r = robot.pose(q)            # pose au format Dobot
+
+J = robot.jacobienne(q)               # modèle cinématique
+print(robot.depassements(q))          # butées violées, liste vide si tout va bien
+```
+
+Trajectoire cartésienne rectiligne :
+
+```python
+from dobot_sim.trajectory import SegmentLineaire, ProfilTrapeze, Trajectoire
+
+q0 = robot.mgi_pose(220, -90, 60, 0)
+T1 = robot.pose_vers_matrice(220, -90, 5, 0)
+seg = SegmentLineaire(robot, q0, T1, ProfilTrapeze(1.0, 0.3))
+
+traj = Trajectoire(robot, [seg])
+e = traj.echantillonner(0.02)         # t, Q, dQ, P, V, R
+print(traj.controler())               # avertissements éventuels
+```
+
+---
+
+## 10. Le robot réel
+
+Deux voies : **exporter un script**, ou **piloter directement** depuis le
+simulateur.
+
+### Exporter un script DobotStudio
+
+`Fichier ▸ Exporter un script Dobot` produit un script utilisant
+`DobotDllType`, l'API livrée avec DobotStudio :
+
+```python
+dType.SetPTPCmd(api, dType.PTPMode.PTPMOVLXYZMode, 220, -90, 5, 0, isQueued=1)
+dType.SetEndEffectorSuctionCup(api, 1, 1, isQueued=1)
+dType.SetARCCmd(api, [265, 0, 130, 0], [220, 90, 110, 45], isQueued=1)
+```
+
+### Piloter directement : le panneau *Robot réel*
+
+`dobot_sim/liaison.py` implémente le **protocole série officiel** en Python
+pur, d'après `Dobot-Communication-Protocol-V1.1.5.pdf` fourni à la racine.
+Ni DLL, ni DobotStudio : seul `pyserial` est requis, et le module marche sur
+Windows, Linux et macOS.
+
+```
+0xAA 0xAA │ Len │ ID │ Ctrl │ Params… │ Checksum
+```
+
+`Len = 2 + n` (la charge utile compte l'ID et le Ctrl) ; `Ctrl` porte
+`rw` en bit 0 et `isQueued` en bit 1 ; le checksum est le **complément à
+deux** de la somme de la charge utile ; les paramètres sont en
+**little endian**. Liaison 115200 bauds, 8N1.
+
+Les commandes **en file** (`isQueued = 1`) sont empilées dans le contrôleur
+et renvoient un index sur 64 bits. C'est ce mécanisme qui permet de
+téléverser tout un programme puis de le lancer : on compare l'index courant
+du contrôleur à celui de la dernière commande envoyée pour suivre l'avancée.
+
+| instruction | commande envoyée |
+|---|---|
+| `MOVJ` cartésien / articulaire | `SetPTPCmd` mode `MOVJ_XYZ` / `MOVJ_ANGLE` |
+| `MOVL` | `SetPTPCmd` mode `MOVL_XYZ` |
+| `MOVC` | `SetARCCmd` (point de passage + arrivée) |
+| `ATTENTE` | `SetWAITCmd` (ms) |
+| `SORTIE` | `SetIOMultiplexing` puis `SetIODO` |
+| `ENTREE` | `SetTRIGCmd` — la file n'a pas d'attente conditionnelle, **TRIG en tient lieu** |
+| `OUTIL` | `SetEndEffectorSuctionCup` / `Gripper` / `Laser` selon l'outil monté |
+| vitesse, accélération | `SetPTPJointParams` ou `SetPTPCoordinateParams`, **mises en file** pour prendre effet au bon moment |
+
+### Le repère du contrôleur n'est pas celui du modèle
+
+Mesuré sur une machine réelle (firmware 3.7.0), `GetPose` annonce :
+
+```
+rho_ctrl = l1·sin(J2) + l2·cos(J3) + xBias
+z_ctrl   = l1·cos(J2) − l2·sin(J3) + zBias
+```
+
+Deux différences, toutes deux vérifiées au millième :
+
+- le contrôleur place son origine **à hauteur d'épaule** : son `z` ne
+  contient pas `d1`. L'écart mesuré valait exactement **−139,000 mm** ;
+- son déport horizontal est le `xBias` de `EndEffectorParams`, pas le
+  `l3 = 59,7 mm` de la table DH. Sur la machine d'essai `xBias = 61,0 mm`,
+  d'où **1,30 mm** d'écart radial.
+
+D'où la conversion, exacte dans les deux sens :
+
+```
+rho_ctrl = rho_tcp − l3 + xBias      z_ctrl = z_tcp + lt − d1 + zBias
+```
+
+`lt` y figure parce que le `z` du simulateur désigne la **pointe** de
+l'outil, quand celui du contrôleur se rapporte au plan du poignet tant que
+`zBias` vaut 0. Le pont **lit** `xBias` à la connexion et le signale dans le
+journal ; il ne modifie **jamais** la calibration de la machine.
+
+Les **angles**, eux, ne demandent aucune conversion : les quatre valeurs
+renvoyées par `GetPose` sont exactement celles du modèle. C'est pourquoi le
+miroir temps réel les utilise plutôt que les coordonnées.
+
+### Les deux sens de circulation
+
+| case | sens | |
+|---|---|---|
+| **miroir** | robot → modèle | interroge la machine à 5 Hz et applique ses angles au modèle : le robot virtuel reproduit le mouvement du vrai, en direct. Un aller-retour série coûte **10,2 ms** |
+| **pilotage** | modèle → robot | chaque curseur **relâché** envoie le robot sur la pose affichée |
+
+Elles sont **exclusives** : cocher l'une décoche l'autre. Si le modèle
+suivait la machine pendant que la machine suit le modèle, les curseurs se
+battraient avec la main de l'opérateur.
+
+### Piloter la machine à la main
+
+Le **pilotage** fait des quatre curseurs articulaires et des quatre
+curseurs cartésiens une console de mouvement pour le robot réel.
+
+Ce qui part sur le fil, ce sont toujours les **angles** — `MOVJ_ANGLE` —
+et ce quel que soit le curseur manipulé, y compris cartésien. Le simulateur
+a déjà résolu le MGI, appliqué la longueur d'outil et vérifié les butées :
+transmettre sa configuration articulaire garantit que le bras reproduit
+exactement la posture montrée en 3D, sans qu'aucune conversion de repère
+puisse s'y glisser.
+
+Quatre garde-fous :
+
+| | |
+|---|---|
+| **au relâchement seulement** | `valeurChangee` part à chaque pixel parcouru et noierait la machine ; le pilotage s'accroche à `valeurValidee`, émis au relâchement du curseur ou à la validation du champ |
+| **le dernier ordre gagne** | chaque envoi coupe puis vide la file avant d'y déposer le mouvement : un relâchement **remplace** le précédent au lieu de s'empiler derrière |
+| **pose fautive refusée** | butée dépassée ou collision : rien ne part, et le bandeau le dit |
+| **confirmation à l'activation** | et la case se décoche d'elle-même à la déconnexion |
+
+La vitesse reste bridée par le ratio du panneau — 30 % par défaut.
+
+### Le badge dans la vue 3D
+
+Quand une **machine** est au bout du fil, cela doit se voir là où l'on
+regarde — pas seulement dans un panneau latéral qu'on a peut-être replié.
+Un badge se superpose donc au coin de la vue 3D, à trois degrés :
+
+| | |
+|---|---|
+| **bleu** — *ROBOT REEL CONNECTE* | la liaison est ouverte, rien ne bouge |
+| **ambre** — *ROBOT REEL PILOTE* | les curseurs commandent la machine |
+| **rouge** — *EN MARCHE* / *EN DEFAUT* | le programme s'exécute, ou la file est arrêtée sur une alarme |
+
+### Forcer les sorties à la main
+
+Les sorties ne sont plus de simples voyants : **cliquez-les pour les
+forcer**. C'est la façon la plus courte de vérifier qu'une électrovanne, un
+voyant ou un relais répond — sans écrire de programme ni lancer de cycle.
+
+Cochez *« répercuter les sorties sur le robot réel »* pour que le clic
+agisse aussi sur la machine. Le port est configuré en sortie
+(`SetIOMultiplexing`) au premier usage, puis chaque bascule part en
+`SetIODO` **immédiat** — pas en file : on veut l'effet tout de suite.
+
+> Une confirmation prévient que le matériel branché va s'actionner. Et
+> quand c'est le **programme** qui écrit une sortie pendant une lecture,
+> rien ne part sur le fil : seul un clic de votre part commande la machine.
+
+> **L'effecteur n'est pas sur les EIO.** Vérifié sur machine : actionner les
+> vingt sorties une à une n'a **aucun effet** sur la ventouse. Ventouse,
+> pince et laser ont leur propre circuit et leurs propres commandes —
+> `SetEndEffectorSuctionCup`, `…Gripper`, `…Laser`. Les ports EIO servent
+> aux périphériques de la cellule : voyants, vérins, convoyeur, capteurs.
+
+### Actionner l'effecteur à la main
+
+Le bouton **Actionner** de la section *Outil*, panneau Commande, commande
+aussi la machine dès que le **pilotage** est coché. Il envoie la commande
+dédiée à l'outil monté — ventouse, pince ou laser —, en **immédiat** et non
+en file : on veut entendre la pompe tout de suite, pas à la fin d'un cycle.
+Un outil passif comme le porte-stylo laisse le bouton grisé.
+
+C'est la façon de vérifier qu'une ventouse aspire, sans écrire de programme.
+
+### Lire les vraies entrées
+
+Cochez *« lire les entrées sur le robot réel »* et les vingt boutons cessent
+d'être des interrupteurs : ils deviennent les **témoins** des capteurs de la
+cellule. On voit un détecteur de présence basculer en direct, avant de
+lancer un cycle qui l'attend avec une instruction `ENTREE`.
+
+> **Comment les vingt ports sont rafraîchis.** Les lire tous coûterait
+> vingt allers-retours, soit 200 ms — bien trop à chaque tour. Les ports
+> **attendus par le programme** sont donc lus à chaque rafraîchissement,
+> cinq fois par seconde ; les autres sont balayés à tour de rôle, trois à
+> la fois, et font le tour complet en une seconde environ.
+
+Un port que vous avez forcé en **sortie** n'est jamais reconfiguré en
+entrée : les deux usages cohabitent sans se marcher dessus. Et la
+déconnexion rend la main aux interrupteurs.
+
+### L'alerte s'efface quand la pose redevient saine
+
+Un arrêt de sécurité laisse un bandeau rouge. Une fois le bras ramené dans
+ses butées — au curseur, au pas à pas ou à la main — ce bandeau ne décrit
+plus rien : il **s'efface tout seul**, sans qu'il faille recompiler le
+programme.
+
+Les avertissements du **programme**, eux, survivent : ils parlent de la
+trajectoire, pas de l'instant. Le bandeau y revient une fois l'alerte de
+pose retirée.
+
+### Recaler les capteurs d'angle
+
+Symptôme : **le bras réel n'est pas là où le modèle le montre** — typiquement
+le bras arrière nettement plus reculé — et la prise d'origine **échoue en
+butée mécanique**. Le contrôleur vise ce qu'il *croit* être la posture
+d'origine ; avec un zéro décalé, il pousse jusqu'à la butée.
+
+Le protocole nomme la cause (section 1.16) :
+
+> *Angle sensors of forearm and rear arm may have a **static offset** due to
+> angle sensor welding, machine status, and so on.*
+
+Deux commandes le corrigent, et **aucune ne fait bouger le bras** — elles ne
+changent que la façon dont les capteurs sont lus :
+
+| commande | ID | portée |
+|---|---|---|
+| `ResetPose` | 11 | déclare les angles vrais à la posture actuelle ; immédiat, **perdu à la mise hors tension** |
+| `AngleSensorStaticError` | 140 | écrit l'offset **persistant** des deux capteurs |
+
+**Posture de référence.** La convention du contrôleur a été vérifiée sur
+machine réelle — `z = l1·cos(J2) − l2·sin(J3)`, donc :
+
+- **J2 = 0° : bras arrière VERTICAL**
+- **J3 = 0° : avant-bras HORIZONTAL**
+
+C'est celle du modèle, ce qui rend la référence vérifiable à l'équerre.
+
+```powershell
+python calibrer_robot.py --capteurs          # lit tout, N'ECRIT RIEN
+python calibrer_robot.py --recaler           # ResetPose, sans mouvement
+python calibrer_robot.py --erreur-statique   # recalage persistant
+python calibrer_robot.py --restaurer 0.25,-0.5   # revient en arriere
+```
+
+Déverrouillez les moteurs (bouton de la fourche), placez le bras à
+l'équerre, relâchez, puis lancez la commande.
+
+> **Mesuré sur firmware 3.7.0 : `AngleSensorStaticError` ne s'applique pas
+> à chaud.** La valeur est bien acceptée et relue telle quelle (+5,0000),
+> mais les angles annoncés ne bougent pas d'un millième. Le firmware la lit
+> au démarrage. La vérification exige donc une **coupure d'alimentation**,
+> et la procédure se fait en deux temps.
+
+> **Le sens de l'offset n'est pas documenté** et la sonde à chaud ne peut
+> pas le révéler, puisqu'elle n'a aucun effet. On écrit, on redémarre, on
+> regarde : si l'écart retombe vers 0, c'était le bon sens ; s'il **double**,
+> on recommence avec `--signe -1`. La valeur précédente est toujours
+> affichée avant écriture, et `--restaurer` la remet.
+
+**Décalage constant ou défaut d'échelle ?**
+
+Avant d'ouvrir la machine, il vaut la peine de savoir ce qu'on cherche.
+Relevez l'angle vrai à trois ou quatre postures bien réparties — niveau,
+équerre, inclinomètre de téléphone — et laissez l'ajustement trancher :
+
+```powershell
+python calibrer_robot.py --mesure 0       # bras vertical
+python calibrer_robot.py --mesure 30
+python calibrer_robot.py --mesure 60
+python calibrer_robot.py --bilan          # hors ligne, n'ouvre pas le port
+```
+
+`--bilan` confronte les relevés à **trois** modèles d'erreur, qui ne se
+réparent pas de la même façon :
+
+| modèle | forme | cause | remède |
+|---|---|---|---|
+| **constant** | `lu = vrai + b` | un cran de trop sur un accouplement indexé | remontage |
+| **échelle** | `lu = a·vrai + b` | le capteur ne couvre pas la bonne plage | ni remontage ni offset |
+| **biellette** | `lu = vrai + A·cos + B·sin + C` | capteur entraîné par une tringlerie, pas monté dans l'axe | ni l'un ni l'autre |
+
+Le bilan affiche le résidu de chacun et désigne le meilleur. Pour un
+décalage constant, il cherche en plus s'il tombe sur un nombre entier de
+crans (16, 15, 18, 20 ou 24 dents).
+
+> **Deux points ne suffisent pas, et le bilan le dit.** Une droite passe
+> toujours exactement par deux points : son résidu nul ne prouve rien, une
+> erreur sinusoïdale donnerait les mêmes deux points. Il en faut **trois**
+> pour séparer constant et échelle, **quatre** bien répartis pour tester la
+> biellette. Le bilan refuse de conclure en deçà.
+
+> **Leçon d'un cas réel.** Deux mesures prises toutes les deux près de la
+> verticale donnaient 22,13° et 22,68°, soit 22,41° — à 0,095° de
+> 360/16 = 22,500°. La coïncidence semblait décisive et a conduit à un
+> démontage. Une troisième mesure, à 90°, a montré une erreur **nulle** :
+> le défaut dépendait de l'angle, aucun cran n'était en cause, et le
+> démontage était inutile. **Mesurez sur toute la plage avant d'ouvrir
+> quoi que ce soit.**
+
+**Séquence complète**
+
+```powershell
+# bras a l'equerre, moteurs deverrouilles
+python calibrer_robot.py --capteurs           # mesure l'ecart
+python calibrer_robot.py --erreur-statique    # ecrit (aucun mouvement)
+#   -> couper l'alimentation, attendre 5 s, rallumer
+#   -> remettre le bras a l'equerre
+python calibrer_robot.py --capteurs           # l'ecart doit etre retombe a ~0
+python calibrer_robot.py --origine            # LE ROBOT BOUGE
+```
+
+> **N'envoyez aucun mouvement entre l'écriture et la vérification.** Si le
+> signe est inversé, les angles annoncés sont faux du double et le bras
+> partirait droit en butée.
+
+### Se passer de la prise d'origine
+
+Quand un capteur d'angle est fautif, la prise d'origine **ne peut pas
+aboutir** : elle s'appuie justement sur ce capteur et part en butée. Il
+existe pourtant une issue, et elle tient à une propriété du contrôleur,
+**vérifiée sur firmware 3.7.0** :
+
+```
+on declare J2 = +25.718 (soit +5 deg), sans rien bouger
+   t=0.5 s   J2  +25.718
+   ...
+   t=4.0 s   J2  +25.718
+   -> la croyance TIENT
+```
+
+Le contrôleur **garde ce qu'on lui déclare** et ne relit pas ses capteurs.
+Les moteurs étant des pas-à-pas, il suffit donc de lui dire une fois où est
+le bras : il compte ses pas à partir de là, et le capteur défaillant ne sert
+plus à rien.
+
+| | |
+|---|---|
+| **bouton** | *Declarer la posture d'equerre*, panneau Robot réel |
+| **ligne de commande** | `python calibrer_robot.py --recaler` |
+
+Placez le bras à la main — bras arrière vertical, avant-bras horizontal,
+bouton de la fourche enfoncé — puis déclarez. Rien ne bouge.
+
+> **Trois limites à connaître.** C'est un contournement, pas une
+> réparation : le capteur reste faux. Le réglage est **perdu à chaque mise
+> hors tension**, donc à refaire à chaque séance. Et la précision du robot
+> devient celle de **votre placement** : sur la machine d'essai, cinq mises
+> à la verticale successives se sont étalées sur 3,5°. Pour un TP c'est
+> jouable, pour de la précision non.
+
+> **Astuce de répétabilité.** Plutôt que de viser la verticale à l'équerre
+> chaque fois, repoussez doucement le bras contre sa butée arrière : une
+> butée mécanique est bien plus reproductible qu'un placement à l'œil.
+> Mesurez une bonne fois l'angle qu'elle représente, puis déclarez cette
+> valeur avec `--reference`.
+
+### Prise d'origine
+
+Le Magician retrouve ses repères par une **prise d'origine** : le bras
+parcourt toute sa course, remet ses compteurs à zéro, puis se parque sur le
+point enregistré dans `HOMEParams`. Elle est nécessaire après chaque mise
+sous tension, et dès que le bras a été **déplacé à la main**.
+
+**Comment savoir si elle manque ?** Le contrôleur ne le dit pas toujours :
+sur la machine d'essai, aucune alarme n'était levée alors que le bras venait
+d'être déplacé à la main. Trois indices, du plus fiable au plus faible :
+
+1. **le miroir 3D** — mettez le bras réel dans une posture reconnaissable et
+   regardez le modèle. S'ils diffèrent, les zéros ont dérivé. C'est le test
+   décisif, et c'est immédiat ;
+2. l'**alarme 0x11** *prise d'origine non effectuée*, quand le firmware la
+   lève ;
+3. le robot va systématiquement « à côté » de ses cibles, d'un décalage
+   constant.
+
+> **Ce que `PontReel.coherence()` ne fait pas.** Il confronte la pose et les
+> angles renvoyés par `GetPose` : cela vérifie que le contrôleur et le
+> modèle décrivent la **même géométrie** — utile pour valider `xBias` — mais
+> **pas** que les zéros sont justes. Les deux valeurs viennent des mêmes
+> compteurs : elles restent d'accord entre elles même quand le zéro a
+> dérivé. Sur la machine d'essai il annonçait 0,000 mm alors que la prise
+> d'origine était bien nécessaire.
+
+En ligne de commande :
+
+```powershell
+python calibrer_robot.py                 # diagnostic seul, RIEN ne bouge
+python calibrer_robot.py --origine       # lance la prise d'origine
+```
+
+Le diagnostic affiche firmware, alarmes, pose dans les **deux** repères,
+point d'origine enregistré et écart de cohérence. La séquence de prise
+d'origine coupe la file avant de la vider, efface les alarmes, bride les
+vitesses à 30 %, puis suit les angles jusqu'à stabilisation — et force
+l'arrêt si le délai est dépassé.
+
+### Quand la machine se met en défaut
+
+Une alarme du contrôleur **gèle la file** : le programme s'arrête en cours
+de route et la barre de progression reste plantée. Le panneau l'annonce
+maintenant par un encart rouge nommant l'alarme et le pourcentage d'arrêt,
+et le bouton **Effacer les défauts** acquitte puis vide la file.
+
+Pour retrouver l'instruction fautive, la barre suffit : la file compte
+**deux commandes par mouvement** (les paramètres de vitesse, puis le PTP).
+Un programme de 7 mouvements fait donc 14 entrées, et chaque instruction
+vaut ≈ 14 %.
+
+> Le protocole V1.1.5 ne contient **pas** la table des alarmes : sa section
+> 1.5 renvoie au *Dobot ALARM document*, absent du projet. `resume_alarmes()`
+> traduit les codes qu'il connaît et signale les autres comme tels, sans les
+> deviner. Certains ne s'acquittent pas : ils décrivent un état, pas un
+> événement, et ne partent qu'après une mise hors tension puis une prise
+> d'origine.
+
+### Garde-fous
+
+Le simulateur ne se connecte jamais tout seul, et rien ne bouge sans un
+geste explicite :
+
+| | |
+|---|---|
+| **ratio de vitesse** | 30 % par défaut ; bride toutes les vitesses du contrôleur |
+| **téléversement** | remplit la file **sans rien lancer** ; un programme dont le contrôle signale une butée ou une collision est **refusé** |
+| **relance** | *Lancer* suffit : la file se consomme en s'exécutant, elle est donc **remplie à nouveau** quand elle est épuisée |
+| **ordre critique** | `StopExec` **avant** `Clear` : si la file était restée démarrée, chaque commande téléversée partirait dès son arrivée |
+| **confirmation** | toute action qui fait bouger la machine passe par une boîte d'alerte |
+| **arrêt d'urgence** | bouton rouge et `Ctrl+Maj+Espace` : coupe le mouvement en cours et vide la file |
+| **fermeture** | quitter la fenêtre déclenche l'arrêt d'urgence avant de fermer le port |
+
+> **La file se consomme.** Le contrôleur n'est pas une mémoire de
+> programme : chaque commande exécutée disparaît de la file. Après un
+> cycle, il n'y reste rien — relancer sans téléverser ne ferait
+> strictement rien. Le bouton *Lancer* remplit donc la file de lui-même
+> quand elle est épuisée : il veut dire « joue ce programme », et on peut
+> l'enchaîner autant de fois qu'on veut. Le bouton *Téléverser* reste là
+> pour qui veut séparer les deux temps.
+
+```python
+from dobot_sim.reel import PontReel
+
+pont = PontReel(robot, journal=print)
+pont.connecter("COM4")            # lecture seule : rien ne bouge
+pont.definir_ratio(30)
+pont.televerser(programme, q0)    # remplit la file
+pont.demarrer()                   # LÀ, le robot bouge
+pont.televerser(programme, q0)    # a refaire avant chaque nouveau cycle
+pont.demarrer()
+```
+
+---
+
+## 11. Tests
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+157 tests, dont **31 sur le protocole et le pont vers la machine réelle**
+(`tests/test_protocole.py`), exécutés sans matériel grâce à un **port série
+simulé** qui rejoue le comportement du contrôleur : cadrage conforme à
+l'exemple du protocole, checksum, `Ctrl`, endianness, refus des trames
+invalides, index de file, traduction de chaque type d'instruction, ordre
+arrêt-puis-vidage, refus d'un programme fautif, et exactitude de la
+conversion de repère.
+
+Le reste couvre : identités des matrices homogènes, aller-retours RPY /
+quaternion / axe-angle, conformité des deux conventions de
+Denavit-Hartenberg, verticalité de l'outil sur tout l'espace articulaire,
+aller-retour MGD/MGI sur 1000 configurations, cas du bras replié et des deux
+branches du triangle, jacobienne analytique contre différences finies,
+rectitude effective des `MOVL` (vérifiée en repassant par le MGD),
+appartenance des `MOVC` au cercle et passage par le point intermédiaire,
+conditions aux limites des lois horaires, sérialisation JSON et validité
+syntaxique du script exporté.
+
+Pour la cadence et le lissage : respect **exact** de `v_max` par les quatre
+lois horaires, saturation simultanée de `v_max` et `a_max` par le trapèze,
+bascule en profil triangulaire quand la course est trop courte, ordre des
+durées entre lois, unités (deg/s pour un `MOVJ`, mm/s pour un `MOVL`),
+effet monotone du lissage sur le coin coupé **et** sur la durée, continuité
+de la consigne dans le raccord, non-absorption des `ATTENTE`, et décalage
+correct des évènements outil. Pour l'API de script : chaînage, coordonnées
+omises, surcharge locale des réglages, rejet d'une loi horaire inconnue,
+cycle complet sans violation de butées, export du script robot réel.
+
+Pour les outils et les E/S : maillage non dégénéré et rattaché au repère de
+l'axe outil pour les cinq outils, emprise verticale cohérente avec la
+longueur annoncée, ouverture effective des doigts de la pince, effet de `lt`
+sur le MGI (la pointe atteint bien l'altitude demandée), bornes des ports,
+notification uniquement sur changement d'état, chronologie et datation des
+évènements `SORTIE` / `ENTREE` / `OUTIL`, neutralisation du lissage par une
+attente, sérialisation de l'outil, et export conforme (`SetIOMultiplexing`,
+`SetIODO`, `GetIODI`, et la bonne commande d'effecteur selon l'outil).
+
+Pour les repères outil et objet : validité et refus d'une inclinaison,
+extraction du déport, aller-retour MGD/MGI avec un outil déporté
+latéralement, atteinte exacte de la consigne par la pointe, non-équivalence
+avec un simple déport vertical, résolution des coordonnées locales,
+insensibilité des cibles en repère base, déplacement du repère qui déplace
+la trajectoire, sérialisation et export en coordonnées absolues.
+
+Pour la description officielle : lecture des liaisons et des corps, STL
+ramenés en millimètres, longueurs de bras relevées **dans la chaîne URDF**
+et comparées aux nôtres, identité de la pose de référence et de la
+convention articulaire sur quatre configurations, et surtout la constance
+de la transformation corps ↔ repère, qui est la validation croisée des
+deux modèles.
+
+Pour les cibles matricielles : validité homogène de cible(), axe d'outil
+dirigé vers le bas, aller-retour cible ↔ decomposer_cible, coordonnées
+locales dans un repère de travail incliné, sémantique de la pré- et de la
+post-multiplication, refus d'une orientation inatteignable et d'une matrice
+non homogène, cohérence avec le MGD, et acceptation des matrices par
+movj / movl / movc.
+
+### État de la validation
+
+Sur cette machine (Python 3.12.10, numpy 2.5.3, PyQt5 5.15.11,
+pyqtgraph 0.14.0, PyOpenGL 3.1.10) :
+
+- 117 tests unitaires au vert ;
+- `main.py --verifier` : écart MGD/MGI **1,7 · 10⁻¹³ mm** sur 2000 tirages,
+  jacobienne analytique contre différences finies **8,9 · 10⁻⁸** ;
+- les 9 corps de l'URDF officiel se chargent (27 982 facettes), chacun rattaché automatiquement au bon repère avec un résidu inférieur à 10⁻¹³ mm ;
+- l'IHM a été exercée en entier (commandes articulaires et cartésiennes,
+  édition de programme, cadence, lissage, lecture, bascules d'affichage,
+  exports) en rendu OpenGL **et** en repli 2D ;
+- le parcours VS Code a été rejoué de bout en bout : `mon_programme.py`
+  ouvre la fenêtre, charge ses 32 instructions et lance l'animation ;
+- lissage mesuré sur ce cycle : **35,1 s → 28,8 s**, vitesse maximale
+  inchangée (220 mm/s), aucun pic créé dans les raccords ;
+- rectitude mesurée d'un `MOVL` : **10⁻¹³ mm** d'écart à la droite, contre
+  1 mm pour le même déplacement en `MOVJ` — c'est toute la différence entre
+  les deux modes.
+
+`pyflakes` ne signale rien.

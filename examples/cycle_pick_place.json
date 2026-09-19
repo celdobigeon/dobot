@@ -1,0 +1,354 @@
+{
+  "nom": "cycle_pick_place",
+  "version": 4,
+  "outil": "ventouse",
+  "longueur_outil": null,
+  "repere_objet": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "instructions": [
+    {
+      "type": "MOVJ",
+      "mode": "articulaire",
+      "q": [
+        0,
+        15,
+        30,
+        0
+      ],
+      "pose": [
+        200.0,
+        0.0,
+        50.0,
+        0.0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 1.5,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "repli",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "MOVJ",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        220,
+        -90,
+        60,
+        0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 1.5,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "au-dessus de la piece",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "MOVL",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        220,
+        -90,
+        25,
+        0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 1.0,
+      "profil": "trapeze",
+      "etat": false,
+      "commentaire": "descente",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "OUTIL",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        200.0,
+        0.0,
+        50.0,
+        0.0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 2.0,
+      "profil": "polynome5",
+      "etat": true,
+      "commentaire": "ventouse ON",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "ATTENTE",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        200.0,
+        0.0,
+        50.0,
+        0.0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 0.4,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "MOVL",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        220,
+        -90,
+        110,
+        0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 1.0,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "remontee",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "MOVC",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        220,
+        90,
+        110,
+        45
+      ],
+      "via": [
+        265,
+        0,
+        130,
+        0
+      ],
+      "duree": 2.5,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "transfert",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "MOVL",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        220,
+        90,
+        25,
+        45
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 1.0,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "descente",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "OUTIL",
+      "mode": "cartesien",
+      "q": [
+        0.0,
+        15.0,
+        30.0,
+        0.0
+      ],
+      "pose": [
+        200.0,
+        0.0,
+        50.0,
+        0.0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 2.0,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "ventouse OFF",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    },
+    {
+      "type": "MOVJ",
+      "mode": "articulaire",
+      "q": [
+        0,
+        15,
+        30,
+        0
+      ],
+      "pose": [
+        200.0,
+        0.0,
+        50.0,
+        0.0
+      ],
+      "via": [
+        200.0,
+        60.0,
+        80.0,
+        0.0
+      ],
+      "duree": 2.0,
+      "profil": "polynome5",
+      "etat": false,
+      "commentaire": "retour",
+      "mode_temps": "duree",
+      "vitesse": 0.0,
+      "acceleration": 0.0,
+      "lissage": 0.0,
+      "port": 1,
+      "repere": "base"
+    }
+  ]
+}

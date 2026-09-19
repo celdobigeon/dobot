@@ -1,0 +1,55 @@
+"""
+Simulateur Dobot Magician.
+
+Pilotage virtuel d'un Dobot Magician a partir de son modele CAO :
+modeles geometriques direct et inverse, jacobienne, trajectoires
+articulaires et cartesiennes, le tout construit sur les matrices
+homogenes 4x4.
+
+Modules
+-------
+homogeneous  algebre SE(3) : construction, composition, inversion,
+             interpolation, Denavit-Hartenberg
+robot        modele du Magician : MGD, MGI, jacobienne, butees
+trajectory   lois horaires et segments MOVJ / MOVL / MOVC
+program      programme robot editable, JSON, export vers le robot reel
+meshes       lecture des OBJ et recalage dans les reperes des corps
+viewer3d     vue OpenGL ; viewer2d : repli en projections
+ui           interface graphique
+
+Exemple minimal
+---------------
+>>> from dobot_sim import DobotMagician
+>>> r = DobotMagician()
+>>> T = r.mgd([0, 20, 30, 0])          # modele geometrique direct
+>>> q = r.mgi(T)                       # modele geometrique inverse
+"""
+
+from .homogeneous import (composer, formater, identite, interpoler, inverse,
+                          position_de, rot_x, rot_y, rot_z, rotation_de,
+                          translation)
+from .pilote import Pilote
+from .program import Instruction, Programme
+from .robot import (DobotMagician, Encombrement, ErreurCinematique, Geometrie,
+                    Limites, cible, decomposer_cible, depuis_xyzrpy,
+                    repere_travail, vers_xyzrpy, verifier_repere_objet,
+                    verifier_repere_outil)
+from .trajectory import (ProfilPolynomial5, ProfilTrapeze, SegmentArticulaire,
+                         SegmentCirculaire, SegmentLineaire, Trajectoire,
+                         creer_profil, creer_profil_vitesse)
+
+__version__ = "1.0.0"
+
+__all__ = [
+    "Pilote", "cible", "repere_travail", "decomposer_cible",
+    "vers_xyzrpy", "depuis_xyzrpy",
+    "verifier_repere_outil", "verifier_repere_objet",
+    "DobotMagician", "Geometrie", "Limites", "Encombrement",
+    "ErreurCinematique",
+    "Trajectoire", "SegmentArticulaire", "SegmentLineaire", "SegmentCirculaire",
+    "ProfilTrapeze", "ProfilPolynomial5", "creer_profil", "creer_profil_vitesse",
+    "Programme", "Instruction",
+    "identite", "translation", "rot_x", "rot_y", "rot_z",
+    "composer", "inverse", "interpoler", "rotation_de", "position_de", "formater",
+    "__version__",
+]

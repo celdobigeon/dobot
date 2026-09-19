@@ -1,0 +1,13 @@
+{
+  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\Programs\\Python\\Python312\\python.exe",
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+  "python.terminal.activateEnvironment": false,
+  "files.exclude": {
+    "**/__pycache__": true,
+    ".cache_maillages": true
+  },
+  "files.associations": {
+    "*.stp": "plaintext"
+  },
+  "python-envs.defaultEnvManager": "ms-python.python:system"
+}
