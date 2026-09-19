@@ -1427,7 +1427,7 @@ pont.demarrer()
 python -m unittest discover -s tests -v
 ```
 
-157 tests, dont **31 sur le protocole et le pont vers la machine réelle**
+179 tests, dont **38 sur le protocole et le pont vers la machine réelle**
 (`tests/test_protocole.py`), exécutés sans matériel grâce à un **port série
 simulé** qui rejoue le comportement du contrôleur : cadrage conforme à
 l'exemple du protocole, checksum, `Ctrl`, endianness, refus des trames
@@ -1490,7 +1490,7 @@ movj / movl / movc.
 Sur cette machine (Python 3.12.10, numpy 2.5.3, PyQt5 5.15.11,
 pyqtgraph 0.14.0, PyOpenGL 3.1.10) :
 
-- 117 tests unitaires au vert ;
+- 179 tests unitaires au vert ;
 - `main.py --verifier` : écart MGD/MGI **1,7 · 10⁻¹³ mm** sur 2000 tirages,
   jacobienne analytique contre différences finies **8,9 · 10⁻⁸** ;
 - les 9 corps de l'URDF officiel se chargent (27 982 facettes), chacun rattaché automatiquement au bon repère avec un résidu inférieur à 10⁻¹³ mm ;

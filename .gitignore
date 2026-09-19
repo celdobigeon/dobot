@@ -12,3 +12,6 @@ env/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Cache de maillages, regenere au premier lancement
+.cache_maillages/
