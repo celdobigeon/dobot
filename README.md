@@ -62,7 +62,8 @@ APPS_DOBOT/
 │   ├── exemple_matrices.py    matrices homogènes, MGD, MGI, jacobienne
 │   └── exemple_pick_place.py  trajectoires et export
 ├── tests/
-│   └── test_kinematics.py     tests unitaires (python -m unittest discover -s tests)
+│   ├── test_kinematics.py     modèle, trajectoires, outils, repères
+│   └── test_protocole.py      protocole série et pont vers la machine réelle
 ├── Modele3D/                  OBJ d'origine (source de secours)
 └── Magician & Accessories-2D&3D files/
                                dossier constructeur : URDF officiel, table DH,
@@ -1492,7 +1493,7 @@ pyqtgraph 0.14.0, PyOpenGL 3.1.10) :
 
 - 179 tests unitaires au vert ;
 - `main.py --verifier` : écart MGD/MGI **1,7 · 10⁻¹³ mm** sur 2000 tirages,
-  jacobienne analytique contre différences finies **8,9 · 10⁻⁸** ;
+  jacobienne analytique contre différences finies **8,1 · 10⁻⁸** ;
 - les 9 corps de l'URDF officiel se chargent (27 982 facettes), chacun rattaché automatiquement au bon repère avec un résidu inférieur à 10⁻¹³ mm ;
 - l'IHM a été exercée en entier (commandes articulaires et cartésiennes,
   édition de programme, cadence, lissage, lecture, bascules d'affichage,
