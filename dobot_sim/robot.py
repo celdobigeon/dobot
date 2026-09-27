@@ -296,6 +296,12 @@ class Encombrement:
     colonne_haut: float = 176.0
     pas: float = 6.0             # pas d'echantillonnage le long du squelette
 
+    #: Rayon de chaque maillon mobile, pour l'auto-collision : bras
+    #: arriere, avant-bras, deport du poignet, outil. Releves sur la
+    #: demi-largeur en y des maillages CAO (link2 +/-20, link3 +/-15,
+    #: link4 +/-10), arrondis vers le haut.
+    rayons_maillons: Tuple[float, float, float, float] = (22.0, 15.0, 12.0, 15.0)
+
 
 @dataclass
 class Limites:
@@ -668,10 +674,68 @@ class DobotMagician:
             pts.extend(np.asarray(a, dtype=float) + np.outer(t, d))
         return np.asarray(pts, dtype=float)
 
+    #: Maillons mobiles : (nom, repere de debut, repere de fin). Les
+    #: paires ADJACENTES se touchent par construction a leur articulation
+    #: commune ; seules les autres peuvent reellement interferer.
+    MAILLONS = (("bras arriere", 2, 3), ("avant-bras", 3, 4),
+                ("deport du poignet", 4, 5), ("outil", 5, 6))
+    PAIRES_MAILLONS = ((0, 2), (0, 3), (1, 3))
+
+    @staticmethod
+    def _distance_segments(p1, q1, p2, q2) -> float:
+        """Distance minimale entre deux segments de droite, en 3D."""
+        d1, d2, r = q1 - p1, q2 - p2, p1 - p2
+        a, e, f = float(d1 @ d1), float(d2 @ d2), float(d2 @ r)
+        c, b = float(d1 @ r), float(d1 @ d2)
+        den = a * e - b * b
+        s = float(np.clip((b * f - c * e) / den, 0.0, 1.0)) if den > 1e-12 else 0.0
+        t = (b * s + f) / e if e > 1e-12 else 0.0
+        tc = float(np.clip(t, 0.0, 1.0))
+        if tc != t and a > 1e-12:
+            s = float(np.clip((b * tc - c) / a, 0.0, 1.0))
+        return float(np.linalg.norm((p1 + s * d1) - (p2 + tc * d2)))
+
+    def auto_collisions(self, q_deg: Sequence[float],
+                        marge: float = 0.0) -> List[str]:
+        """
+        Le bras se heurte-t-il LUI-MEME ?
+
+        Chaque maillon est traite comme une capsule -- un segment entoure
+        d'un rayon -- et l'on mesure la distance entre les paires non
+        adjacentes.
+
+        Le cas qui compte sur ce robot : quand l'avant-bras se replie, le
+        DEPORT DU POIGNET revient vers le bras arriere. Le contact se
+        produit a `J3 - J2 = 77 deg`, et le jeu ne depend que de cette
+        difference -- consequence directe du parallelogramme. C'est la
+        raison d'etre de `Limites.couplage`, que ce controle geometrique
+        rend inutile a regler a la main.
+        """
+        rayons = self.enc.rayons_maillons
+        P = [M[:3, 3] for M in self.reperes(q_deg)]
+        msgs = []
+        for i, j in self.PAIRES_MAILLONS:
+            nom_i, a, b = self.MAILLONS[i]
+            nom_j, c, d = self.MAILLONS[j]
+            if (np.linalg.norm(P[b] - P[a]) < 1e-9
+                    or np.linalg.norm(P[d] - P[c]) < 1e-9):
+                continue                 # maillon de longueur nulle
+            jeu = (self._distance_segments(P[a], P[b], P[c], P[d])
+                   - rayons[i] - rayons[j])
+            if jeu < marge - 1e-9:
+                msgs.append("auto-collision : {} contre {}, {}"
+                            .format(nom_i, nom_j,
+                                    "penetration de {:.1f} mm".format(-jeu)
+                                    if jeu < 0 else
+                                    "jeu de {:.1f} mm sous la marge de {:.1f}"
+                                    .format(jeu, marge)))
+        return msgs
+
     def collisions(self, q_deg: Sequence[float],
                    marge: float = 0.0) -> List[str]:
         """
-        Interferences du bras avec le plan de pose, l'embase et la colonne.
+        Interferences : plan de pose, embase, colonne, et le bras avec
+        LUI-MEME.
 
         Retourne une liste de messages, vide si la pose est saine -- meme
         forme que `depassements`, pour pouvoir les enchainer.
@@ -734,6 +798,11 @@ class DobotMagician:
             signaler("colonne", contact, abs(d),
                      "rayon {:.1f} mm, hauteur {:.0f} mm"
                      .format(e.colonne_rayon, e.colonne_haut))
+
+        # le bras contre lui-meme : ce n'est pas un obstacle fixe, mais
+        # c'est bien une interference, et elle est atteignable dans les
+        # butees -- le deport du poignet revient sur le bras arriere
+        msgs.extend(self.auto_collisions(q_deg, marge))
         return msgs
 
     def sans_collision(self, q_deg: Sequence[float]) -> bool:

@@ -1502,3 +1502,58 @@ class TestProgramme(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestAutoCollision(unittest.TestCase):
+    """
+    Le bras contre lui-meme.
+
+    Cas reel : quand l'avant-bras se replie, le deport du poignet revient
+    sur le bras arriere. Le simulateur laissait passer ce mouvement, que la
+    machine ne peut pas executer.
+    """
+
+    def setUp(self):
+        self.r = DobotMagician().avec_outil(62.0)
+
+    def test_poses_usuelles_sans_auto_collision(self):
+        for q in ([0, 15, 30, 0], [0, 45, 45, 0], [90, 30, 60, 0],
+                  [-90, 62, 72, 45]):
+            self.assertEqual(self.r.auto_collisions(q), [], q)
+
+    def test_le_poignet_revient_sur_le_bras_arriere(self):
+        msgs = self.r.auto_collisions([0.0, 0.0, 95.0, -90.0])
+        self.assertTrue(any("bras arriere" in m and "poignet" in m
+                            for m in msgs), msgs)
+
+    def test_seuil_a_77_degres(self):
+        # le contact se produit a J3 - J2 = 77,03 deg
+        self.assertEqual(self.r.auto_collisions([0.0, 0.0, 77.0, -90.0]), [])
+        self.assertTrue(self.r.auto_collisions([0.0, 0.0, 78.0, -90.0]))
+
+    def test_ne_depend_que_de_la_difference_j3_moins_j2(self):
+        # consequence du parallelogramme : a J3 - J2 constant, meme jeu
+        for delta in (70.0, 80.0):
+            etats = {bool(self.r.auto_collisions([0.0, j2, j2 + delta, -90.0]))
+                     for j2 in (0.0, 5.0, 10.0, 15.0)
+                     if -10.0 <= j2 + delta <= 95.0}
+            self.assertEqual(len(etats), 1, (delta, etats))
+
+    def test_integre_aux_collisions_et_aux_defauts(self):
+        q = [0.0, 0.0, 95.0, -90.0]
+        self.assertTrue(any("auto-collision" in m
+                            for m in self.r.collisions(q)))
+        self.assertTrue(any("auto-collision" in m for m in self.r.defauts(q)))
+
+    def test_la_marge_alerte_avant_le_contact(self):
+        q = [0.0, 0.0, 74.0, -90.0]
+        self.assertEqual(self.r.auto_collisions(q), [])
+        self.assertTrue(self.r.auto_collisions(q, marge=15.0))
+
+    def test_programme_de_demonstration_indemne(self):
+        from dobot_sim.program import programme_demo
+
+        traj = programme_demo().construire(
+            self.r, np.array([0.0, 15.0, 30.0, 0.0]))
+        self.assertEqual([a for a in traj.controler(0.02)
+                          if "auto-collision" in a], [])
