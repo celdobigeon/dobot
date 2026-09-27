@@ -23,8 +23,7 @@ from . import meshes as mm
 from . import outils as ou
 from .es import PORTS_RESERVES, EtatES
 from .program import Instruction, Programme, TYPES_INSTRUCTION, programme_demo
-from .robot import (DobotMagician, ErreurCinematique, cible, depuis_xyzrpy,
-                    vers_xyzrpy)
+from .robot import DobotMagician, ErreurCinematique, cible, vers_xyzrpy
 from .liaison import CommandeDobot, FonctionES, PTP
 from .passerelle import Serveur
 from .reel import ErreurPont, PontReel
@@ -349,72 +348,123 @@ CurseurAngle = Curseur
 
 # ===========================================================================
 
-#: libelles et unites d'une situation, dans l'ordre d'affichage
-COMPOSANTES = (("X", "mm"), ("Y", "mm"), ("Z", "mm"),
-               ("Rx", "deg"), ("Ry", "deg"), ("Rz", "deg"))
+#: libelles et unites d'une situation, dans sa forme SIMPLIFIEE : celle
+#: sous laquelle on LIT une pose dans l'interface. Rx et Ry n'y figurent
+#: pas -- le parallelogramme du Magician les impose a 180 et 0 degres, ils
+#: n'apprennent rien. La forme d'ECRITURE, elle, est la matrice homogene
+#: 4x4 : voir EditeurMatrice.
+COMPOSANTES = (("X", "mm"), ("Y", "mm"), ("Z", "mm"), ("Rz", "deg"))
+
+#: ecart maximal tolere entre la rotation saisie et une rotation exacte.
+#: Une matrice tapee au clavier est arrondie ; au-dela de ce seuil, ce
+#: n'est plus un arrondi mais une erreur.
+ECART_ROTATION = 1e-3
 
 
-class EditeurPose(QtWidgets.QWidget):
+def _orthonormaliser(T):
     """
-    Saisie d'une situation sous la forme (X, Y, Z, Rx, Ry, Rz).
+    Recale la partie rotation d'une matrice saisie a la main, et renvoie
+    (matrice recalee, ecart constate).
 
-    C'est la forme d'affichage usuelle en robotique industrielle, et celle
-    retenue dans toute l'interface. Les matrices homogenes restent la forme
-    d'ECRITURE dans les scripts Python ; ici on montre les six composantes.
+    Une rotation tapee au clavier est forcement arrondie : cos 45 s'ecrit
+    0,7071 et non 0,70710678. L'ecart est minuscule, mais il suffit a faire
+    echouer le controle d'orthonormalite, qui travaille a 1e-6. Refuser une
+    matrice juste pour cette raison serait absurde : on la projette donc sur
+    la rotation la plus proche -- decomposition en valeurs singulieres -- et
+    on annonce de combien elle a bouge. A l'appelant de refuser si l'ecart
+    n'a plus rien d'un arrondi.
+    """
+    T = np.asarray(T, dtype=float).reshape(4, 4).copy()
+    R = T[:3, :3]
+    U, _, Vt = np.linalg.svd(R)
+    if np.linalg.det(U @ Vt) < 0:        # symetrie : on redresse
+        U = U.copy()
+        U[:, -1] *= -1.0
+    Rn = U @ Vt
+    ecart = float(np.abs(Rn - R).max())
+    T[:3, :3] = Rn
+    T[3, :] = (0.0, 0.0, 0.0, 1.0)
+    return T, ecart
 
-    `imposes` fige les composantes que la mecanique ne laisse pas libres :
-    sur le Magician, Rx et Ry ne sont jamais commandables.
+
+class EditeurMatrice(QtWidgets.QWidget):
+    """
+    Saisie d'une situation sous sa forme de MATRICE HOMOGENE 4x4.
+
+    Une cible, un repere, ce n'est pas un quadruplet de coordonnees : c'est
+    une SITUATION, et une situation s'ecrit en matrice. C'est la forme
+    demandee aux etudiants, donc celle que l'interface propose des qu'il
+    s'agit de modifier une valeur. La lecture, elle, reste simplifiee :
+    (X, Y, Z, Rz) suffit a relire une pose d'un coup d'oeil, et le dialogue
+    l'affiche en permanence sous la matrice.
+
+    Les trois premieres lignes se saisissent. La quatrieme, (0 0 0 1), est
+    montree sans etre modifiable : elle ne porte aucune information, mais la
+    cacher laisserait croire que la matrice est 3x4.
     """
 
-    modifiee = QtCore.Signal() if hasattr(QtCore, "Signal") \
-        else QtCore.pyqtSignal()
+    modifiee = QtCore.Signal() if hasattr(QtCore, "Signal")         else QtCore.pyqtSignal()
 
-    def __init__(self, imposes=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self._maj = False
-        imposes = dict(imposes or {})
 
-        lay = QtWidgets.QGridLayout(self)
+        lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setHorizontalSpacing(10)
-        lay.setVerticalSpacing(5)
+        lay.setSpacing(3)
+
+        entete = QtWidgets.QHBoxLayout()
+        entete.setContentsMargins(10, 0, 10, 0)
+        for texte, poids in (("rotation 3 x 3", 3), ("position (mm)", 1)):
+            e = QtWidgets.QLabel(texte)
+            e.setStyleSheet("color:#888")
+            e.setAlignment(QtCore.Qt.AlignHCenter)
+            entete.addWidget(e, poids)
+        lay.addLayout(entete)
+
+        cadre = QtWidgets.QFrame()
+        cadre.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        grille = QtWidgets.QGridLayout(cadre)
+        grille.setContentsMargins(8, 6, 8, 6)
+        grille.setHorizontalSpacing(6)
+        grille.setVerticalSpacing(4)
 
         self.champs = []
-        for k, (nom, unite) in enumerate(COMPOSANTES):
-            ligne, colonne = divmod(k, 3)
-            e = QtWidgets.QLabel(nom)
-            e.setMinimumWidth(24)
-            s = _spin(-10000, 10000, 1.0, unite, 3)
-            s.setMinimumWidth(104)
-            if k in imposes:
-                s.setValue(float(imposes[k]))
-                s.setReadOnly(True)
-                s.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-                s.setStyleSheet("color:#888")
-                s.setToolTip("impose par la mecanique : non commandable")
-                e.setStyleSheet("color:#888")
-            else:
-                s.valueChanged.connect(self._change)
-            lay.addWidget(e, ligne, colonne * 2)
-            lay.addWidget(s, ligne, colonne * 2 + 1)
-            self.champs.append(s)
-        lay.setColumnStretch(6, 1)
+        for i in range(4):
+            for j in range(4):
+                figee = (i == 3)
+                if j == 3 and not figee:
+                    s = _spin(-10000.0, 10000.0, 1.0, "", 2)
+                    s.setMinimumWidth(94)
+                    s.setToolTip("position, en millimetres")
+                else:
+                    s = _spin(-1.0, 1.0, 0.1, "", 4)
+                    s.setMinimumWidth(78)
+                if figee:
+                    s.setValue(1.0 if j == 3 else 0.0)
+                    s.setReadOnly(True)
+                    s.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+                    s.setStyleSheet("color:#888")
+                    s.setToolTip("derniere ligne d'une matrice homogene :"
+                                 + chr(10) + "toujours (0, 0, 0, 1)")
+                else:
+                    s.valueChanged.connect(self._change)
+                grille.addWidget(s, i, j)
+                self.champs.append(s)
+        lay.addWidget(cadre)
 
     # -- acces ---------------------------------------------------------------
 
-    def valeurs(self) -> np.ndarray:
-        return np.array([s.value() for s in self.champs], dtype=float)
-
     def matrice(self) -> np.ndarray:
-        return depuis_xyzrpy(*self.valeurs())
+        """La matrice telle qu'elle est saisie, sans aucune correction."""
+        return np.array([s.value() for s in self.champs],
+                        dtype=float).reshape(4, 4)
 
     def definir(self, T) -> None:
-        self.definir_valeurs(vers_xyzrpy(T))
-
-    def definir_valeurs(self, v) -> None:
+        T = np.asarray(T, dtype=float).reshape(4, 4)
         self._maj = True
         try:
-            for s, x in zip(self.champs, np.asarray(v, dtype=float)):
+            for s, x in zip(self.champs, T.ravel()):
                 s.setValue(float(x))
         finally:
             self._maj = False
@@ -426,13 +476,24 @@ class EditeurPose(QtWidgets.QWidget):
 
 
 class DialogueRepere(QtWidgets.QDialog):
-    """Saisie d'un repere ou d'une cible, avec validation immediate."""
+    """
+    Saisie d'un repere ou d'une cible EN MATRICE 4x4, validee a la frappe.
 
-    def __init__(self, parent, titre: str, explication: str,
-                 T, imposes, validateur):
+    C'est le seul endroit ou l'on modifie une situation, et il n'accepte
+    qu'une matrice : c'est la forme exigee en TP. La relecture simplifiee
+    (X, Y, Z, Rz) s'affiche en dessous, remise a jour a chaque chiffre tape,
+    de sorte qu'on voit tout de suite ce que la matrice signifie.
+
+    Le texte d'explication du repere vit ici, et non plus dans le panneau :
+    on le lit au moment ou l'on en a besoin, sans qu'il encombre l'ecran le
+    reste du temps.
+    """
+
+    def __init__(self, parent, titre: str, explication: str, T, validateur):
         super().__init__(parent)
         self.setWindowTitle(titre)
         self._validateur = validateur
+        self._matrice = np.asarray(T, dtype=float).reshape(4, 4).copy()
 
         lay = QtWidgets.QVBoxLayout(self)
         lay.setSpacing(10)
@@ -440,15 +501,16 @@ class DialogueRepere(QtWidgets.QDialog):
         info = QtWidgets.QLabel(explication)
         info.setWordWrap(True)
         info.setStyleSheet("color:#888")
+        info.setMaximumWidth(470)
         lay.addWidget(info)
 
-        self.editeur = EditeurPose(imposes)
+        self.editeur = EditeurMatrice()
         self.editeur.modifiee.connect(self._valider)
         lay.addWidget(self.editeur)
 
         self.etat = QtWidgets.QLabel()
         self.etat.setWordWrap(True)
-        self.etat.setMinimumHeight(44)
+        self.etat.setMinimumHeight(52)
         self.etat.setAlignment(QtCore.Qt.AlignTop)
         lay.addWidget(self.etat)
 
@@ -461,19 +523,34 @@ class DialogueRepere(QtWidgets.QDialog):
         self.editeur.definir(T)
 
     def matrice(self) -> np.ndarray:
-        return self.editeur.matrice()
+        """La matrice validee : celle qui est saisie, recalee sur SO(3)."""
+        return self._matrice.copy()
+
+    def _refuser(self, message: str) -> None:
+        self.etat.setText("<b style='color:#e06c5a'>refusee</b><br>" + message)
+        self.boutons.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(False)
 
     def _valider(self) -> None:
-        try:
-            valeurs = self._validateur(self.editeur.matrice())
-        except Exception as exc:
-            self.etat.setText("<b style='color:#e06c5a'>refusee</b><br>" + str(exc))
-            self.boutons.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(False)
+        T, ecart = _orthonormaliser(self.editeur.matrice())
+        if ecart > ECART_ROTATION:
+            self._refuser(
+                "les trois premieres colonnes ne forment pas une rotation : "
+                "elles doivent etre unitaires et perpendiculaires deux a "
+                "deux (ecart constate {:.3f}).".format(ecart))
             return
+        try:
+            valeurs = self._validateur(T)
+        except Exception as exc:
+            self._refuser(str(exc))
+            return
+        self._matrice = T
+        arrondi = ("<br><span style='color:#888'>rotation recalee sur une "
+                   "rotation exacte : ecart {:.1e}</span>".format(ecart)
+                   if ecart > 1e-9 else "")
         self.etat.setText(
             "<span style='color:#5aa469'>valide</span> &nbsp; "
-            "x={:.2f}  y={:.2f}  z={:.2f}  angle={:.2f} deg"
-            .format(*valeurs))
+            "X={:.2f}  Y={:.2f}  Z={:.2f} mm &nbsp; Rz={:.2f} deg{}"
+            .format(valeurs[0], valeurs[1], valeurs[2], valeurs[3], arrondi))
         self.boutons.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(True)
 
 
@@ -595,6 +672,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._creer_dock_reel()
         self._creer_menus()
         self._proportions_initiales()
+        #: disposition de reference. Elle ne peut pas etre photographiee
+        #: ici : avant le premier affichage, Qt n'a pas encore calcule les
+        #: geometries ni fixe l'onglet actif de chaque groupe. On la prend
+        #: donc au premier showEvent, une fois la mise en page posee.
+        self._etat_defaut = None
 
         self.minuteur = QtCore.QTimer(self)
         self.minuteur.setInterval(20)
@@ -798,6 +880,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             # la tete decrit le message AFFICHE, c'est-a-dire le premier :
             # sinon on annoncerait une famille et on en montrerait une autre
             if (bloquants[0].startswith("Arret de securite")
+                    or bloquants[0].startswith("Mouvement refuse")
                     or bloquants[0].startswith("Robot reel en defaut")):
                 tete = ""                    # il porte deja son propre titre
             elif any(m in bloquants[0] for m in self.MOTS_COLLISION):
@@ -869,29 +952,35 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 ("z", "Z  (hauteur)", -80.0, 330.0, "mm", 0.5, "#4f80f2",
                  "hauteur du TCP au-dessus du plan de pose"),
                 ("r", "Rz  (outil)", -180.0, 180.0, "deg", 0.1, "#7fa8ff",
-                 "rotation de l'outil autour de la verticale, Rz = J1 + J4")):
+                 "rotation de l'outil autour de la verticale, Rz = J1 + J4."
+                 + chr(10) + "Rx = 180 deg et Ry = 0 deg ne sont pas"
+                 + chr(10) + "commandables : le parallelogramme du Magician"
+                 + chr(10) + "maintient l'axe de l'outil vertical.")):
             c = Curseur(libelle, mini, maxi, 0.0, suffixe=suf, resolution=res,
                         couleur=coul)
             c.curseur.setToolTip(bulle)
             c.valeurChangee.connect(self._depuis_cartesien)
-            c.valeurValidee.connect(self._reel_envoyer_pose)
+            c.valeurValidee.connect(self._cartesien_valide)
             self.champs_cart[cle] = c
             lc.addWidget(c)
 
-        impose = QtWidgets.QLabel(
-            "Rx = 180,00 deg   Ry = 0,00 deg\n"
-            "imposes par le parallelogramme, non commandables")
-        impose.setWordWrap(True)          # sinon il impose sa largeur au dock
-        impose.setStyleSheet("color:#888")
-        lc.addWidget(impose)
-
         lc.addSpacing(6)
-        self.chk_suivi = QtWidgets.QCheckBox("appliquer le MGI en continu")
+        self.chk_suivi = QtWidgets.QCheckBox(
+            "appliquer le MGI pendant le glissement")
         self.chk_suivi.setChecked(True)
+        self.chk_suivi.setToolTip(
+            "coche : le modele suit le curseur en temps reel" + chr(10)
+            + "decoche : la consigne n'est appliquee qu'au RELACHEMENT,"
+            + chr(10) + "sans passer par les poses intermediaires")
         lc.addWidget(self.chk_suivi)
 
         b = QtWidgets.QHBoxLayout()
         bt = QtWidgets.QPushButton("Appliquer le MGI")
+        bt.setToolTip(
+            "applique le modele geometrique inverse aux valeurs affichees."
+            + chr(10) + "Chaque deplacement d'un curseur l'appelle deja ; si le"
+            + chr(10) + "point demande sort de l'espace atteignable, le robot ne"
+            + chr(10) + "bouge pas et les axes concernes passent en rouge.")
         bt.clicked.connect(lambda: self._depuis_cartesien(force=True))
         b.addWidget(bt)
         bt2 = QtWidgets.QPushButton("Resynchroniser")
@@ -900,14 +989,19 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         b.addWidget(bt2)
         lc.addLayout(b)
 
-        aide = QtWidgets.QLabel(
-            "Chaque deplacement d'un curseur appelle le modele geometrique "
-            "inverse. Si le point demande sort de l'espace atteignable, le "
-            "robot ne bouge pas et les axes concernes passent en rouge.")
-        aide.setWordWrap(True)
-        aide.setStyleSheet("color:#888")
-        lc.addSpacing(6)
-        lc.addWidget(aide)
+        # La lecture de la configuration vit ICI, sous les curseurs qui la
+        # commandent : TCP, portee, manipulabilite, et le motif quand le MGI
+        # refuse. Les deux etaient dissocies -- l'etat en bas du panneau,
+        # l'echec du MGI a cote des curseurs -- alors qu'ils parlent de la
+        # meme chose : ou en est le bras, et pourquoi il n'est pas ailleurs.
+        self._msg_mgi = ""
+        self._etat_fautif = None
+        self.etat_config = QtWidgets.QLabel()
+        self.etat_config.setWordWrap(True)
+        self.etat_config.setMinimumHeight(72)
+        self.etat_config.setAlignment(QtCore.Qt.AlignTop)
+        lc.addSpacing(4)
+        lc.addWidget(self.etat_config)
 
         # --- outil
         page_o = QtWidgets.QWidget()
@@ -922,46 +1016,28 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.cb_outil.currentIndexChanged.connect(self._changer_outil)
         form_o.addRow("outil monte", self.cb_outil)
         self.lab_longueur = QtWidgets.QLabel()
+        bulle_outil = (
+            "la longueur de l'outil alimente le deport lt du modele :"
+            + chr(10) + "une fois l'outil monte, la coordonnee z designe sa"
+            + chr(10) + "POINTE et non plus la bride. Changer d'outil change"
+            + chr(10) + "donc le MGI, et l'enveloppe de travail avec lui."
+            + chr(10) + chr(10)
+            + "Les longueurs du catalogue sont NOMINALES : mesurez la votre.")
+        self._bulle_outil = bulle_outil
+        self.cb_outil.setToolTip(bulle_outil)
+        self.lab_longueur.setToolTip(bulle_outil)
         form_o.addRow("longueur", self.lab_longueur)
         lo.addLayout(form_o)
-
-        self.lab_outil = QtWidgets.QLabel()
-        self.lab_outil.setWordWrap(True)
-        self.lab_outil.setStyleSheet("color:#888")
-        lo.addWidget(self.lab_outil)
 
         self.bt_outil = QtWidgets.QPushButton("Actionner")
         self.bt_outil.setCheckable(True)
         self.bt_outil.toggled.connect(self._actionner_outil)
         lo.addWidget(self.bt_outil)
 
-        rappel = QtWidgets.QLabel(
-            "La longueur de l'outil alimente le deport lt du modele : une "
-            "fois l'outil monte, la coordonnee z designe sa POINTE et non "
-            "plus la bride. Changer d'outil change donc le MGI, et l'enveloppe "
-            "de travail avec lui.")
-        rappel.setWordWrap(True)
-        rappel.setStyleSheet("color:#888")
-        lo.addSpacing(6)
-        lo.addWidget(rappel)
-
         # --- reperes outil et objet, saisis en matrices 4x4
         page_r = QtWidgets.QWidget()
         lr = QtWidgets.QVBoxLayout(page_r)
         lr.setContentsMargins(6, 2, 2, 2)
-        intro = QtWidgets.QLabel(
-            "Deux reperes decrivent la cellule. "
-            "Le repere OUTIL va de l'axe de rotation de l'outil a sa pointe : "
-            "il autorise un deport lateral et une rotation propre, que la "
-            "seule longueur ne sait pas decrire. Le repere OBJET va de la base "
-            "au plan de travail : les cibles marquees <i>objet</i> y sont "
-            "exprimees, et deplacer le montage ne change qu'un repere. "
-            "Ils s'affichent et se saisissent ici en (X, Y, Z, Rx, Ry, Rz) ; "
-            "dans un script Python ils acceptent aussi une matrice 4x4.")
-        intro.setWordWrap(True)
-        intro.setStyleSheet("color:#888")
-        lr.addWidget(intro)
-
         self.lab_rep_outil = QtWidgets.QLabel()
         self.lab_rep_outil.setFont(_police_fixe(9))
         self.lab_rep_objet = QtWidgets.QLabel()
@@ -977,9 +1053,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             lr.addWidget(label)
             b = QtWidgets.QHBoxLayout()
             bt = QtWidgets.QPushButton("Modifier...")
+            bt.setToolTip(
+                "saisir ce repere sous forme de matrice homogene 4x4"
+                + chr(10) + "(le dialogue rappelle a quoi il sert)")
             bt.clicked.connect(definir)
             b.addWidget(bt)
             bt2 = QtWidgets.QPushButton("Par defaut")
+            bt2.setToolTip("revenir au repere neutre")
             bt2.clicked.connect(reinit)
             b.addWidget(bt2)
             lr.addLayout(b)
@@ -1013,16 +1093,29 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         lv = QtWidgets.QVBoxLayout(conteneur)
         lv.setContentsMargins(6, 6, 6, 6)
         lv.addWidget(defilement, 1)
-        self.etat_config = QtWidgets.QLabel()
-        self.etat_config.setWordWrap(True)
-        self.etat_config.setMinimumHeight(72)
-        self.etat_config.setAlignment(QtCore.Qt.AlignTop)
-        lv.addWidget(self.etat_config)
 
         dock.setWidget(conteneur)
         dock.setMinimumWidth(360)
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
         self.docks.append(dock)
+
+    @staticmethod
+    def _defilable(contenu) -> QtWidgets.QScrollArea:
+        """
+        Enveloppe un panneau dans une zone de defilement verticale.
+
+        Sans cela, la hauteur minimale du contenu devient celle de la
+        FENETRE : le panneau Programme en exigeait 954 px et Robot reel
+        637, ce qui portait le minimum de la fenetre a 1284 px sur un
+        ecran qui en offre 1020. Elle debordait alors par le bas et
+        l'affichage se chevauchait.
+        """
+        zone = QtWidgets.QScrollArea()
+        zone.setWidgetResizable(True)
+        zone.setFrameShape(QtWidgets.QFrame.NoFrame)
+        zone.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        zone.setWidget(contenu)
+        return zone
 
     def _creer_dock_programme(self) -> None:
         dock = QtWidgets.QDockWidget("Programme", self)
@@ -1085,6 +1178,12 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         page_form = QtWidgets.QWidget()
         lb.addWidget(page_form)
         boite.toggled.connect(page_form.setVisible)
+        # Replie a l'ouverture : la liste du programme prend alors toute la
+        # hauteur du panneau, et le formulaire s'ouvre d'un clic quand on
+        # edite une ligne. Le setChecked vient APRES le connect, sinon le
+        # signal ne part pas et la page resterait visible sous un titre
+        # decoche.
+        boite.setChecked(False)
         self.boite_instruction = boite
         form = QtWidgets.QFormLayout(page_form)
         form.setContentsMargins(0, 0, 0, 0)
@@ -1098,13 +1197,16 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         form.addRow("type", self.cb_type)
         form.addRow("mode", self.cb_mode)
 
-        # Six composantes, dans l'ordre X Y Z / Rx Ry Rz. En articulaire les
-        # quatre premieres deviennent J1..J4 et les deux dernieres disparaissent.
+        # Quatre composantes : X Y Z Rz en cartesien, J1 a J4 en
+        # articulaire. Rx et Ry n'y sont plus -- le parallelogramme les
+        # impose a 180 et 0 degres, ils n'apprenaient rien et coutaient deux
+        # champs. La forme complete d'une cible reste sa matrice 4x4, que le
+        # bouton Saisir ouvre.
         self.champs_cible = []
         self.etiq_cible = []
         grille = QtWidgets.QGridLayout()
         grille.setHorizontalSpacing(8)
-        for i in range(6):
+        for i in range(4):
             lab = QtWidgets.QLabel("")
             lab.setMinimumWidth(24)
             s = _spin(-10000, 10000, 1.0, "", 2)
@@ -1126,7 +1228,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             "repere dans lequel les coordonnees ci-dessus sont exprimees")
         ligne_rep.addWidget(self.cb_repere, 1)
         bt_mat = QtWidgets.QPushButton("Saisir...")
-        bt_mat.setToolTip("saisir la cible en (X, Y, Z, Rx, Ry, Rz)")
+        bt_mat.setToolTip("saisir la cible sous forme de matrice homogene 4x4")
         bt_mat.clicked.connect(self._saisir_cible)
         ligne_rep.addWidget(bt_mat)
         cont_rep = QtWidgets.QWidget()
@@ -1141,11 +1243,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             lab.setMinimumWidth(24)
             s = _spin(-10000, 10000, 1.0, unite, 2)
             s.setMinimumWidth(74)
-            if i in (3, 4):                 # Rx, Ry : imposes
-                s.setReadOnly(True)
-                s.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-                s.setStyleSheet("color:#888")
-                lab.setStyleSheet("color:#888")
+            if i == 3:                      # Rz : un tour complet suffit
+                s.setRange(-180.0, 180.0)
             self.champs_via.append(s)
             ligne, colonne = divmod(i, 3)
             gv.addWidget(lab, ligne, colonne * 2)
@@ -1244,7 +1343,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         l2.addWidget(self.lab_temps)
         lay.addWidget(boite2)
 
-        dock.setWidget(w)
+        # la liste garde une taille utile meme quand la fenetre est basse
+        self.liste.setMinimumHeight(90)
+        dock.setWidget(self._defilable(w))
         dock.setMinimumWidth(330)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
         self.docks.append(dock)
@@ -1327,8 +1428,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.tabifyDockWidget(d1, d2)
         self.tabifyDockWidget(d2, d4)
         self.tabifyDockWidget(d4, d3)
-        d1.raise_()
-        self.resizeDocks([d1], [300], QtCore.Qt.Vertical)
+        # Les matrices ne s'affichent PAS a l'ouverture : c'est un panneau de
+        # cours, qu'on appelle quand on en a besoin -- menu Fenetres, ou
+        # Ctrl+Maj+R. La place du bas revient aux courbes. On le masque apres
+        # avoir leve les courbes, sinon Qt choisit lui-meme l'onglet restant.
+        d2.raise_()
+        self.resizeDocks([d2], [300], QtCore.Qt.Vertical)
+        d1.hide()
 
     # -- panneau robot reel -------------------------------------------------
 
@@ -1466,8 +1572,12 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.chk_miroir.toggled.connect(self._reel_exclusivite)
         lay.addWidget(self.chk_miroir)
 
+        # Libelle tenu court : une case a cocher ne renvoie pas a la ligne, et
+        # celle-ci reclamait 342 px alors que le panneau en offre 337 des que
+        # le voisin se replie -- d'ou une barre de defilement horizontale.
+        # L'outil reste mentionne dans l'infobulle, juste en dessous.
         self.chk_piloter = QtWidgets.QCheckBox(
-            "pilotage : le robot reel suit les curseurs et l'outil")
+            "pilotage : le robot reel suit les curseurs")
         self.chk_piloter.setStyleSheet("color:#e08a3c; font-weight:bold")
         self.chk_piloter.setToolTip(
             "chaque curseur relache envoie le robot sur la pose affichee\n"
@@ -1500,7 +1610,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         lay.addWidget(self.lab_reel_pose)
         lay.addStretch(1)
 
-        dock.setWidget(page)
+        dock.setWidget(self._defilable(page))
         dock.setMinimumWidth(300)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
         self.docks.append(dock)
@@ -1523,6 +1633,31 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
 
         self._reel_chercher_ports()
         self._reel_maj_boutons()
+
+    def showEvent(self, evenement) -> None:
+        """Photographie la disposition la premiere fois qu'on nous affiche."""
+        super().showEvent(evenement)
+        if self._etat_defaut is None:
+            QtCore.QTimer.singleShot(0, self._photographier_disposition)
+
+    def _photographier_disposition(self) -> None:
+        """
+        Fixe les onglets voulus, puis photographie la disposition.
+
+        Le `raise_` de la construction a lieu AVANT que la fenetre soit
+        affichee, donc avant que Qt ait calcule sa mise en page : selon
+        l'ordre dans lequel les panneaux s'installent, il peut etre perdu et
+        un autre onglet se retrouver devant. On le refait ici, au premier
+        affichage, quand la disposition est reellement etablie.
+
+        Et on le refait AVANT la photo : sinon le defaut memorise serait
+        celui que Qt a decide tout seul, et `Disposition par defaut` le
+        restaurerait fidelement -- mauvais onglet compris.
+        """
+        if self._etat_defaut is not None:
+            return
+        self._remettre_onglets_devant()
+        self._etat_defaut = self.saveState()
 
     def closeEvent(self, evenement) -> None:
         """On ne quitte jamais en laissant la machine en mouvement."""
@@ -2232,7 +2367,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.vue.definir_outil(self.outil.pieces(self.outil_actif))
         self.lab_longueur.setText("{:.0f} mm  (deport lt du modele)"
                                   .format(self.outil.longueur))
-        self.lab_outil.setText(self.outil.description)
+        # la description du catalogue vit dans l'infobulle : elle change avec
+        # l'outil, et n'a pas a occuper trois lignes du panneau en permanence
+        bulle = self.outil.description + chr(10) + chr(10) + self._bulle_outil
+        self.cb_outil.setToolTip(bulle)
+        self.lab_longueur.setToolTip(bulle)
         self.bt_outil.setEnabled(self.outil.commandable)
         self._maj_es = True
         try:
@@ -2248,15 +2387,18 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         """
         Six composantes, pas la matrice : c'est la forme d'affichage.
 
+        Forme SIMPLIFIEE : Rx et Ry n'y figurent pas, le parallelogramme
+        les impose a 180 et 0 degres. La forme complete d'une situation,
+        sa matrice 4x4, s'obtient par le bouton Modifier -- qui est aussi
+        la seule facon de la saisir.
+
         Format serre a dessein : en police fixe, chaque caractere de trop
         elargit le panneau Commande, et au-dela de 40 il y faisait
-        apparaitre une barre de defilement horizontale. Les largeurs
-        retenues suffisent : 7 chiffres pour un millimetre signe
-        (-340.00), 6 pour un angle (180.00).
+        apparaitre une barre de defilement horizontale.
         """
-        v = vers_xyzrpy(T)
+        x, y, z, _, _, rz = vers_xyzrpy(T)
         return ("X {:7.2f}  Y {:7.2f}  Z {:7.2f} mm\n"
-                "Rx {:6.2f} Ry {:6.2f} Rz {:6.2f} deg".format(*v))
+                "Rz {:6.2f} deg".format(x, y, z, rz))
 
     def _maj_reperes(self) -> None:
         # L'annotation va sur SA PROPRE LIGNE. Accolee aux valeurs, elle
@@ -2276,12 +2418,15 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         from .robot import verifier_repere_outil
         dlg = DialogueRepere(
             self, "Repere outil",
-            "Transformation de l'axe de rotation de l'outil vers sa pointe. "
-            "Un deport lateral et une rotation propre sont realisables ; une "
-            "inclinaison ne l'est pas, le parallelogramme maintenant l'axe "
-            "outil vertical.",
-            self.robot.repere_outil, {3: 180.0, 4: 0.0},
-            verifier_repere_outil)
+            "Le repere OUTIL va de l'axe de rotation de l'outil a sa pointe. "
+            "Il autorise un deport lateral et une rotation propre, que la "
+            "seule longueur d'outil ne sait pas decrire ; une inclinaison, en "
+            "revanche, n'est pas realisable : le parallelogramme maintient "
+            "l'axe de l'outil vertical.<br><br>"
+            "Saisissez la <b>matrice homogene 4x4</b> : les trois premieres "
+            "colonnes sont la rotation, la derniere la position en "
+            "millimetres.",
+            self.robot.repere_outil, verifier_repere_outil)
         if (dlg.exec_() if hasattr(dlg, "exec_") else dlg.exec()):
             self.robot.definir_repere_outil(dlg.matrice())
             self._apres_changement_repere("repere outil redefini")
@@ -2294,11 +2439,15 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         from .robot import verifier_repere_objet
         dlg = DialogueRepere(
             self, "Repere objet",
-            "Transformation de la base vers le plan de travail. Les "
-            "instructions dont le repere vaut <i>objet</i> y sont exprimees. "
-            "Seules une translation et une rotation autour de z sont admises.",
-            self.programme.repere_objet, {3: 0.0, 4: 0.0},
-            verifier_repere_objet)
+            "Le repere OBJET va de la base au plan de travail. Les "
+            "instructions dont le repere vaut <i>objet</i> y sont exprimees : "
+            "deplacer le montage ne demande alors de changer que cette seule "
+            "matrice, pas toutes les cibles. Seules une translation et une "
+            "rotation autour de z sont admises.<br><br>"
+            "Saisissez la <b>matrice homogene 4x4</b> : les trois premieres "
+            "colonnes sont la rotation, la derniere la position en "
+            "millimetres.",
+            self.programme.repere_objet, verifier_repere_objet)
         if (dlg.exec_() if hasattr(dlg, "exec_") else dlg.exec()):
             self.programme.definir_repere_objet(dlg.matrice())
             self._apres_changement_repere("repere objet redefini")
@@ -2322,19 +2471,22 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return
         dlg = DialogueRepere(
             self, "Cible de l'instruction {}".format(self.liste.currentRow() + 1),
-            "Situation de la cible dans le repere <b>{}</b>. Rx et Ry sont "
-            "imposes : le parallelogramme maintient l'axe de l'outil vertical, "
-            "dirige vers le bas. Seuls X, Y, Z et Rz sont commandables."
+            "Situation de la cible dans le repere <b>{}</b>, sous forme de "
+            "<b>matrice homogene 4x4</b>. La troisieme colonne est l'axe de "
+            "l'outil : le parallelogramme le maintient vertical et dirige "
+            "vers le bas, elle vaut donc (0, 0, -1). Seules la position et la "
+            "rotation autour de la verticale sont commandables."
             .format(ins.repere),
             self.robot.mgd(ins.q) if self._articulaire(ins)
             else cible(*ins.pose),
-            {3: 180.0, 4: 0.0}, decomposer_cible)
+            decomposer_cible)
         if not (dlg.exec_() if hasattr(dlg, "exec_") else dlg.exec()):
             return
         x, y, z, r = decomposer_cible(dlg.matrice())
         self._maj_en_cours = True
         try:
             self.cb_mode.setCurrentText("cartesien")
+            self._bornes_cible(False)
             for s, v in zip(self.champs_cible, (x, y, z, r)):
                 s.setValue(float(v))
         finally:
@@ -2413,7 +2565,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         # toggleViewAction() donne une case a cocher qui suit l'etat reel.
         fen = m.addMenu("Fe&netres")
         for dock in self.docks:
-            fen.addAction(dock.toggleViewAction())
+            action = dock.toggleViewAction()
+            # rouvrir un panneau tabule le remet en arriere-plan : on le
+            # leve au cycle suivant, quand Qt l'a replace
+            action.toggled.connect(
+                lambda actif, d=dock: actif and QtCore.QTimer.singleShot(
+                    0, d.raise_))
+            fen.addAction(action)
         fen.addSeparator()
         self._action(fen, "Agrandir les courbes", self._agrandir_courbes,
                      "Ctrl+Shift+C")
@@ -2474,9 +2632,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.act_securite.setCheckable(True)
         self.act_securite.setChecked(True)
         self.act_securite.setToolTip(
-            "coupe l'animation des que le bras sort de ses butees ou entre en "
-            "collision\ndecocher pour laisser la faute se produire et "
-            "l'observer")
+            "refuse toute pose hors butees -- au curseur, au formulaire ou "
+            "en lecture --\net coupe l'animation en cas de collision"
+            "\ndecocher pour laisser la faute se produire et l'observer")
         exe.addAction(self.act_securite)
 
         aide = m.addMenu("&Aide")
@@ -2512,14 +2670,52 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                      "(Fenetres > Disposition par defaut pour revenir)")
 
     def _disposition_defaut(self) -> None:
-        """Revient aux proportions de depart."""
-        self.boite_instruction.setChecked(True)
-        self._proportions_initiales()
+        """
+        Remet la disposition telle qu'a l'ouverture.
+
+        On restaure la photo prise au demarrage plutot que de redimensionner
+        a la main : `restoreState` retablit d'un coup les tailles, les
+        groupes d'onglets, l'onglet actif et la visibilite. Les regler un a
+        un laissait toujours un panneau de travers ou hors de l'ecran.
+        """
+        self.boite_instruction.setChecked(False)   # replie, comme a l'ouverture
+        etat = getattr(self, "_etat_defaut", None)
+        if etat is not None and self.restoreState(etat):
+            # On ne force PAS l'affichage des panneaux : la photo porte la
+            # visibilite d'origine, matrices masquees comprises. Rouvrir
+            # tout ce qui est ferme, c'est le travail de "Tout reafficher",
+            # qui est une autre commande.
+            # restoreState ne garantit pas l'onglet actif, et lever un
+            # panneau tout de suite ne sert a rien : Qt n'a pas encore
+            # repose la mise en page. On le fait au cycle suivant.
+            QtCore.QTimer.singleShot(0, self._remettre_onglets_devant)
+            self.journal("disposition par defaut retablie")
+            return
+        self._proportions_initiales()      # repli si la photo manque
         self.resizeDocks([self._dock_courbes], [300], QtCore.Qt.Vertical)
-        self.journal("disposition par defaut retablie")
+        self.journal("disposition par defaut retablie (sans etat memorise)")
+
+    #: onglet mis au premier plan de son groupe a l'ouverture
+    ONGLETS_DEVANT = ("Programme", "Courbes")
+
+    def _remettre_onglets_devant(self) -> None:
+        for titre in self.ONGLETS_DEVANT:
+            d = next((x for x in self.docks if x.windowTitle() == titre), None)
+            if d is not None and d.isVisible():
+                d.raise_()
 
     def _reafficher_docks(self) -> None:
-        """Rouvre tous les panneaux fermes, sans toucher a leur disposition."""
+        """
+        Rouvre tous les panneaux fermes et les ramene devant.
+
+        Un panneau tabule rouvert revient en ARRIERE-PLAN de son groupe :
+        Qt le declare visible tout en le parquant hors de l'ecran. On le
+        leve donc apres l'avoir montre.
+
+        On ne touche PAS aux panneaux simplement caches derriere un onglet :
+        c'est leur etat normal, et les lever tous ne ferait que mettre le
+        dernier devant au detriment des autres.
+        """
         caches = [d for d in self.docks if not d.isVisible()]
         for d in caches:
             d.show()
@@ -2527,6 +2723,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.journal("panneaux reaffiches : {}".format(
             ", ".join(d.windowTitle() for d in caches) if caches
             else "aucun n'etait ferme"))
+
 
     def _action(self, menu, texte, slot, raccourci=""):
         a = QAction(texte, self)
@@ -2618,6 +2815,15 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
     def _signaler_cartesien(self, probleme: bool) -> None:
         for c in self.champs_cart.values():
             c.signaler(probleme)
+        if not probleme:
+            self._message_cartesien("")
+
+    def _message_cartesien(self, texte: str = "") -> None:
+        """Retient pourquoi le MGI a echoue, et rafraichit le bloc d'etat."""
+        if getattr(self, "_msg_mgi", "") == texte:
+            return
+        self._msg_mgi = texte
+        self._maj_etat()
 
     def _depuis_cartesien(self, _=None, force: bool = False) -> None:
         if self._maj_en_cours:
@@ -2632,15 +2838,42 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             q = self.robot.mgi_pose(x, y, z, r)
         except ErreurCinematique as exc:
             self._signaler_cartesien(True)
-            self.etat_config.setText(
+            self._message_cartesien(
                 "<b style='color:#e06c5a'>MGI impossible</b><br>{}<br>"
                 "<i>le robot reste a sa position precedente</i>".format(exc))
             return
         self._signaler_cartesien(False)
         self._appliquer_q(q, source="cartesien")
 
+    def _cartesien_valide(self, _=None) -> None:
+        """
+        Curseur cartesien relache : on applique le MGI, puis on pilote.
+
+        Sans cela, case "en continu" decochee, le modele n'aurait pas
+        bouge et le robot reel recevrait l'ANCIENNE configuration -- il
+        partirait quelque part sans rapport avec le curseur qu'on vient de
+        tirer. La case ne dit donc pas "jamais" mais "pas pendant le
+        glissement" : la consigne est appliquee au relachement.
+        """
+        if not self.chk_suivi.isChecked():
+            self._depuis_cartesien(force=True)
+        self._reel_envoyer_pose()
+
+    #: sources de pose que le garde-fou laisse passer. "miroir" lit les
+    #: angles de la MACHINE : son role est de montrer ce qu'elle fait, y
+    #: compris hors de la table du modele, et la brider mentirait sur
+    #: l'etat reel. "init" et "refus" reappliquent une pose deja connue.
+    SOURCES_LIBRES = ("miroir", "init", "refus")
+
     def _appliquer_q(self, q, source: str = "") -> None:
         q = np.asarray(q, dtype=float)
+        if source not in self.SOURCES_LIBRES:
+            securite = getattr(self, "act_securite", None)
+            if securite is not None and securite.isChecked():
+                depassements = self.robot.depassements(q)
+                if depassements:
+                    self._refuser_pose(depassements, source)
+                    return
         self.q = q
         self._maj_en_cours = True
         try:
@@ -2660,24 +2893,77 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._maj_etat()
 
     def _maj_etat(self) -> None:
+        """
+        Le bloc de lecture de la section Cartesien.
+
+        Il dit ou est le bras -- TCP, portee, manipulabilite -- puis pourquoi
+        il n'est pas ailleurs : MGI refuse, butees depassees, collision. Un
+        seul bloc, parce que c'est une seule question. Il s'encadre de rouge
+        des qu'il a une mauvaise nouvelle a annoncer.
+        """
         depass = self.robot.depassements(self.q)
         self._effacer_alerte_posturale(depass)
-        p = self.robot.pose(self.q)
-        w = self.robot.manipulabilite(self.q)
-        lignes = ["<b>TCP</b> x={:.1f}  y={:.1f}  z={:.1f}  r={:.1f} deg"
-                  .format(*p),
-                  "portee horizontale = {:.1f} mm".format(float(np.hypot(p[0], p[1]))),
-                  "manipulabilite = {:.3g}".format(w)]
         choc = self.robot.collisions(self.q)
-        if depass:
-            lignes.append("<b style='color:#e06c5a'>butees depassees</b><br>"
-                          + "<br>".join(depass))
-        if choc:
-            lignes.append("<b style='color:#e06c5a'>collision</b><br>"
-                          + "<br>".join(choc))
-        if not depass and not choc:
-            lignes.append("<span style='color:#5aa469'>configuration admissible</span>")
+        mgi = getattr(self, "_msg_mgi", "")
+
+        if mgi:
+            # Soit l'un, soit l'autre. La pose demandee n'a pas ete prise :
+            # afficher a cote d'elle le TCP de la pose TENUE ferait lire deux
+            # situations differentes dans le meme bloc. On ne garde que la
+            # raison du refus ; le TCP revient des que le MGI aboutit.
+            lignes = [mgi]
+        else:
+            p = self.robot.pose(self.q)
+            w = self.robot.manipulabilite(self.q)
+            lignes = ["<b>TCP</b> x={:.1f}  y={:.1f}  z={:.1f}  r={:.1f} deg"
+                      .format(*p),
+                      "portee horizontale = {:.1f} mm"
+                      .format(float(np.hypot(p[0], p[1]))),
+                      "manipulabilite = {:.3g}".format(w)]
+            if depass:
+                lignes.append("<b style='color:#e06c5a'>butees depassees</b><br>"
+                              + "<br>".join(depass))
+            if choc:
+                lignes.append("<b style='color:#e06c5a'>collision</b><br>"
+                              + "<br>".join(choc))
+            if not (depass or choc):
+                lignes.append("<span style='color:#5aa469'>"
+                              "configuration admissible</span>")
         self.etat_config.setText("<br>".join(lignes))
+        self._encadrer_etat(bool(mgi or depass or choc))
+
+    def _encadrer_etat(self, fautif: bool) -> None:
+        """Cadre rouge quand le bloc annonce un refus, neutre sinon."""
+        if fautif == self._etat_fautif:
+            return                      # evite un restylage a chaque image
+        self._etat_fautif = fautif
+        bord = "#c0392b" if fautif else "rgba(127,127,127,0.35)"
+        fond = "rgba(192,57,43,0.12)" if fautif else "rgba(127,127,127,0.08)"
+        self.etat_config.setStyleSheet(
+            "QLabel {{ background:{}; border:1px solid {}; border-radius:3px;"
+            " padding:6px 8px; }}".format(fond, bord))
+
+    def _refuser_pose(self, depassements, source: str) -> None:
+        """
+        Refuse un mouvement qui sortirait des butees : le bras reste ou il est.
+
+        Afficher le modele dans une posture que la machine ne prendrait
+        jamais donne une fausse idee de ce qui est realisable, et c'est
+        precisement ce qu'un simulateur de TP doit eviter : une trajectoire
+        validee a l'ecran doit passer sur la table.
+
+        Les afficheurs sont remis en phase avec la pose CONSERVEE, de sorte
+        qu'un champ pousse trop loin revient tout seul a la valeur tenue.
+
+        Le garde-fou se leve avec l'arret de securite (menu Execution) :
+        decoche, il laisse la faute se produire pour qu'on l'observe.
+        """
+        self.journal("mouvement refuse ({}) : {}"
+                     .format(source or "?", " ; ".join(depassements)))
+        self._appliquer_q(self.q, source="refus")
+        self._alerte_posturale = True
+        self._alerter(["Mouvement refuse : la pose demandee sort des butees. "
+                       + depassements[0]] + list(depassements[1:]))
 
     def _effacer_alerte_posturale(self, depassements) -> None:
         """
@@ -2797,52 +3083,58 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
     def _articulaire(ins: Instruction) -> bool:
         return ins.mode == "articulaire" and ins.type != "MOVC"
 
+    def _bornes_cible(self, articulaire: bool) -> None:
+        """
+        Borne les champs de cible AVANT d'y ecrire.
+
+        En articulaire, chaque champ est limite a la course de son axe : on
+        ne doit pas pouvoir demander au modele une posture que la machine
+        ne prendrait pas. En cartesien, X, Y et Z restent larges -- c'est
+        le MGI qui tranche -- et Rz fait un tour complet.
+
+        L'ordre compte : borner APRES avoir ecrit ecreterait la valeur
+        qu'on vient d'ecrire, et un X de 220 mm deviendrait un J2 de 85.
+        """
+        for k, s in enumerate(self.champs_cible):
+            if articulaire:
+                s.setRange(float(self.robot.lim.q_min[k]),
+                           float(self.robot.lim.q_max[k]))
+            elif k == 3:
+                s.setRange(-180.0, 180.0)
+            else:
+                s.setRange(-10000.0, 10000.0)
+
     def _ecrire_cible(self, ins: Instruction) -> None:
+        self._bornes_cible(self._articulaire(ins))
         if self._articulaire(ins):
-            valeurs = list(ins.q) + [0.0, 0.0]
+            valeurs = list(ins.q)
         else:
-            x, y, z, r = ins.pose
-            valeurs = [x, y, z, 180.0, 0.0, r]
+            valeurs = list(ins.pose)
         for s, v in zip(self.champs_cible, valeurs):
             s.setValue(float(v))
 
     def _lire_cible(self, ins: Instruction) -> list:
-        v = [float(s.value()) for s in self.champs_cible]
-        return v[:4] if self._articulaire(ins) else [v[0], v[1], v[2], v[5]]
+        return [float(s.value()) for s in self.champs_cible]
 
     def _ecrire_via(self, ins: Instruction) -> None:
-        x, y, z, r = ins.via
-        for s, v in zip(self.champs_via, (x, y, z, 180.0, 0.0, r)):
+        for s, v in zip(self.champs_via, ins.via):
             s.setValue(float(v))
 
     def _lire_via(self) -> list:
-        v = [float(s.value()) for s in self.champs_via]
-        return [v[0], v[1], v[2], v[5]]
+        return [float(s.value()) for s in self.champs_via]
 
     def _adapter_formulaire(self, ins: Instruction) -> None:
         mouvement = ins.type in ("MOVJ", "MOVL", "MOVC")
         articulaire = self._articulaire(ins)
         if articulaire:
             libelles = [("J1", "deg"), ("J2", "deg"), ("J3", "deg"),
-                        ("J4", "deg"), ("", ""), ("", "")]
+                        ("J4", "deg")]
         else:
             libelles = list(COMPOSANTES)
         for k, (lab, s) in enumerate(zip(self.etiq_cible, self.champs_cible)):
             nom, unite = libelles[k]
-            visible = bool(nom)
-            lab.setVisible(visible)
-            s.setVisible(visible)
             lab.setText(nom)
             s.setSuffix((" " + unite) if unite else "")
-            # Rx et Ry ne sont pas commandables : lecture seule, en gris
-            impose = (not articulaire) and k in (3, 4)
-            s.setReadOnly(impose)
-            s.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons if impose
-                               else QtWidgets.QAbstractSpinBox.UpDownArrows)
-            s.setStyleSheet("color:#888" if impose else "")
-            lab.setStyleSheet("color:#888" if impose else "")
-            s.setToolTip("impose par le parallelogramme : non commandable"
-                         if impose else "")
             s.setEnabled(mouvement)
         self.bloc_via.setEnabled(ins.type == "MOVC")
         self.cb_repere.setEnabled(mouvement and ins.mode == "cartesien")
@@ -2981,11 +3273,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return
         self._maj_en_cours = True
         try:
+            self._bornes_cible(self._articulaire(ins))
             if self._articulaire(ins):
-                valeurs = list(self.q) + [0.0, 0.0]
+                valeurs = list(self.q)
             else:
-                x, y, z, r = self.robot.pose(self.q)
-                valeurs = [x, y, z, 180.0, 0.0, r]
+                valeurs = list(self.robot.pose(self.q))
             for s, v in zip(self.champs_cible, valeurs):
                 s.setValue(float(v))
         finally:
