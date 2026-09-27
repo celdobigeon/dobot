@@ -58,6 +58,10 @@ APPS_DOBOT/
 │   ├── viewer3d.py            vue OpenGL
 │   ├── viewer2d.py            vue de secours en projections
 │   └── ui.py                  interface graphique
+├── fiches/
+│   ├── fiche_interface.html   ce que fait chaque commande de la fenêtre
+│   ├── fiche_programmation.html  exemples de programmation, support de TP
+│   └── fiche_api.html         référence : définition de chaque commande
 ├── examples/
 │   ├── exemple_matrices.py    matrices homogènes, MGD, MGI, jacobienne
 │   └── exemple_pick_place.py  trajectoires et export
@@ -309,6 +313,31 @@ robot.collisions(q, marge=10)  # alerte 10 mm AVANT le contact
 robot.defauts(q)             # butees + collisions, dans cet ordre
 ```
 
+### Le bras contre lui-même
+
+Chaque maillon est traité comme une **capsule** — un segment entouré d'un
+rayon — et les paires **non adjacentes** sont confrontées deux à deux. Les
+paires adjacentes se touchent par construction à leur articulation commune,
+les tester n'aurait aucun sens.
+
+Les rayons viennent de la demi-largeur en y des maillages CAO : bras arrière
+22 mm, avant-bras 15, déport du poignet 12, outil 15.
+
+> **Le cas qui compte sur ce robot.** Quand l'avant-bras se replie, le
+> **déport du poignet revient sur le bras arrière** : contact à
+> `J3 − J2 = 77,03°`, jusqu'à 22,6 mm d'interpénétration à fond de course.
+> Le jeu ne dépend **que** de cette différence — étendue mesurée 0,000 mm
+> sur toute la plage de J2 —, conséquence directe du parallélogramme.
+>
+> C'est la raison d'être de `Limites.couplage`, laissé à `None` faute de
+> valeur mesurée. Le contrôle géométrique le rend inutile à régler à la
+> main, et il suit l'outil monté.
+
+> **Un simulateur qui laisse passer ce mouvement ment**, puisque la machine
+> réelle ne peut pas l'exécuter. Il était détecté nulle part avant : la
+> première version du modèle affirmait que les butées suffisaient à l'éviter.
+> C'est faux, et le balayage de l'espace articulaire le montre.
+
 Seul le squelette **mobile** est testé — coude, poignet, axe outil, TCP. Le
 bras arrière est exclu volontairement : il est solidaire de la colonne, la
 butée J2 l'empêche d'atteindre table comme embase, et l'inclure ferait
@@ -333,12 +362,66 @@ vérifié par balayage de l'espace articulaire :
 
 ## 5. L'interface
 
+Trois fiches HTML autonomes, à ouvrir dans un navigateur et à garder à côté du
+simulateur pendant la séance :
+
+| Fiche | Pour | Contenu |
+|-------|------|---------|
+| [`fiche_interface.html`](fiches/fiche_interface.html) | pendant la séance | chaque panneau, chaque case et chaque bouton de la fenêtre |
+| [`fiche_programmation.html`](fiches/fiche_programmation.html) | support de TP | vocabulaire (TCP, pose, MGD, MGI), fabrication d'une cible, deux schémas, les erreurs expliquées, cinq exercices |
+| [`fiche_api.html`](fiches/fiche_api.html) | ressource | la définition de chaque ligne de code : signature, paramètres, types, unités, valeur renvoyée, index |
+
 | Zone | Contenu |
 |------|---------|
 | **Centre** | vue 3D : maillages CAO, repères des liaisons, squelette, chemin théorique, trace réelle du TCP, enveloppe de l'espace de travail |
-| **Gauche** | dock **Commande** : quatre sections **visibles en même temps**, chacune repliable par sa case à cocher : **Articulaire** (J1…J4, curseurs bornés aux butées), **Cartésien** (X, Y, Z, Rz, MGI appliqué en continu), **Outil** (ventouse, pince, stylo, laser) et **Repères** (repères outil et objet en X, Y, Z, Rx, Ry, Rz) ; état des butées, portée, manipulabilité |
-| **Droite** | dock **Programme** : barre d'édition en pictogrammes, liste des instructions, formulaire **repliable** (type, cible et point de passage en `(X, Y, Z, Rx, Ry, Rz)`, **cadence**, **lissage**, loi horaire) et lecteur : lire / pause, arrêter, pas à pas, facteur de vitesse, barre de temps |
-| **Bas** | onglet **Matrices homogènes** (les six matrices élémentaires, le produit, la jacobienne, det J), onglet **Courbes** (angles et vitesse du TCP en fonction du temps), onglet **Entrées / Sorties** (20 voyants de sortie, 20 boutons d'entrée), onglet **Journal** |
+| **Gauche** | dock **Commande** : quatre sections **visibles en même temps**, chacune repliable par sa case à cocher : **Articulaire** (J1…J4, curseurs bornés aux butées), **Cartésien** (X, Y, Z, Rz, MGI appliqué en continu), **Outil** (ventouse, pince, stylo, laser) et **Repères** (repères outil et objet, lus en X, Y, Z, Rz, saisis en matrice 4×4) ; état des butées, portée, manipulabilité |
+| **Droite** | dock **Programme** : barre d'édition en pictogrammes, liste des instructions, formulaire **repliable** (type, cible et point de passage en `(X, Y, Z, Rz)`, bouton *Saisir* pour la matrice 4×4, **cadence**, **lissage**, loi horaire) et lecteur : lire / pause, arrêter, pas à pas, facteur de vitesse, barre de temps |
+| **Bas** | onglet **Courbes** (angles et vitesse du TCP en fonction du temps), onglet **Entrées / Sorties** (20 voyants de sortie, 20 boutons d'entrée), onglet **Journal** — et **Matrices homogènes** (les six matrices élémentaires, le produit, la jacobienne, det J), **masqué à l'ouverture**, qu'on appelle par le menu *Fenêtres* |
+
+### Le panneau ne porte plus d'explications
+
+Tout ce qui était écrit en gris dans le panneau **Commande** a quitté
+l'écran : l'appel du MGI, le déport `lt` de l'outil, le rôle des deux
+repères, la contrainte `Rx = 180° / Ry = 0°`, la description du catalogue.
+Rien n'est perdu — chaque texte a une nouvelle adresse, choisie pour qu'on
+le lise au moment où il sert :
+
+| Texte retiré | Où il se lit maintenant |
+|---|---|
+| MGI et espace atteignable | infobulle du bouton *Appliquer le MGI* |
+| longueur d'outil → déport `lt` | infobulle de *outil monté* et de *longueur* |
+| description de l'outil (« kit ventouse… ») | infobulle de *outil monté*, elle suit l'outil choisi |
+| `Rx = 180° / Ry = 0°`, non commandables | infobulle du curseur **Rz** |
+| rôle des repères outil et objet | **dans le dialogue** qui sert à les modifier |
+
+Les trois fiches HTML de [`fiches/`](fiches/) portent la version longue de
+tous ces textes.
+
+#### Un seul bloc de lecture, dans la section Cartésien
+
+*Où est le bras* et *pourquoi il n'est pas ailleurs* sont une seule question :
+les deux réponses tiennent dans le même bloc, placé **sous les curseurs
+cartésiens**, à côté des commandes qui les produisent.
+
+Il montre **soit l'un, soit l'autre** :
+
+| Quand | Ce qu'il montre |
+|---|---|
+| le MGI a échoué | **seulement** le motif du refus : le point refusé, la distance épaule-poignet demandée, la plage admissible, et le rappel que le robot reste à sa position précédente |
+| sinon | le TCP `(x, y, z, r)`, la portée horizontale, la manipulabilité, puis *butées dépassées* ou *collision* s'il y a lieu, sinon *configuration admissible* |
+
+Le TCP disparaît pendant un refus parce qu'il décrirait la pose **tenue**, pas
+celle dont on parle : les lire l'une sous l'autre ferait cohabiter deux
+situations dans le même bloc. Il revient dès que le MGI aboutit.
+
+Le bloc **s'encadre de rouge** dès qu'il a une mauvaise nouvelle à annoncer,
+et redevient neutre à la pose suivante. Le verdict vert ne s'affiche jamais
+en même temps qu'un défaut — ce serait se contredire.
+
+Auparavant les deux étaient dissociés : la ligne d'état en bas du panneau, le
+motif du MGI dans un encadré séparé. Le message écrasait même l'état, si bien
+que le TCP disparaissait au moment précis où on cherchait à comprendre où le
+bras se trouvait.
 
 ### Un code couleur unique
 
@@ -405,6 +488,14 @@ pour que la vue 3D garde sa place.
 > panneau. Elle est passée sur sa propre ligne, et les formats d'affichage
 > ont été resserrés à 34 caractères.
 
+**En hauteur**, chaque panneau haut est enveloppé d'une zone de
+défilement. Sans cela sa hauteur minimale devient celle de la **fenêtre** :
+*Programme* en exigeait 954 px et *Robot réel* 637, ce qui portait le
+minimum de la fenêtre à **1284 px** pour un écran qui en offre 1020. Elle
+débordait par le bas et l'affichage se chevauchait. Le minimum est
+retombé à **473 px**, et une fenêtre tient désormais sur n'importe quel
+écran.
+
 **Ce qui partage un jeu d'onglets** se choisit sur l'usage, pas sur la
 proximité :
 
@@ -442,8 +533,27 @@ Quand un point demandé sort de l'espace atteignable, le robot **ne bouge
 pas**, les quatre axes cartésiens passent en rouge et le bandeau d'état
 indique la cause (par exemple : *distance épaule-poignet = 284,3 mm,
 admissible [12 ; 282]*). Le bouton **Resynchroniser** recopie la pose
-courante du robot dans les curseurs ; décocher *appliquer le MGI en continu*
-permet de composer une consigne complète avant de la valider.
+courante du robot dans les curseurs.
+
+### *Appliquer le MGI pendant le glissement*
+
+Cochée, le modèle suit le curseur en temps réel — chaque pixel parcouru
+appelle le MGI, ce qui coûte **2,3 ms** et reste parfaitement fluide.
+Décochée, la consigne n'est appliquée qu'au **relâchement**, sans passer
+par les poses intermédiaires.
+
+> **Ce que cette case ne sert PAS à faire.** Elle a longtemps été présentée
+> comme permettant « de composer une consigne complète avant de la
+> valider ». C'est faux : en mode continu, la valeur d'un curseur est
+> conservée même quand le MGI refuse le point, si bien que la composition
+> aboutit de toute façon. Passer par (50, 0, 0), inatteignable, puis amener
+> y à 250 mène bien à (50, 250, 0).
+
+> **Et décocher fut un temps dangereux.** Curseur cartésien relâché avec le
+> **pilotage** du robot actif, le modèle n'avait pas bougé et la machine
+> recevait la configuration **précédente** — elle partait donc quelque part
+> sans rapport avec le curseur qu'on venait de tirer. Le relâchement
+> applique désormais le MGI avant d'envoyer quoi que ce soit.
 
 Un **programme** dont les cibles sortent de l'espace atteignable, ou qui
 envoie le bras dans la table, est signalé par un **bandeau** au-dessus de la
@@ -457,18 +567,73 @@ car tous les avertissements ne pèsent pas pareil :
 
 Il disparaît dès que le programme redevient sain.
 
+### Le modèle ne franchit pas ses butées
+
+Une pose hors course est **refusée avant d'être appliquée** : le bras reste
+où il est, le bandeau rouge nomme l'axe fautif et sa plage, et le détail
+part au Journal. Montrer le modèle dans une posture que la machine ne
+prendrait jamais donnerait une fausse idée de ce qui est réalisable — c'est
+précisément ce qu'un simulateur de TP doit éviter : **une trajectoire
+validée à l'écran doit passer sur la table.**
+
+Le garde-fou est unique et tient en un point, `_appliquer_q()`, que tous les
+chemins traversent : curseurs, MGI cartésien, formulaire d'instruction,
+pas à pas, lecture du programme. Les afficheurs sont ensuite remis en phase
+avec la pose **conservée**, de sorte qu'un champ poussé trop loin revient
+tout seul à la valeur tenue.
+
+Deuxième verrou, en amont : les champs de cible d'une instruction sont
+**bornés à la course de leur axe** en mode articulaire — taper 180 sur J1
+donne 135. `_bornes_cible()` les rouvre en mode cartésien, où c'est le MGI
+qui tranche, et garde Rz sur un tour. L'ordre compte : borner *après* avoir
+écrit écrêterait la valeur qu'on vient d'écrire, et un X de 220 mm
+deviendrait un J2 de 85.
+
+Deux exceptions, voulues :
+
+| Source | Pourquoi elle passe |
+|--------|---------------------|
+| **miroir** | il lit les angles de la *machine*. Son rôle est de montrer ce qu'elle fait, y compris hors de la table du modèle — la brider mentirait sur l'état réel. |
+| **arrêt de sécurité décoché** | c'est le mode « laissez la faute se produire », demandé pour l'observer en démonstration. |
+
 ### Arrêt de sécurité
 
-À la lecture, l'animation **s'arrête net** dès que la pose commandée sort
-des butées ou entre en collision. Le robot **reste sur la pose fautive** :
-c'est en la voyant qu'on comprend ce qui cloche. Une boîte d'alerte non
-modale nomme l'instant, l'instruction et le défaut.
+À la lecture, l'animation **s'arrête net** en cas de collision. Le robot
+**reste sur la pose fautive** : c'est en la voyant qu'on comprend ce qui
+cloche. Une boîte d'alerte non modale nomme l'instant, l'instruction et le
+défaut.
 
-`Exécution ▸ Arrêt de sécurité` (coché par défaut) permet de **décocher**
-pour laisser la faute se produire et l'observer se dérouler — utile en
-démonstration.
+`Exécution ▸ Arrêt de sécurité` (coché par défaut) gouverne les deux
+mécanismes — le refus des poses hors butées et l'arrêt de l'animation.
+**Décocher** laisse la faute se produire et se dérouler, ce qui reste utile
+en démonstration.
+
+### Ce qui est visible à l'ouverture
+
+Six panneaux sur sept. **Matrices homogènes est masqué** : c'est un panneau
+de cours, qu'on appelle quand on en a besoin — *Fenêtres ▸ Matrices
+homogènes*, ou <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>R</kbd> qui rouvre tout.
+La place du bas revient aux **Courbes**, qui est l'onglet actif.
+
+Les deux commandes du menu *Fenêtres* sont bien distinctes, et le restent :
+
+| Commande | Effet |
+|---|---|
+| **Disposition par défaut** | restaure la photo prise à l'ouverture, **visibilité comprise** — les matrices redeviennent donc masquées |
+| **Tout réafficher** <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>R</kbd> | rouvre *tous* les panneaux fermés et les ramène devant, matrices incluses |
 
 ### Rouvrir une fenêtre fermée
+
+> **Un panneau tabulé rouvert revient en arrière-plan de son groupe** : Qt
+> le déclare visible tout en le parquant hors de l'écran, à (−986, −1473)
+> sur la machine d'essai. On le voyait donc disparaître en croyant l'avoir
+> rouvert. Il est maintenant **levé** après avoir été montré.
+>
+> *Disposition par défaut* ne redimensionne plus à la main : elle restaure
+> une **photographie** de la disposition (`saveState`), prise au premier
+> affichage — avant, Qt n'a ni calculé les géométries ni fixé l'onglet
+> actif. Tailles, groupes d'onglets, onglet actif et visibilité reviennent
+> d'un coup.
 
 Les six panneaux (**Commande**, **Programme**, **Matrices homogènes**,
 **Courbes**, **Entrées / Sorties**, **Journal**) sont détachables et se
@@ -763,6 +928,11 @@ deux comptes sur la même machine ne se marchent pas dessus. Un tube
 orphelin, laissé par un simulateur fermé brutalement, n'est retiré
 **qu'après** avoir vérifié que personne ne répond derrière.
 
+`DOBOT_SIM_SERVICE` permet de choisir un autre nom : deux simulateurs
+indépendants cohabitent alors sur le même compte — deux postes de TP sur
+une machine partagée, ou une recette qui ne doit pas parler à la fenêtre
+ouverte à côté.
+
 ### Les cibles sont des matrices homogènes
 
 Une cible n'est pas un triplet de nombres : c'est la **situation** d'un
@@ -850,23 +1020,47 @@ Trois points de confort :
 
 | | forme |
 |---|---|
-| **écriture dans un script Python** | matrice homogène 4×4 — cibles, points de passage, repère outil, repère objet |
-| **affichage et saisie dans l'interface** | `(X, Y, Z, Rx, Ry, Rz)` |
+| **lecture** — panneaux, résumé d'un repère, formulaire d'instruction | `(X, Y, Z, Rz)` |
+| **écriture** — *Modifier* un repère, *Saisir* une cible, script Python | matrice homogène 4×4 |
 
-L'interface ne montre jamais de matrice 4×4 : c'est la forme de travail du
-script, pas celle de l'opérateur. Elle affiche les six composantes usuelles
-en robotique industrielle — et **Rx et Ry y sont en lecture seule**, parce
-qu'ils ne sont pas commandables : le parallélogramme impose Rx = 180°,
-Ry = 0° pour une cible et pour le repère outil, Rx = Ry = 0 pour le repère
-objet. Les montrer rend la contrainte visible plutôt que tacite.
+Une situation **s'écrit en matrice homogène 4×4**. C'est la forme demandée
+aux étudiants, et c'est la seule que les dialogues de saisie acceptent :
+`EditeurMatrice` propose seize cases, dont les quatre de la dernière ligne
+sont montrées mais figées à (0, 0, 0, 1) — les cacher laisserait croire que
+la matrice est 3×4.
+
+La **lecture** reste simplifiée : `(X, Y, Z, Rz)` suffit à relire une pose
+d'un coup d'œil. Rx et Ry n'y figurent pas, le parallélogramme les impose —
+180° et 0 pour une cible et pour le repère outil, 0 et 0 pour le repère
+objet. La contrainte est rappelée dans l'infobulle du curseur **Rz**, le
+seul qu'elle concerne. Le dialogue de saisie, lui, relit la matrice à chaque
+chiffre tapé et affiche ce qu'elle signifie en `(X, Y, Z, Rz)` — ou le motif
+du refus.
 
 `vers_xyzrpy(T)` et `depuis_xyzrpy(X, Y, Z, Rx, Ry, Rz)` font la conversion
 dans les deux sens, en millimètres et degrés.
 
+#### Une rotation tapée au clavier est arrondie
+
+cos 45° s'écrit 0,7071 dans une case à quatre décimales, pas 0,70710678.
+L'écart est minuscule — 7·10⁻⁶ — mais il suffit à faire échouer le contrôle
+d'orthonormalité, qui travaille à 10⁻⁶. Refuser une matrice juste pour cette
+raison n'aurait aucun sens : `_orthonormaliser()` la **projette sur la
+rotation la plus proche** par décomposition en valeurs singulières, le
+dialogue annonce de combien elle a bougé, et ne refuse qu'au-delà de
+`ECART_ROTATION` = 10⁻³. Là, ce n'est plus un arrondi mais une erreur :
+taper 0,7 au lieu de 0,7071 donne un écart de 7·10⁻³, refusé avec le motif.
+
+> Effet de bord corrigé au passage : le bouton *Saisir* écrivait la rotation
+> `r` dans le champ **Rx** et jamais dans **Rz** — les quatre valeurs rendues
+> par `decomposer_cible()` étaient copiées dans les quatre premiers champs
+> d'une grille qui en comptait six. La grille en compte maintenant quatre,
+> dans l'ordre X, Y, Z, Rz, et la valeur arrive au bon endroit.
+
 ### Repère outil et repère objet
 
-Deux repères que le script peut donner en matrice 4×4, et que l'onglet
-**Repères** affiche et modifie en six composantes. Ce ne sont pas des
+Deux repères, donnés en matrice 4×4 aussi bien par le script que par la
+section **Repères**, qui les relit en `(X, Y, Z, Rz)`. Ce ne sont pas des
 commodités d'affichage : ils entrent dans le modèle géométrique.
 
 | Repère | Va de | Rôle | Contrainte |
@@ -1428,7 +1622,7 @@ pont.demarrer()
 python -m unittest discover -s tests -v
 ```
 
-179 tests, dont **38 sur le protocole et le pont vers la machine réelle**
+186 tests, dont **38 sur le protocole et le pont vers la machine réelle**
 (`tests/test_protocole.py`), exécutés sans matériel grâce à un **port série
 simulé** qui rejoue le comportement du contrôleur : cadrage conforme à
 l'exemple du protocole, checksum, `Ctrl`, endianness, refus des trames

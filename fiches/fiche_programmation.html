@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programmer le robot &mdash; exemples</title>
+<style>
+
+:root{
+  --fond:#f6f7f9; --carte:#ffffff; --encre:#191d24; --encre2:#4d5666;
+  --muet:#7b8496; --trait:#dde1e8; --trait2:#eceff4;
+  --accent:#3d6fd8; --accent-doux:#eaf0fd;
+  --axe-x:#c33f3f; --axe-y:#3a9448; --axe-z:#3d6fd8; --axe-r:#7c96d8;
+  --ok:#4c8f60; --alerte:#b3781f; --faute:#c0392b;
+  --ombre:0 1px 2px rgba(20,28,45,.06), 0 6px 18px rgba(20,28,45,.05);
+  --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+    --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+    --accent:#7aa2f7; --accent-doux:#1b2330;
+    --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+    --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+    --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+  --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+  --accent:#7aa2f7; --accent-doux:#1b2330;
+  --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+  --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+  --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth; scroll-padding-top:74px;}
+body{
+  margin:0; background:var(--fond); color:var(--encre);
+  font-family:var(--serif); font-size:16.5px; line-height:1.62;
+  padding-inline:16px; padding-block:0;
+}
+.page{max-width:920px; margin:0 auto;}
+
+/* ---- en-tete ---- */
+header.une{padding-block:44px 26px; border-bottom:3px double var(--trait);}
+.surtitre{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 12px;
+}
+h1{
+  font-family:var(--sans); font-weight:650; letter-spacing:-.02em;
+  font-size:clamp(28px,5.2vw,42px); line-height:1.12; margin:0 0 10px;
+  text-wrap:balance;
+}
+.chapeau{margin:0; color:var(--encre2); font-size:17.5px; max-width:62ch;}
+.jeu-fiches{
+  margin-top:20px; font-family:var(--sans); font-size:13.5px;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+}
+.jeu-fiches a{
+  color:var(--accent); text-decoration:none;
+  border:1px solid var(--trait); border-radius:3px; padding:4px 10px;
+  background:var(--carte);
+}
+.jeu-fiches a:hover{border-color:var(--accent);}
+.jeu-fiches .ici{color:var(--muet); border-style:dashed; background:none;}
+
+/* ---- sommaire ---- */
+nav.sommaire{
+  position:sticky; top:0; z-index:5; background:var(--fond);
+  border-bottom:1px solid var(--trait); margin-bottom:8px;
+  padding-block:10px; font-family:var(--sans); font-size:13px;
+}
+nav.sommaire ol{
+  list-style:none; display:flex; flex-wrap:wrap; gap:6px 18px;
+  margin:0; padding:0; counter-reset:s;
+}
+nav.sommaire a{color:var(--encre2); text-decoration:none; white-space:nowrap;}
+nav.sommaire a::before{
+  counter-increment:s; content:counter(s,decimal-leading-zero) " ";
+  font-family:var(--mono); font-size:10.5px; color:var(--muet);
+}
+nav.sommaire a:hover{color:var(--accent);}
+
+/* ---- sections ---- */
+section{padding-block:34px 6px; border-top:1px solid var(--trait2);}
+section:first-of-type{border-top:none;}
+h2{
+  font-family:var(--sans); font-weight:640; letter-spacing:-.015em;
+  font-size:24px; line-height:1.2; margin:0 0 4px; text-wrap:balance;
+}
+h2 .num{
+  font-family:var(--mono); font-size:12px; font-weight:400;
+  color:var(--accent); letter-spacing:.1em; display:block; margin-bottom:6px;
+}
+h3{
+  font-family:var(--sans); font-weight:620; font-size:16.5px;
+  margin:26px 0 6px; letter-spacing:-.005em;
+}
+p{margin:.7em 0; max-width:68ch;}
+.intro{color:var(--encre2); max-width:66ch;}
+ul,ol.liste{max-width:66ch; padding-left:1.2em;}
+li{margin:.3em 0;}
+a{color:var(--accent);}
+
+/* ---- jetons ---- */
+.ui{
+  font-family:var(--sans); font-size:.9em; font-weight:600;
+  background:var(--accent-doux); color:var(--accent);
+  border-radius:3px; padding:1px 6px; white-space:nowrap;
+}
+kbd{
+  font-family:var(--mono); font-size:.82em; background:var(--carte);
+  border:1px solid var(--trait); border-bottom-width:2px; border-radius:4px;
+  padding:1px 6px; color:var(--encre2); white-space:nowrap;
+}
+code{font-family:var(--mono); font-size:.87em; color:var(--encre2);
+  background:var(--trait2); border-radius:3px; padding:1px 5px;}
+pre{
+  font-family:var(--mono); font-size:13px; line-height:1.55;
+  background:var(--carte); border:1px solid var(--trait); border-left:3px solid var(--accent);
+  border-radius:4px; padding:14px 16px; overflow-x:auto; margin:14px 0;
+  color:var(--encre);
+}
+pre code{background:none; padding:0; font-size:inherit; color:inherit;}
+pre .c{color:var(--muet); font-style:italic;}
+pre .k{color:var(--accent); font-weight:600;}
+pre .n{color:var(--axe-y);}
+
+/* ---- tableaux ---- */
+.cadre{overflow-x:auto; margin:16px 0;}
+table{border-collapse:collapse; width:100%; min-width:520px;
+  font-family:var(--sans); font-size:14px;}
+caption{
+  text-align:left; font-family:var(--mono); font-size:11px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muet);
+  padding-bottom:8px;
+}
+th{
+  text-align:left; font-weight:620; font-size:11.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muet);
+  border-bottom:1px solid var(--trait); padding:6px 12px 6px 0;
+}
+td{border-bottom:1px solid var(--trait2); padding:9px 12px 9px 0;
+  vertical-align:top; color:var(--encre2);}
+td:first-child{color:var(--encre); font-weight:560; white-space:nowrap;}
+td.libre:first-child{white-space:normal;}
+tr:last-child td{border-bottom:none;}
+td .mono,th .mono{font-family:var(--mono); font-size:12.5px;}
+td.num{font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---- encarts ---- */
+.note{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  box-shadow:var(--ombre); padding:14px 18px; margin:18px 0; max-width:70ch;
+}
+.note p{margin:.4em 0;}
+.note .etiquette{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; display:block; margin-bottom:5px;
+}
+.note.attention{border-left:3px solid var(--alerte);}
+.note.attention .etiquette{color:var(--alerte);}
+.note.piege{border-left:3px solid var(--faute);}
+.note.piege .etiquette{color:var(--faute);}
+.note.astuce{border-left:3px solid var(--ok);}
+.note.astuce .etiquette{color:var(--ok);}
+
+/* ---- axes colores ---- */
+.ax{font-family:var(--mono); font-weight:700;}
+.ax-x{color:var(--axe-x);} .ax-y{color:var(--axe-y);}
+.ax-z{color:var(--axe-z);} .ax-r{color:var(--axe-r);}
+
+footer{
+  margin-top:40px; padding-block:22px 48px; border-top:3px double var(--trait);
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+}
+
+@media (max-width:560px){
+  body{font-size:16px;}
+  nav.sommaire{position:static;}
+}
+@media print{
+  :root{--fond:#fff; --carte:#fff;}
+  body{font-size:11pt;} nav.sommaire{display:none;}
+  section{break-inside:auto; page-break-inside:auto;}
+  h2,h3{break-after:avoid;} .note,pre,.cadre{break-inside:avoid;}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+
+/* ---- figures ---- */
+figure.schema{
+  margin:24px 0; padding:18px 18px 14px; background:var(--carte);
+  border:1px solid var(--trait); border-radius:5px; box-shadow:var(--ombre);
+}
+figure.schema svg{width:100%; height:auto; display:block;}
+figcaption{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin-top:12px; max-width:62ch;
+}
+.s-os{stroke:var(--encre2); stroke-width:7; stroke-linecap:round; fill:none;}
+.s-cote{stroke:var(--muet); stroke-width:1; fill:none;}
+.s-pointille{stroke:var(--muet); stroke-width:1; stroke-dasharray:4 4; fill:none;}
+.s-sol{stroke:var(--trait); stroke-width:2;}
+.s-txt{font-family:var(--sans); font-size:12px; fill:var(--encre2);}
+.s-cle{font-family:var(--sans); font-size:12.5px; font-weight:650; fill:var(--encre);}
+.s-mut{font-family:var(--sans); font-size:11.5px; fill:var(--muet);}
+.s-x{stroke:var(--axe-x); fill:var(--axe-x);}
+.s-z{stroke:var(--axe-z); fill:var(--axe-z);}
+.s-pt{fill:var(--accent);}
+.s-arc{stroke:var(--accent); stroke-width:1.6; fill:none;}
+
+/* ---- badges de parametres ---- */
+.oblig,.opt{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.09em;
+  text-transform:uppercase; border-radius:2px; padding:1px 5px;
+  white-space:nowrap; font-weight:400;
+}
+.oblig{color:var(--faute); border:1px solid var(--faute);}
+.opt{color:var(--muet); border:1px solid var(--trait);}
+td .arg{font-family:var(--mono); font-size:12.5px; color:var(--encre); font-weight:600;}
+
+/* ---- exercices ---- */
+.exo{
+  background:var(--carte); border:1px solid var(--trait);
+  border-left:3px solid var(--accent); border-radius:5px;
+  padding:14px 18px 16px; margin:16px 0; max-width:70ch; box-shadow:var(--ombre);
+}
+.exo h4{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 8px; font-weight:400;
+}
+.exo p{margin:.35em 0;}
+.exo ol{margin:.4em 0; padding-left:1.15em;}
+
+/* ---- etapes numerotees ---- */
+ol.etapes{list-style:none; padding:0; counter-reset:e; max-width:68ch;}
+ol.etapes > li{
+  counter-increment:e; position:relative; padding-left:38px; margin:14px 0;
+}
+ol.etapes > li::before{
+  content:counter(e); position:absolute; left:0; top:1px;
+  font-family:var(--mono); font-size:12px; color:var(--accent);
+  border:1px solid var(--accent); border-radius:50%;
+  width:24px; height:24px; line-height:22px; text-align:center;
+}
+ol.etapes b{font-family:var(--sans); font-size:.97em;}
+/* ---- matrices homogenes ---- */
+.matrice{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  margin:16px 0; font-family:var(--mono); font-size:13px;
+}
+.matrice .etiq{font-style:italic; color:var(--encre2); font-size:14px;}
+.matrice .grille{
+  display:grid; grid-template-columns:repeat(4, minmax(0, auto));
+  gap:5px 20px; padding:10px 16px; position:relative;
+  font-variant-numeric:tabular-nums;
+}
+.matrice .grille::before,.matrice .grille::after{
+  content:""; position:absolute; top:0; bottom:0; width:8px;
+  border:2px solid var(--muet);
+}
+.matrice .grille::before{left:0; border-right:none;}
+.matrice .grille::after{right:0; border-left:none;}
+.matrice .grille span{text-align:right; white-space:nowrap; color:var(--encre2);}
+.matrice .grille span.pos{color:var(--accent); font-weight:700;}
+.matrice .grille span.bas{color:var(--muet);}
+.legende-mat{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin:-4px 0 18px; max-width:64ch;
+}
+@media (max-width:520px){
+  .matrice{font-size:11.5px; gap:8px;}
+  .matrice .grille{gap:4px 10px; padding:8px 12px;}
+}
+.paire{display:flex; flex-wrap:wrap; gap:4px 38px; align-items:center;}
+.paire .matrice{margin:10px 0;}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="une">
+  <p class="surtitre">Fiche 2 &nbsp;/&nbsp; Simulateur Dobot Magician</p>
+  <h1>Programmer le robot&nbsp;: exemples de programmation</h1>
+  <p class="chapeau">De quoi &eacute;crire votre premier programme et comprendre ce que
+  vous &eacute;crivez&nbsp;: le vocabulaire, la fabrication d'une cible, et chaque
+  param&egrave;tre de chaque commande avec son unit&eacute; et sa valeur par d&eacute;faut.
+  Aucune connaissance pr&eacute;alable du robot n'est suppos&eacute;e. La d&eacute;finition
+  compl&egrave;te de chaque commande est dans la
+  <a href="fiche_api.html">fiche&nbsp;3</a>.</p>
+  <p class="jeu-fiches">
+    <a href="fiche_interface.html">&larr; Fiche 1 &mdash; l'interface</a>
+    <span class="ici">Fiche 2 &mdash; exemples de programmation</span>
+    <a href="fiche_api.html">Fiche 3 &mdash; r&eacute;f&eacute;rence des commandes &rarr;</a>
+  </p>
+</header>
+
+<nav class="sommaire" aria-label="Sommaire">
+  <ol>
+    <li><a href="#vocabulaire">Le vocabulaire</a></li>
+    <li><a href="#premier">Premier programme</a></li>
+    <li><a href="#cible">Fabriquer une cible</a></li>
+    <li><a href="#mouvements">MOVJ, MOVL, MOVC</a></li>
+    <li><a href="#auxiliaires">Outil, attente, E/S</a></li>
+    <li><a href="#temps">R&eacute;gler la vitesse</a></li>
+    <li><a href="#lissage">Le lissage</a></li>
+    <li><a href="#outil">L'outil et le TCP</a></li>
+    <li><a href="#reperes">Travailler en rep&egrave;res</a></li>
+    <li><a href="#verifier">V&eacute;rifier avant de lancer</a></li>
+    <li><a href="#erreurs">Comprendre les erreurs</a></li>
+    <li><a href="#exercices">Exercices</a></li>
+    <li><a href="#memento">M&eacute;mento</a></li>
+  </ol>
+</nav>
+
+<!-- =============================================================== -->
+<section id="vocabulaire">
+  <h2><span class="num">Section 01</span>Le vocabulaire&nbsp;: sept mots &agrave; poser d'abord</h2>
+  <p class="intro">Programmer un robot, c'est lui dire <em>o&ugrave;</em> amener son outil,
+  <em>comment</em> y aller et <em>quoi</em> y faire. Les mots ci-dessous reviennent
+  dans toute la fiche et dans tous les messages du simulateur.</p>
+
+  <figure class="schema">
+    <svg viewBox="0 0 600 352" role="img" aria-labelledby="titre-schema">
+      <title id="titre-schema">Vue de c&ocirc;t&eacute; du Dobot&nbsp;: colonne, bras arri&egrave;re,
+      avant-bras, d&eacute;port du poignet, outil et TCP</title>
+
+      <line class="s-sol" x1="40" y1="300" x2="560" y2="300"/>
+      <text class="s-mut" x="556" y="316" text-anchor="end">plan de pose &nbsp;&mdash;&nbsp; z = 0</text>
+
+      <line class="s-pointille" x1="100" y1="189" x2="100" y2="124"/>
+      <line class="s-pointille" x1="154" y1="96" x2="236" y2="96"/>
+      <line class="s-pointille" x1="315" y1="126" x2="315" y2="322"/>
+      <line class="s-pointille" x1="100" y1="302" x2="100" y2="322"/>
+      <line class="s-pointille" x1="315" y1="176" x2="430" y2="176"/>
+
+      <path class="s-os" d="M100 300 L100 189"/>
+      <path class="s-os" d="M100 189 L154 96"/>
+      <path class="s-os" d="M154 96 L268 126"/>
+      <path class="s-os" d="M268 126 L315 126"/>
+      <path class="s-os" d="M315 126 L315 176" stroke-width="5"/>
+      <rect x="66" y="288" width="68" height="13" rx="3" fill="var(--trait)"/>
+
+      <circle class="s-pt" cx="100" cy="189" r="5"/>
+      <circle class="s-pt" cx="154" cy="96" r="5"/>
+      <circle class="s-pt" cx="268" cy="126" r="5"/>
+      <circle cx="315" cy="176" r="5.5" fill="var(--axe-x)"/>
+
+      <path class="s-arc" d="M100 151 A 38 38 0 0 1 119 156"/>
+      <text class="s-cle" x="92" y="144" text-anchor="end">J2</text>
+      <path class="s-arc" d="M190 96 A 36 36 0 0 1 189 105"/>
+      <text class="s-cle" x="196" y="88">J3</text>
+
+      <line class="s-cote" x1="70" y1="189" x2="70" y2="300"/>
+      <line class="s-cote" x1="64" y1="189" x2="76" y2="189"/>
+      <line class="s-cote" x1="64" y1="300" x2="76" y2="300"/>
+      <text class="s-txt" x="28" y="248">d1</text>
+      <text class="s-mut" x="14" y="262">139</text>
+
+      <text class="s-txt" x="136" y="156">l1</text>
+      <text class="s-mut" x="136" y="170">135</text>
+      <text class="s-txt" x="205" y="132">l2</text>
+      <text class="s-mut" x="205" y="146">147</text>
+      <text class="s-txt" x="291" y="100" text-anchor="middle">l3</text>
+      <text class="s-mut" x="291" y="114" text-anchor="middle">59,7</text>
+      <text class="s-txt" x="324" y="150">lt</text>
+      <text class="s-mut" x="324" y="164">outil</text>
+
+      <text class="s-mut" x="88" y="184" text-anchor="end">&eacute;paule</text>
+      <text class="s-mut" x="154" y="84" text-anchor="middle">coude</text>
+      <text class="s-mut" x="268" y="146" text-anchor="middle">poignet</text>
+
+      <text class="s-cle" x="438" y="180">TCP</text>
+      <text class="s-mut" x="438" y="195">la pointe de l'outil</text>
+      <line class="s-cote" x1="100" y1="318" x2="315" y2="318"/>
+      <line class="s-cote" x1="100" y1="313" x2="100" y2="323"/>
+      <line class="s-cote" x1="315" y1="313" x2="315" y2="323"/>
+      <text class="s-mut" x="207" y="337" text-anchor="middle">port&eacute;e horizontale du TCP</text>
+
+      <line class="s-z" x1="315" y1="186" x2="315" y2="228" stroke-width="2"/>
+      <path class="s-z" d="M315 236 l-5 -10 h10 z"/>
+      <text class="s-txt" x="326" y="222" fill="var(--axe-z)">z de l'outil</text>
+      <text class="s-mut" x="326" y="236">il pointe vers le BAS</text>
+
+      <line class="s-x" x1="100" y1="300" x2="146" y2="300" stroke-width="2"/>
+      <path class="s-x" d="M154 300 l-10 -5 v10 z"/>
+      <text class="s-txt" x="158" y="296" fill="var(--axe-x)">x</text>
+      <line class="s-z" x1="100" y1="300" x2="100" y2="262" stroke-width="2"/>
+      <path class="s-z" d="M100 254 l-5 10 h10 z"/>
+      <text class="s-txt" x="108" y="258" fill="var(--axe-z)">z</text>
+      <text class="s-mut" x="44" y="278">rep&egrave;re</text>
+      <text class="s-mut" x="44" y="291">de base</text>
+
+    </svg>
+    <figcaption>Le Magician vu de c&ocirc;t&eacute;, dans le plan du bras. <b>J1</b> ne se voit
+    pas ici&nbsp;: il fait tourner tout l'ensemble autour de la verticale, et <b>J4</b>
+    fait tourner l'outil sur lui-m&ecirc;me. <b>lt</b> d&eacute;pend de l'outil mont&eacute;&nbsp;:
+    c'est lui qui d&eacute;cide o&ugrave; se trouve le TCP.</figcaption>
+  </figure>
+
+  <div class="cadre"><table>
+    <tr><td>TCP</td>
+      <td><em>Tool Center Point</em>, le <strong>point caract&eacute;ristique de l'outil</strong>&nbsp;:
+      la cuvette de la ventouse, le bout du stylo, le milieu des doigts de la pince.
+      C'est <strong>ce point-l&agrave;</strong> que vos commandes d&eacute;placent. Quand vous
+      &eacute;crivez <code>z&nbsp;=&nbsp;25</code>, c'est le TCP qui se trouve &agrave; 25&nbsp;mm
+      au-dessus du plan de pose, pas la bride du robot.</td></tr>
+    <tr><td>Pose</td>
+      <td>la <strong>situation</strong> du TCP&nbsp;: sa position <em>et</em> son
+      orientation. Sur ce robot elle s'&eacute;crit avec quatre nombres,
+      <code>(x, y, z, r)</code>&nbsp;: trois millim&egrave;tres et un angle.</td></tr>
+    <tr><td>r</td>
+      <td>la rotation de l'outil autour de la verticale, en degr&eacute;s, avec
+      <code>r&nbsp;=&nbsp;J1&nbsp;+&nbsp;J4</code>. C'est une orientation
+      <strong>absolue</strong>&nbsp;: elle ne d&eacute;pend pas du chemin suivi pour arriver l&agrave;.</td></tr>
+    <tr><td>Rep&egrave;re de base</td>
+      <td>l'origine du monde pour le robot&nbsp;: au centre de l'embase, sur le plan
+      de pose. <span class="ax ax-x">x</span> vers l'avant,
+      <span class="ax ax-y">y</span> vers la gauche,
+      <span class="ax ax-z">z</span> vers le haut.</td></tr>
+    <tr><td>Cible</td>
+      <td>une pose o&ugrave; l'on veut amener le TCP. Dans un script, elle s'&eacute;crit sous
+      forme de <strong>matrice homog&egrave;ne 4&times;4</strong> &mdash; section&nbsp;3.</td></tr>
+    <tr><td>MGD</td>
+      <td><strong>Mod&egrave;le G&eacute;om&eacute;trique Direct</strong>&nbsp;: on donne les quatre angles,
+      il calcule o&ugrave; se trouve le TCP. Toujours possible, toujours une seule r&eacute;ponse.</td></tr>
+    <tr><td>MGI</td>
+      <td><strong>Mod&egrave;le G&eacute;om&eacute;trique Inverse</strong>&nbsp;: on donne la pose voulue du
+      TCP, il cherche les quatre angles. <strong>Peut &eacute;chouer</strong> &mdash; hors
+      d'atteinte, but&eacute;e franchie &mdash; et c'est l'origine de la plupart des messages
+      d'erreur que vous verrez.</td></tr>
+  </table></div>
+
+  <div class="note astuce">
+    <span class="etiquette">La distinction qui structure tout le reste</span>
+    <p><strong>Articulaire</strong> = on d&eacute;crit la <em>configuration du bras</em>&nbsp;:
+    les quatre angles J1, J2, J3, J4, en degr&eacute;s.
+    <strong>Cart&eacute;sien</strong> = on d&eacute;crit la <em>situation du TCP</em>&nbsp;: sa
+    position x, y, z en millim&egrave;tres, <strong>et son orientation Rz</strong> en
+    degr&eacute;s. Une situation, ce n'est jamais seulement un point.</p>
+    <p>La m&ecirc;me pose s'exprime dans les deux langues, et le robot passe de l'une &agrave;
+    l'autre avec le MGD et le MGI. Mais le <strong>chemin</strong> parcouru, lui,
+    n'est pas le m&ecirc;me&nbsp;: c'est toute la diff&eacute;rence entre MOVJ et MOVL
+    (section&nbsp;4).</p>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="premier">
+  <h2><span class="num">Section 02</span>Votre premier programme, ligne par ligne</h2>
+  <p class="intro">Six lignes utiles. Recopiez-les dans un fichier
+  <code>.py</code>, puis <kbd>F5</kbd> dans VS&nbsp;Code&nbsp;&mdash; ou menu
+  <span class="ui">Fichier</span> &rsaquo; <span class="ui">Ex&eacute;cuter un script
+  Python&hellip;</span> dans le simulateur.</p>
+
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> Pilote, cible          <span class="c"># 1</span>
+
+robot = Pilote(outil=<span class="k">"ventouse"</span>)              <span class="c"># 2</span>
+robot.repli()                                 <span class="c"># 3</span>
+robot.movj(cible(<span class="n">220</span>, <span class="n">0</span>, <span class="n">100</span>))                <span class="c"># 4</span>
+robot.movl(cible(<span class="n">220</span>, <span class="n">0</span>, <span class="n">20</span>))                 <span class="c"># 5</span>
+robot.ventouse(<span class="k">True</span>)                          <span class="c"># 6</span>
+robot.movl(cible(<span class="n">220</span>, <span class="n">0</span>, <span class="n">100</span>))                <span class="c"># 7</span>
+robot.repli()                                 <span class="c"># 8</span>
+
+robot.simuler()                               <span class="c"># 9</span></code></pre>
+
+  <ol class="etapes">
+    <li><b>On importe ce dont on se sert.</b> <code>Pilote</code> construit le
+      programme, <code>cible</code> fabrique les points.</li>
+    <li><b>On cr&eacute;e le pilote</b> en d&eacute;clarant l'outil mont&eacute;. C'est lui qui fixe la
+      position du TCP.</li>
+    <li><b>On part du repos.</b> Toujours commencer par l&agrave;&nbsp;: on sait d'o&ugrave; l'on part.</li>
+    <li><b>On approche par en haut</b>, en mouvement articulaire&nbsp;: rapide, et le
+      chemin exact n'a pas d'importance tant qu'on est loin de la pi&egrave;ce.</li>
+    <li><b>On descend en ligne droite</b> sur la pi&egrave;ce&nbsp;: l&agrave;, le chemin compte.</li>
+    <li><b>On aspire.</b></li>
+    <li><b>On remonte en ligne droite</b>, la pi&egrave;ce accroch&eacute;e.</li>
+    <li><b>On revient au repos.</b> Toujours finir par l&agrave;.</li>
+    <li><b>On ouvre le simulateur</b> avec ce programme charg&eacute;. <strong>Sans cette
+      ligne, rien ne s'affiche</strong>&nbsp;: le programme a &eacute;t&eacute; construit en m&eacute;moire,
+      puis jet&eacute;.</li>
+  </ol>
+
+  <div class="note astuce">
+    <span class="etiquette">La boucle de travail</span>
+    <p>Laissez le simulateur ouvert et gardez VS&nbsp;Code &agrave; c&ocirc;t&eacute;. &Agrave; chaque
+    <kbd>F5</kbd>, le programme est envoy&eacute; &agrave; la fen&ecirc;tre d&eacute;j&agrave; ouverte&nbsp;: elle
+    garde sa place &agrave; l'&eacute;cran, ses r&eacute;glages, et sa liaison avec le robot r&eacute;el.</p>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="cible">
+  <h2><span class="num">Section 03</span>Fabriquer une cible</h2>
+  <p class="intro">C'est le point de bascule du cours&nbsp;: on ne donne pas
+  &laquo;&nbsp;un point&nbsp;&raquo;, on donne une <strong>situation</strong>. Et une
+  situation s'&eacute;crit en matrice homog&egrave;ne 4&times;4.</p>
+
+  <h3>La fonction <code>cible()</code></h3>
+  <div class="cadre"><table>
+    <caption><code>cible(x, y, z, rz, repere=None)</code> &rarr; matrice 4&times;4</caption>
+    <tr><th>Param&egrave;tre</th><th>R&ocirc;le</th><th>Unit&eacute;</th><th>D&eacute;faut</th></tr>
+    <tr><td><span class="arg">x</span></td><td>vers l'avant du robot</td><td>mm</td><td class="num">0</td></tr>
+    <tr><td><span class="arg">y</span></td><td>vers la gauche du robot</td><td>mm</td><td class="num">0</td></tr>
+    <tr><td><span class="arg">z</span></td><td>hauteur du TCP au-dessus du plan de pose</td><td>mm</td><td class="num">0</td></tr>
+    <tr><td><span class="arg">rz</span></td><td>orientation de l'outil autour de la verticale</td>
+      <td><strong>degr&eacute;s</strong></td><td class="num">0</td></tr>
+    <tr><td><span class="arg">repere</span></td><td>rep&egrave;re dans lequel x, y, z, rz sont lus
+      (section&nbsp;9)</td><td>matrice</td><td>base</td></tr>
+  </table></div>
+
+<pre><code>PRISE  = cible(<span class="n">220</span>, <span class="n">-60</span>, <span class="n">25</span>)              <span class="c"># une position</span>
+DEPOSE = cible(<span class="n">220</span>, <span class="n">60</span>, <span class="n">25</span>, rz=<span class="n">45</span>)       <span class="c"># + l'outil tourne de 45 deg</span></code></pre>
+  <p>Ces deux lignes ne rangent pas des coordonn&eacute;es&nbsp;: chacune construit une
+  <strong>matrice homog&egrave;ne 4&times;4</strong>. C'est sous cette forme, et sous elle
+  seule, qu'une cible existe dans le programme&nbsp;; l'&eacute;criture
+  <code>cible(220, -60, 25)</code> n'en est que la fabrique.</p>
+
+  <div class="paire">
+    <div class="matrice">
+      <span class="etiq">PRISE&nbsp;=</span>
+      <div class="grille">
+        <span>1</span><span>0</span><span>0</span><span class="pos">220</span>
+        <span>0</span><span>&minus;1</span><span>0</span><span class="pos">&minus;60</span>
+        <span>0</span><span>0</span><span>&minus;1</span><span class="pos">25</span>
+        <span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span>
+      </div>
+    </div>
+    <div class="matrice">
+      <span class="etiq">DEPOSE&nbsp;=</span>
+      <div class="grille">
+        <span>0,7071</span><span>0,7071</span><span>0</span><span class="pos">220</span>
+        <span>0,7071</span><span>&minus;0,7071</span><span>0</span><span class="pos">60</span>
+        <span>0</span><span>0</span><span>&minus;1</span><span class="pos">25</span>
+        <span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span>
+      </div>
+    </div>
+  </div>
+  <p class="legende-mat">La sous-matrice 3&times;3 est la <strong>rotation</strong>, la
+  derni&egrave;re colonne la <strong>position</strong> en millim&egrave;tres. Dans PRISE,
+  <code>rz&nbsp;=&nbsp;0</code> laisse la rotation &eacute;l&eacute;mentaire&nbsp;; dans DEPOSE,
+  les 0,7071 sont le cosinus et le sinus des 45&deg;. Les deux ont la m&ecirc;me
+  troisi&egrave;me colonne (0,&nbsp;0,&nbsp;&minus;1)&nbsp;: l'axe de l'outil, dirig&eacute; vers
+  le bas.</p>
+
+  <div class="note attention">
+    <span class="etiquette">R&egrave;gle &agrave; respecter en TP</span>
+    <p><strong>Les cibles et les rep&egrave;res s'&eacute;crivent sous forme de matrice homog&egrave;ne
+    4&times;4</strong>, et c'est sous cette forme qu'on les donne dans un compte
+    rendu. Un quadruplet <code>(x, y, z, rz)</code> est une abr&eacute;viation commode,
+    pas une r&eacute;ponse&nbsp;: il ne dit rien de l'orientation tant qu'on n'a pas
+    rappel&eacute; la convention qui le compl&egrave;te.</p>
+    <p>Pour afficher la matrice d'une cible dans un script&nbsp;:</p>
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> homogeneous <span class="k">as</span> hg
+print(hg.formater(PRISE, titre=<span class="k">"PRISE"</span>))</code></pre>
+    <p>Le panneau <span class="ui">Matrices homog&egrave;nes</span> du simulateur les
+    affiche aussi, remises &agrave; jour &agrave; chaque mouvement.</p>
+  </div>
+
+  <p>Ce que la fonction construit, c'est le produit de trois transformations&nbsp;:</p>
+<pre><code>cible(x, y, z, rz)  =  Trans(x, y, z) &middot; Rz(rz) &middot; Rx(180&deg;)</code></pre>
+  <p>Une fois d&eacute;velopp&eacute;, ce produit est la matrice homog&egrave;ne 4&times;4 sous laquelle
+  toute cible est en r&eacute;alit&eacute; &eacute;crite&nbsp;:</p>
+  <div class="matrice">
+    <span class="etiq">T&nbsp;=</span>
+    <div class="grille">
+      <span>cos&nbsp;rz</span><span>sin&nbsp;rz</span><span>0</span><span class="pos">x</span>
+      <span>sin&nbsp;rz</span><span>&minus;cos&nbsp;rz</span><span>0</span><span class="pos">y</span>
+      <span>0</span><span>0</span><span>&minus;1</span><span class="pos">z</span>
+      <span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span>
+    </div>
+  </div>
+  <p class="legende-mat">C'est la forme g&eacute;n&eacute;rale des deux matrices ci-dessus&nbsp;:
+  on y retrouve PRISE en posant <code>rz&nbsp;=&nbsp;0</code>, et DEPOSE en posant
+  <code>rz&nbsp;=&nbsp;45&deg;</code>.</p>
+  <p>Le <code>Rx(180&deg;)</code> retourne l'axe z&nbsp;: <strong>celui de l'outil pointe
+  vers le bas</strong>, comme sur le sch&eacute;ma de la section&nbsp;1. C'est la direction
+  d'approche de la pi&egrave;ce, et c'est la seule orientation que ce robot sache
+  prendre.</p>
+
+  <h3>Se d&eacute;gager au-dessus d'un point</h3>
+  <p>Une fois la cible fabriqu&eacute;e, on la compose avec une translation pour obtenir
+  un point voisin. Le symbole <code>@</code>, en Python, est le
+  <strong>produit matriciel</strong>.</p>
+
+  <figure class="schema">
+    <svg viewBox="0 0 580 250" role="img" aria-labelledby="titre-degagement">
+      <title id="titre-degagement">Un d&eacute;gagement vers le haut s'&eacute;crit avec un z
+      n&eacute;gatif, parce que l'axe z de l'outil pointe vers le bas</title>
+
+      <rect x="120" y="205" width="148" height="12" rx="2" fill="var(--trait)"/>
+      <text class="s-mut" x="126" y="234">plan de travail</text>
+
+      <line class="s-pointille" x1="255" y1="40" x2="255" y2="196"/>
+      <line class="s-z" x1="255" y1="196" x2="255" y2="188" stroke-width="2"/>
+
+      <circle cx="255" cy="205" r="6" fill="var(--axe-x)"/>
+      <text class="s-cle" x="274" y="203">PRISE</text>
+      <text class="s-mut" x="274" y="218">cible(220, -60, 25)</text>
+
+      <circle class="s-pt" cx="255" cy="105" r="6"/>
+      <text class="s-cle" x="274" y="103">PRISE @ HAUT</text>
+      <text class="s-mut" x="274" y="118">85 mm plus haut</text>
+
+      <line class="s-cote" x1="190" y1="105" x2="190" y2="205"/>
+      <line class="s-cote" x1="184" y1="105" x2="196" y2="105"/>
+      <line class="s-cote" x1="184" y1="205" x2="196" y2="205"/>
+      <text class="s-txt" x="126" y="152">85 mm</text>
+
+      <line class="s-z" x1="415" y1="60" x2="415" y2="182" stroke-width="2"/>
+      <path class="s-z" d="M415 192 l-6 -12 h12 z"/>
+      <text class="s-txt" x="428" y="120" fill="var(--axe-z)">z de l'outil</text>
+      <text class="s-mut" x="428" y="135">croissant vers le BAS</text>
+      <text class="s-mut" x="400" y="160" text-anchor="end">&minus;85</text>
+      <line class="s-cote" x1="404" y1="105" x2="426" y2="105"/>
+      <line class="s-cote" x1="404" y1="205" x2="426" y2="205"/>
+    </svg>
+    <figcaption>Monter de 85&nbsp;mm, c'est reculer de 85&nbsp;mm <em>le long de l'axe
+    de l'outil</em>&nbsp;: <code>translation(0, 0, -85)</code>. Le signe surprend une
+    fois, puis devient naturel.</figcaption>
+  </figure>
+
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> homogeneous <span class="k">as</span> hg
+
+HAUT = hg.translation(<span class="n">0</span>, <span class="n">0</span>, <span class="n">-85</span>)      <span class="c"># 85 mm le long de l'axe outil</span>
+
+robot.movj(PRISE @ HAUT)             <span class="c"># au-dessus de la piece</span>
+robot.movl(PRISE)                    <span class="c"># on descend dessus</span></code></pre>
+
+  <div class="note piege">
+    <span class="etiquette">Pi&egrave;ge classique&nbsp;: la rotation</span>
+    <p>Comme l'axe z de l'outil pointe vers le bas, <strong>post-multiplier par
+    <code>rot_z(a)</code> fait tourner de &minus;a vu de la base</strong>. Pour fixer
+    l'orientation, utilisez toujours l'argument <code>rz</code> de
+    <code>cible()</code>, jamais <code>T @ hg.rot_z(&hellip;)</code>.</p>
+    <p>Autre pi&egrave;ge d'unit&eacute;&nbsp;: <code>cible()</code> et <code>repere_travail()</code>
+    prennent les angles en <strong>degr&eacute;s</strong>, les fonctions <code>rot_x</code>,
+    <code>rot_y</code>, <code>rot_z</code> en <strong>radians</strong>.</p>
+  </div>
+
+  <h3>Les autres fa&ccedil;ons de d&eacute;signer une cible</h3>
+  <p>Une commande de mouvement accepte quatre &eacute;critures. La premi&egrave;re est celle
+  qu'on privil&eacute;gie&nbsp;; les autres d&eacute;pannent.</p>
+  <div class="cadre"><table>
+    <tr><td class="libre"><code>robot.movl(T)</code></td>
+      <td>une matrice 4&times;4 &mdash; <strong>la forme recommand&eacute;e</strong>. C'est la seule
+      qui se compose, se stocke dans une variable et se r&eacute;utilise.</td></tr>
+    <tr><td class="libre"><code>robot.movl(x=220, y=-60, z=25)</code></td>
+      <td>coordonn&eacute;es directes, pratiques pour un essai rapide.</td></tr>
+    <tr><td class="libre"><code>robot.movl(T, z=40)</code></td>
+      <td>une matrice, avec <strong>une composante forc&eacute;e</strong>&nbsp;: tout PRISE,
+      mais &agrave; 40&nbsp;mm de haut.</td></tr>
+    <tr><td class="libre"><code>robot.movl(z=25)</code></td>
+      <td>les composantes omises <strong>gardent la valeur de l'instruction
+      pr&eacute;c&eacute;dente</strong>&nbsp;: c'est une descente &agrave; la verticale, sans recalculer
+      x et y.</td></tr>
+  </table></div>
+
+  <div class="note attention">
+    <span class="etiquette">&laquo;&nbsp;cible() n'en re&ccedil;oit pas une&nbsp;&raquo;</span>
+    <p>Une matrice homog&egrave;ne <strong>est d&eacute;j&agrave;</strong> une cible&nbsp;: elle se donne
+    directement &agrave; <code>movj</code> ou <code>movl</code>. Passer une matrice &agrave;
+    <code>cible()</code>, qui sert &agrave; en <em>construire</em> une, l&egrave;ve une erreur
+    explicite. Pour exprimer une matrice dans un rep&egrave;re, pr&eacute;-multipliez-la&nbsp;:
+    <code>REPERE @ T</code>.</p>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="mouvements">
+  <h2><span class="num">Section 04</span>Les trois mouvements et leurs param&egrave;tres</h2>
+  <p class="intro">Trois commandes, les m&ecirc;mes param&egrave;tres pour les trois. Seule la
+  <strong>fa&ccedil;on d'aller</strong> &agrave; la cible change &mdash; et les unit&eacute;s qui vont avec.</p>
+
+  <h3>Laquelle choisir&nbsp;?</h3>
+  <div class="cadre"><table>
+    <tr><th>Commande</th><th>Chemin du TCP</th><th>Unit&eacute;s</th><th>Quand l'utiliser</th></tr>
+    <tr><td>MOVJ</td>
+      <td>les <strong>angles</strong> sont interpol&eacute;s&nbsp;: le TCP d&eacute;crit une courbe,
+      non pr&eacute;visible &agrave; l'&oelig;il</td><td>deg/s</td>
+      <td><strong>Aller quelque part.</strong> Les grands d&eacute;placements &agrave; vide&nbsp;:
+      rapide, doux pour la m&eacute;canique, jamais hors d'atteinte en cours de route.</td></tr>
+    <tr><td>MOVL</td>
+      <td>le TCP suit une <strong>ligne droite</strong></td><td>mm/s</td>
+      <td><strong>Faire quelque chose.</strong> Approcher, descendre sur une pi&egrave;ce,
+      remonter, suivre une ar&ecirc;te.</td></tr>
+    <tr><td>MOVC</td>
+      <td>le TCP suit un <strong>arc de cercle</strong> passant par un point
+      interm&eacute;diaire</td><td>mm/s</td>
+      <td>Contourner un obstacle, tracer un cong&eacute;, &eacute;viter un point de passage
+      anguleux.</td></tr>
+  </table></div>
+
+  <h3>Les param&egrave;tres, un par un</h3>
+  <p>Ils sont identiques pour <code>movj</code>, <code>movl</code> et
+  <code>movc</code>. <strong>Tous sont facultatifs sauf la cible</strong>&nbsp;: ce que
+  vous ne pr&eacute;cisez pas prend la valeur par d&eacute;faut du pilote.</p>
+
+  <div class="cadre"><table>
+    <caption><code>robot.movl(T, x=, y=, z=, r=, repere=, duree=, vitesse=, acceleration=, lissage=, profil=, commentaire=)</code></caption>
+    <tr><th>Param&egrave;tre</th><th></th><th>R&ocirc;le</th><th>Unit&eacute;</th><th>D&eacute;faut</th></tr>
+    <tr><td><span class="arg">T</span></td><td><span class="oblig">cible</span></td>
+      <td>la cible&nbsp;: matrice 4&times;4, ou 3 &agrave; 4 coordonn&eacute;es. C'est le seul
+      param&egrave;tre <em>positionnel</em>&nbsp;: il se donne sans nom, en premier.</td>
+      <td>mm</td><td>&mdash;</td></tr>
+    <tr><td><span class="arg">x y z r</span></td><td><span class="opt">option</span></td>
+      <td>surchargent la cible composante par composante&nbsp;; celles qu'on omet
+      gardent la valeur pr&eacute;c&eacute;dente.</td><td>mm, deg</td><td>inchang&eacute;</td></tr>
+    <tr><td><span class="arg">repere</span></td><td><span class="opt">option</span></td>
+      <td><code>"base"</code> ou <code>"objet"</code>&nbsp;: dans quel rep&egrave;re les
+      coordonn&eacute;es sont lues (section&nbsp;9).</td><td>texte</td><td><code>"base"</code></td></tr>
+    <tr><td><span class="arg">vitesse</span></td><td><span class="opt">option</span></td>
+      <td>vitesse maximale du mouvement.</td>
+      <td>mm/s (MOVL, MOVC)<br>deg/s (MOVJ)</td>
+      <td class="num">120<br>90</td></tr>
+    <tr><td><span class="arg">acceleration</span></td><td><span class="opt">option</span></td>
+      <td>acc&eacute;l&eacute;ration maximale.</td>
+      <td>mm/s&sup2;<br>deg/s&sup2;</td><td class="num">500<br>300</td></tr>
+    <tr><td><span class="arg">duree</span></td><td><span class="opt">option</span></td>
+      <td>dur&eacute;e impos&eacute;e. <strong>La donner change le mode</strong>&nbsp;: la vitesse
+      n'est alors plus calcul&eacute;e (section&nbsp;6).</td><td>s</td><td>non impos&eacute;e</td></tr>
+    <tr><td><span class="arg">lissage</span></td><td><span class="opt">option</span></td>
+      <td>arrondi du raccord avec l'instruction <em>suivante</em> (section&nbsp;7).</td>
+      <td>%</td><td class="num">0</td></tr>
+    <tr><td><span class="arg">profil</span></td><td><span class="opt">option</span></td>
+      <td>loi horaire&nbsp;: <code>"lineaire"</code>, <code>"trapeze"</code>,
+      <code>"polynome5"</code>, <code>"sinus"</code>.</td><td>texte</td>
+      <td><code>"polynome5"</code></td></tr>
+    <tr><td><span class="arg">commentaire</span></td><td><span class="opt">option</span></td>
+      <td>texte affich&eacute; sur la ligne dans le simulateur. <strong>Mettez-en</strong>&nbsp;:
+      c'est ce qu'on relit trois semaines plus tard.</td><td>texte</td><td>vide</td></tr>
+  </table></div>
+
+  <p>Deux param&egrave;tres en plus, un par commande&nbsp;:</p>
+  <div class="cadre"><table>
+    <tr><td><span class="arg">q</span> &mdash; <code>movj</code> seulement</td>
+      <td><span class="oblig">au choix</span></td>
+      <td>une configuration articulaire impos&eacute;e, <code>[J1, J2, J3, J4]</code> en
+      degr&eacute;s. On court-circuite le MGI&nbsp;: aucune cible cart&eacute;sienne n'est
+      calcul&eacute;e.<br><code>robot.movj(q=[0, 15, 30, 0])</code></td></tr>
+    <tr><td><span class="arg">via</span> &mdash; <code>movc</code> seulement</td>
+      <td><span class="oblig">obligatoire</span></td>
+      <td>le point de passage de l'arc, m&ecirc;mes &eacute;critures que la cible. Trois points
+      d&eacute;finissent l'arc&nbsp;: <strong>o&ugrave; l'on est</strong>, <code>via</code>, et la
+      cible.<br><code>robot.movc(via=cible(265, 0, 130), T=DEPOSE)</code></td></tr>
+  </table></div>
+
+  <h3>Le m&ecirc;me d&eacute;placement, &eacute;crit de plus en plus pr&eacute;cis&eacute;ment</h3>
+<pre><code>robot.movl(PRISE)                                  <span class="c"># tout par defaut</span>
+robot.movl(PRISE, vitesse=<span class="n">40</span>)                      <span class="c"># descente lente</span>
+robot.movl(PRISE, vitesse=<span class="n">40</span>, acceleration=<span class="n">150</span>)    <span class="c"># + douce</span>
+robot.movl(PRISE, duree=<span class="n">3.0</span>)                        <span class="c"># exactement 3 secondes</span>
+robot.movl(PRISE, vitesse=<span class="n">40</span>, commentaire=<span class="k">"prise piece"</span>)</code></pre>
+
+  <h3><code>repli()</code>, le raccourci du repos</h3>
+  <p><code>robot.repli()</code> est un MOVJ vers la configuration de repos
+  <code>(0, 15, 30, 0)&nbsp;&deg;</code>. Il accepte les m&ecirc;mes param&egrave;tres que
+  <code>movj</code>. C'est la bonne premi&egrave;re et la bonne derni&egrave;re ligne d'un
+  programme&nbsp;: on part d'un &eacute;tat connu, on y revient.</p>
+
+  <div class="note attention">
+    <span class="etiquette">Le MOVL trop long</span>
+    <p>Un MOVL entre deux points &eacute;loign&eacute;s force le TCP &agrave; suivre une droite que le
+    bras ne sait pas parcourir sur toute sa longueur&nbsp;: les deux extr&eacute;mit&eacute;s sont
+    atteignables, mais pas le milieu. C'est la cause num&eacute;ro un des
+    &laquo;&nbsp;point hors d'atteinte&nbsp;&raquo; en cours de segment. Le rem&egrave;de&nbsp;:
+    un MOVJ, ou bien couper le trajet en deux.</p>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="auxiliaires">
+  <h2><span class="num">Section 05</span>Actionner l'outil, attendre, dialoguer</h2>
+  <p class="intro">Un programme ne fait pas que se d&eacute;placer. Ces quatre commandes
+  n'ont pas de cible&nbsp;: elles agissent sur place.</p>
+
+  <div class="cadre"><table>
+    <tr><th>Commande</th><th>Param&egrave;tres</th><th>Ce qu'elle fait</th></tr>
+    <tr><td class="libre"><code>actionner(actif)</code><br><code>ventouse(actif)</code><br><code>pince(fermee)</code></td>
+      <td><span class="arg">actif</span> &mdash; <code>True</code> / <code>False</code>,
+        d&eacute;faut <code>True</code></td>
+      <td>Commande l'outil mont&eacute;&nbsp;: aspiration de la ventouse, fermeture de la
+      pince, allumage du laser. Les trois noms font la m&ecirc;me chose&nbsp;;
+      <code>ventouse()</code> et <code>pince()</code> existent pour que le script se
+      lise tout seul. Sans effet sur un outil passif comme le porte-stylo.</td></tr>
+    <tr><td class="libre"><code>attendre(secondes)</code></td>
+      <td><span class="arg">secondes</span> <span class="oblig">obligatoire</span><br>
+        <span class="arg">commentaire</span> <span class="opt">option</span></td>
+      <td>Temporisation. <strong>Une attente n'est jamais absorb&eacute;e par le
+      lissage</strong>&nbsp;: c'est la fa&ccedil;on s&ucirc;re de garantir un arr&ecirc;t complet, le
+      temps que la ventouse fasse le vide.</td></tr>
+    <tr><td class="libre"><code>sortie(port, etat)</code></td>
+      <td><span class="arg">port</span> 1 &agrave; 20 <span class="oblig">obligatoire</span><br>
+        <span class="arg">etat</span> d&eacute;faut <code>True</code></td>
+      <td>Met la sortie EIO<em>port</em> &agrave; l'&eacute;tat demand&eacute;&nbsp;: un voyant, un v&eacute;rin,
+      un convoyeur.</td></tr>
+    <tr><td class="libre"><code>attendre_entree(port, etat, timeout)</code></td>
+      <td><span class="arg">port</span> 1 &agrave; 20 <span class="oblig">obligatoire</span><br>
+        <span class="arg">etat</span> d&eacute;faut <code>True</code><br>
+        <span class="arg">timeout</span> d&eacute;faut <code class="num">10.0</code>&nbsp;s</td>
+      <td>Suspend le programme jusqu'&agrave; ce que l'entr&eacute;e EIO<em>port</em> prenne
+      l'&eacute;tat demand&eacute;, au plus pendant <code>timeout</code> secondes. Dans le
+      simulateur, c'est <strong>vous</strong> qui basculez l'entr&eacute;e depuis le panneau
+      <span class="ui">Entr&eacute;es / Sorties</span>.</td></tr>
+  </table></div>
+
+<pre><code>robot.sortie(<span class="n">3</span>, <span class="k">True</span>, commentaire=<span class="k">"voyant cycle en cours"</span>)
+robot.attendre_entree(<span class="n">11</span>, <span class="k">True</span>, timeout=<span class="n">5</span>,
+                      commentaire=<span class="k">"la piece est-elle presente ?"</span>)
+robot.movl(PRISE)
+robot.ventouse(<span class="k">True</span>)
+robot.attendre(<span class="n">0.3</span>)                 <span class="c"># le temps que le vide se fasse</span>
+robot.sortie(<span class="n">3</span>, <span class="k">False</span>)</code></pre>
+
+  <div class="note piege">
+    <span class="etiquette">La ventouse n'est pas une sortie</span>
+    <p>V&eacute;rifi&eacute; sur machine&nbsp;: ventouse, pince et laser <strong>ne sont pas c&acirc;bl&eacute;s
+    sur les ports EIO</strong>. <code>robot.sortie(1, True)</code> n'actionnera jamais
+    la ventouse&nbsp;: elle a son propre circuit, et c'est
+    <code>robot.ventouse(True)</code> qui la commande. Les ports EIO servent aux
+    p&eacute;riph&eacute;riques de la cellule.</p>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="temps">
+  <h2><span class="num">Section 06</span>R&eacute;gler la vitesse&nbsp;: deux modes, deux jeux d'unit&eacute;s</h2>
+
+  <h3>Mode &laquo;&nbsp;vitesse&nbsp;&raquo; ou mode &laquo;&nbsp;dur&eacute;e&nbsp;&raquo;</h3>
+  <p class="intro">La r&egrave;gle tient en une phrase&nbsp;:
+  <strong>si vous donnez <code>duree</code>, la dur&eacute;e est impos&eacute;e&nbsp;; sinon, elle
+  est calcul&eacute;e &agrave; partir de la vitesse et de la longueur du chemin.</strong></p>
+  <div class="cadre"><table>
+    <tr><td class="libre">mode <em>vitesse</em><br><span class="opt">par d&eacute;faut</span></td>
+      <td>On donne <code>vitesse</code> et <code>acceleration</code>&nbsp;; le
+      simulateur mesure le chemin et en d&eacute;duit le temps. <strong>C'est le mode &agrave;
+      utiliser</strong> d&egrave;s qu'on se soucie de la vitesse r&eacute;elle de l'outil &mdash; donc
+      presque toujours.</td></tr>
+    <tr><td class="libre">mode <em>dur&eacute;e</em></td>
+      <td>On donne <code>duree</code>&nbsp;; elle est respect&eacute;e telle quelle, quelle
+      que soit la distance. Pratique pour synchroniser deux choses, dangereux sur un
+      long segment&nbsp;: 500&nbsp;mm en 0,5&nbsp;s, c'est 1&nbsp;m/s.</td></tr>
+  </table></div>
+
+  <div class="note attention">
+    <span class="etiquette">140 mm/s et 140 deg/s n'ont rien de comparable</span>
+    <p>L'unit&eacute; d&eacute;pend du <strong>type de mouvement</strong>, pas de la fa&ccedil;on dont la
+    cible est &eacute;crite&nbsp;: un MOVJ interpole des angles m&ecirc;me si sa cible est donn&eacute;e
+    en millim&egrave;tres, sa vitesse est donc en degr&eacute;s par seconde. D'o&ugrave; les deux jeux
+    de param&egrave;tres s&eacute;par&eacute;s dans le constructeur.</p>
+  </div>
+
+  <h3>Fixer les valeurs par d&eacute;faut une fois pour toutes</h3>
+<pre><code>robot = Pilote(vitesse=<span class="n">120</span>, acceleration=<span class="n">500</span>,          <span class="c"># MOVL et MOVC : mm/s</span>
+               vitesse_articulaire=<span class="n">60</span>,                <span class="c"># MOVJ : deg/s</span>
+               acceleration_articulaire=<span class="n">200</span>)
+
+robot.regler(vitesse=<span class="n">40</span>)          <span class="c"># change les defauts pour la SUITE</span></code></pre>
+  <div class="cadre"><table>
+    <tr><th>Param&egrave;tre du constructeur</th><th>S'applique &agrave;</th><th>Unit&eacute;</th><th>D&eacute;faut</th></tr>
+    <tr><td><span class="arg">vitesse</span></td><td>MOVL, MOVC</td><td>mm/s</td><td class="num">120</td></tr>
+    <tr><td><span class="arg">acceleration</span></td><td>MOVL, MOVC</td><td>mm/s&sup2;</td><td class="num">500</td></tr>
+    <tr><td><span class="arg">vitesse_articulaire</span></td><td>MOVJ</td><td>deg/s</td><td class="num">90</td></tr>
+    <tr><td><span class="arg">acceleration_articulaire</span></td><td>MOVJ</td><td>deg/s&sup2;</td><td class="num">300</td></tr>
+    <tr><td><span class="arg">lissage</span></td><td>toutes</td><td>%</td><td class="num">0</td></tr>
+    <tr><td><span class="arg">profil</span></td><td>toutes</td><td>&mdash;</td><td><code>"polynome5"</code></td></tr>
+    <tr><td><span class="arg">outil</span></td><td>tout le programme</td><td>&mdash;</td><td><code>"ventouse"</code></td></tr>
+    <tr><td><span class="arg">nom</span></td><td>titre affich&eacute;</td><td>&mdash;</td><td><code>"script"</code></td></tr>
+  </table></div>
+  <p>Trois niveaux, du plus g&eacute;n&eacute;ral au plus pr&eacute;cis&nbsp;: le <strong>constructeur</strong>
+  fixe les d&eacute;fauts, <code>regler()</code> les change en cours de route, et chaque
+  instruction peut red&eacute;finir les siens.</p>
+
+  <h3>Les quatre profils</h3>
+  <div class="cadre"><table>
+    <tr><td><code>"lineaire"</code></td><td>vitesse constante&nbsp;: d&eacute;marrage et arr&ecirc;t
+      brutaux. P&eacute;dagogique, inutilisable en pratique.</td></tr>
+    <tr><td><code>"trapeze"</code></td><td>acc&eacute;l&eacute;ration constante, palier de vitesse,
+      d&eacute;c&eacute;l&eacute;ration. Le profil classique des commandes num&eacute;riques.</td></tr>
+    <tr><td><code>"polynome5"</code></td><td><strong>par d&eacute;faut</strong>&nbsp;: vitesse
+      <em>et</em> acc&eacute;l&eacute;ration nulles aux deux extr&eacute;mit&eacute;s. Le plus doux pour la
+      m&eacute;canique.</td></tr>
+    <tr><td><code>"sinus"</code></td><td>loi en sinuso&iuml;de&nbsp;: interm&eacute;diaire, utile
+      pour comparer.</td></tr>
+  </table></div>
+  <p>Ouvrez le panneau <span class="ui">Courbes</span> et changez de profil&nbsp;: la
+  diff&eacute;rence se voit imm&eacute;diatement sur la vitesse du TCP. C'est l&agrave; que l'exercice
+  se fait.</p>
+</section>
+
+<!-- =============================================================== -->
+<section id="lissage">
+  <h2><span class="num">Section 07</span>Le lissage</h2>
+  <p class="intro">Par d&eacute;faut, le robot <strong>s'arr&ecirc;te &agrave; chaque point</strong>. Le
+  lissage arrondit le raccord avec l'instruction suivante&nbsp;: 0&nbsp;% = point
+  d'arr&ecirc;t exact, 100&nbsp;% = recouvrement maximal.</p>
+  <p>Il fait gagner du temps de cycle, mais il a un prix&nbsp;: <strong>le point de
+  passage n'est alors plus atteint exactement</strong>. D'o&ugrave; la r&egrave;gle&nbsp;: on lisse
+  les points de d&eacute;gagement, jamais un point de prise ou de d&eacute;pose.</p>
+<pre><code>robot.movl(PRISE)                      <span class="c"># EXACT : on prend la piece</span>
+robot.ventouse(<span class="k">True</span>)
+robot.attendre(<span class="n">0.3</span>)                   <span class="c"># jamais absorbee par le lissage</span>
+robot.movl(PRISE @ HAUT, lissage=<span class="n">60</span>)   <span class="c"># degagement : on peut arrondir</span>
+robot.movj(DEPOSE @ HAUT, lissage=<span class="n">60</span>)  <span class="c"># transfert : idem</span>
+robot.movl(DEPOSE)                     <span class="c"># EXACT : on depose</span></code></pre>
+  <p><code>robot.resume()</code> annonce le temps gagn&eacute; par le lissage sur l'ensemble
+  du programme&nbsp;: c'est la mesure qui justifie le r&eacute;glage.</p>
+</section>
+
+<!-- =============================================================== -->
+<section id="outil">
+  <h2><span class="num">Section 08</span>L'outil d&eacute;cide o&ugrave; se trouve le TCP</h2>
+  <p class="intro">L'outil vaut pour <strong>tout le programme</strong>, comme sur la
+  machine. On le d&eacute;clare avant les mouvements.</p>
+
+  <div class="cadre"><table>
+    <caption>Catalogue &mdash; longueurs nominales</caption>
+    <tr><th>Nom</th><th>Longueur</th><th>Commandable&nbsp;?</th></tr>
+    <tr><td><code>"aucun"</code></td><td class="num">0 mm</td><td>non &mdash; z d&eacute;signe l'axe du poignet</td></tr>
+    <tr><td><code>"ventouse"</code></td><td class="num">62 mm</td><td>oui &mdash; aspiration</td></tr>
+    <tr><td><code>"pince"</code></td><td class="num">78 mm</td><td>oui &mdash; ouverture 26&nbsp;mm</td></tr>
+    <tr><td><code>"stylo"</code></td><td class="num">70 mm</td><td>non &mdash; aucun actionneur</td></tr>
+    <tr><td><code>"laser"</code></td><td class="num">56 mm</td><td>oui &mdash; attention au rayonnement</td></tr>
+  </table></div>
+
+<pre><code>robot = Pilote(outil=<span class="k">"ventouse"</span>)        <span class="c"># au depart</span>
+robot.monter_outil(<span class="k">"pince"</span>)             <span class="c"># ou en cours de script</span>
+robot.regler_longueur_outil(<span class="n">79.3</span>)      <span class="c"># valeur MESUREE sur la machine</span></code></pre>
+
+  <p>La longueur devient le d&eacute;port <code>lt</code> du mod&egrave;le g&eacute;om&eacute;trique
+  (voir le sch&eacute;ma de la section&nbsp;1). &Agrave; partir de l&agrave;, <strong>la coordonn&eacute;e z
+  d&eacute;signe la pointe de l'outil</strong> et non plus la bride. Changer d'outil change
+  donc le MGI, et l'enveloppe de travail avec lui.</p>
+
+  <div class="note attention">
+    <span class="etiquette">L'ordre compte</span>
+    <p><code>regler_longueur_outil()</code> s'appelle <strong>apr&egrave;s</strong>
+    <code>monter_outil()</code>, qui remet la valeur du catalogue et effacerait la
+    v&ocirc;tre.</p>
+  </div>
+
+  <h3>Mesurer la longueur r&eacute;elle de votre outil</h3>
+  <p>Les valeurs du catalogue sont <strong>nominales</strong>. Un montage r&eacute;el s'en
+  &eacute;carte souvent&nbsp;: cuvette diff&eacute;rente, rallonge, embase imprim&eacute;e. Sur la
+  machine du labo, la ventouse mesure <strong>79,3&nbsp;mm</strong> et non 62. Une
+  erreur de longueur se paie int&eacute;gralement sur z&nbsp;: le robot descend trop bas,
+  ou pas assez.</p>
+  <ol class="etapes">
+    <li><b>Amenez la pointe au contact</b> du plan de travail.</li>
+    <li><b>Lisez le z</b> annonc&eacute; par le mod&egrave;le.</li>
+    <li><b>Ajoutez-le</b> &agrave; la longueur courante. Si le mod&egrave;le annonce
+      +17,3&nbsp;mm alors que la pointe touche, l'outil est 17,3&nbsp;mm plus long
+      que pr&eacute;vu.</li>
+    <li><b>V&eacute;rifiez sur trois points &eacute;loign&eacute;s.</b> Une erreur d'outil donne le
+      <em>m&ecirc;me</em> &eacute;cart partout&nbsp;; un &eacute;cart qui varie d'un point &agrave; l'autre
+      vient d'ailleurs.</li>
+  </ol>
+</section>
+
+<!-- =============================================================== -->
+<section id="reperes">
+  <h2><span class="num">Section 09</span>Travailler en rep&egrave;res</h2>
+  <p class="intro">Tout &eacute;crire en coordonn&eacute;es absolues fonctionne&hellip; jusqu'au
+  jour o&ugrave; l'on d&eacute;place le montage de 2&nbsp;cm. Les rep&egrave;res servent &agrave; ne pas tout
+  r&eacute;&eacute;crire ce jour-l&agrave;.</p>
+
+  <h3>Le rep&egrave;re de travail &mdash; une commodit&eacute; d'&eacute;criture</h3>
+  <p><code>repere_travail(x, y, z, rz)</code> pose un rep&egrave;re sur la table, axe z
+  vers le <strong>haut</strong>. Il n'est stock&eacute; nulle part&nbsp;: c'est une variable de
+  votre script, dont on se sert pour fabriquer des cibles absolues.</p>
+<pre><code>PALETTE = repere_travail(<span class="n">215</span>, <span class="n">75</span>, <span class="n">25</span>, rz=<span class="n">20</span>)
+
+<span class="k">for</span> i <span class="k">in</span> range(<span class="n">4</span>):                       <span class="c"># 4 cases espacees de 24 mm</span>
+    robot.movl(cible(<span class="n">0</span>, i * <span class="n">24</span>, <span class="n">0</span>, repere=PALETTE))</code></pre>
+  <div class="matrice">
+    <span class="etiq">PALETTE&nbsp;=</span>
+    <div class="grille">
+      <span>0,9397</span><span>&minus;0,3420</span><span>0</span><span class="pos">215</span>
+      <span>0,3420</span><span>0,9397</span><span>0</span><span class="pos">75</span>
+      <span>0</span><span>0</span><span>1</span><span class="pos">25</span>
+      <span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span>
+    </div>
+  </div>
+  <p class="legende-mat">Un rep&egrave;re s'&eacute;crit comme une cible, en matrice 4&times;4.
+  La diff&eacute;rence tient &agrave; la troisi&egrave;me colonne&nbsp;: (0,&nbsp;0,&nbsp;1) ici, l'axe z
+  vers le haut, contre (0,&nbsp;0,&nbsp;&minus;1) pour une cible outil.</p>
+
+  <h3>Le rep&egrave;re OBJET &mdash; port&eacute; par le programme</h3>
+  <p>Il va de la base au plan de travail. Les instructions &eacute;crites avec
+  <code>repere="objet"</code> y sont exprim&eacute;es. D&eacute;placer le montage ne demande alors
+  que de <strong>changer cette seule matrice</strong>&nbsp;: aucune cible n'est &agrave;
+  reprendre.</p>
+<pre><code>robot.definir_repere_objet(repere_travail(<span class="n">180</span>, <span class="n">0</span>, <span class="n">12</span>, rz=<span class="n">15</span>))
+robot.movl(cible(<span class="n">0</span>, <span class="n">40</span>, <span class="n">0</span>), repere=<span class="k">"objet"</span>)</code></pre>
+
+  <h3>Le rep&egrave;re OUTIL &mdash; port&eacute; par le robot</h3>
+  <p>Il va de l'axe de rotation de l'outil &agrave; sa pointe. Il autorise un
+  <strong>d&eacute;port lat&eacute;ral</strong> et une <strong>rotation propre</strong>, que la simple
+  longueur ne sait pas d&eacute;crire&nbsp;&mdash; un stylo mont&eacute; de travers, une ventouse
+  d&eacute;port&eacute;e sur son support.</p>
+<pre><code>robot.definir_repere_outil(
+    hg.composer(hg.translation(<span class="n">18</span>, <span class="n">0</span>, <span class="n">-78</span>), hg.rot_x(np.pi)))
+
+robot.definir_repere_outil(<span class="k">None</span>)     <span class="c"># retour au deport vertical simple</span></code></pre>
+
+  <div class="cadre"><table>
+    <tr><th>Rep&egrave;re</th><th>D&eacute;crit</th><th>On le change quand&hellip;</th></tr>
+    <tr><td>travail</td><td>une zone de la table</td><td>on &eacute;crit le script</td></tr>
+    <tr><td>objet</td><td>base &rarr; plan de travail</td><td>le montage bouge</td></tr>
+    <tr><td>outil</td><td>poignet &rarr; pointe</td><td>on change d'effecteur</td></tr>
+  </table></div>
+
+  <h3>La bo&icirc;te &agrave; outils des matrices</h3>
+  <div class="cadre"><table>
+    <caption>module <code>dobot_sim.homogeneous</code>, import&eacute; en <code>hg</code></caption>
+    <tr><td><code>translation(x, y, z)</code></td><td>translation pure</td></tr>
+    <tr><td><code>rot_x / rot_y / rot_z(theta)</code></td><td>rotation pure, angle en
+      <strong>radians</strong></td></tr>
+    <tr><td><code>composer(A, B, C)</code></td><td>produit, lisible de gauche &agrave; droite</td></tr>
+    <tr><td><code>inverse(T)</code></td><td>inversion exacte</td></tr>
+    <tr><td><code>position_de(T)</code> &middot; <code>rotation_de(T)</code></td><td>extraction</td></tr>
+    <tr><td><code>interpoler(T0, T1, s)</code></td><td>interpolation entre deux situations</td></tr>
+    <tr><td><code>erreur_pose(T_mes, T_ref)</code></td><td>&eacute;cart en position et en orientation</td></tr>
+    <tr><td><code>formater(T)</code></td><td>affichage align&eacute;, pour le compte rendu</td></tr>
+    <tr><td><code>dh_standard</code> &middot; <code>dh_modifie</code></td><td>Denavit-Hartenberg</td></tr>
+  </table></div>
+</section>
+
+<!-- =============================================================== -->
+<section id="verifier">
+  <h2><span class="num">Section 10</span>V&eacute;rifier avant de lancer</h2>
+  <p class="intro">Trois fonctions &agrave; conna&icirc;tre. Elles ne font rien bouger&nbsp;: elles
+  r&eacute;pondent.</p>
+  <div class="cadre"><table>
+    <tr><td class="libre"><code>print(robot.resume())</code></td>
+      <td>La <strong>description du programme</strong>&nbsp;: dur&eacute;e totale, dur&eacute;e de
+      chaque instruction, temps gagn&eacute; par le lissage, avertissements.</td></tr>
+    <tr><td class="libre"><code>print(robot.controler())</code></td>
+      <td>La <strong>liste des probl&egrave;mes</strong>&nbsp;: but&eacute;es viol&eacute;es, points hors
+      d'atteinte, survitesses. <strong>Liste vide = programme sain.</strong>
+      &Agrave; lancer <em>avant</em> de toucher au robot r&eacute;el.</td></tr>
+    <tr><td class="libre"><code>robot.simuler()</code></td>
+      <td>Ouvre le simulateur avec le programme charg&eacute; et lance l'animation.
+      <code>simuler(lancer=False)</code> charge sans lancer&nbsp;;
+      <code>simuler(bloquant=False)</code> rend la main sans attendre la fermeture
+      de la fen&ecirc;tre.</td></tr>
+  </table></div>
+
+  <h3>Exploiter la trajectoire sans ouvrir de fen&ecirc;tre</h3>
+<pre><code>e = robot.trajectoire().echantillonner(<span class="n">0.01</span>)   <span class="c"># un point toutes les 10 ms</span>
+print(e[<span class="k">"V"</span>].max(), <span class="k">"mm/s"</span>)                 <span class="c"># vitesse maxi du TCP</span>
+print(e[<span class="k">"Q"</span>].shape)                           <span class="c"># les angles, ligne par ligne</span></code></pre>
+  <p>Le m&ecirc;me &eacute;chantillonnage alimente l'export CSV du menu
+  <span class="ui">Fichier</span>, pour un trac&eacute; dans un tableur.</p>
+
+  <h3>Garder le programme</h3>
+  <div class="cadre"><table>
+    <tr><td class="libre"><code>robot.enregistrer("prise.json")</code></td>
+      <td>&eacute;crit le programme en JSON&nbsp;: rechargeable dans le simulateur, avec
+      l'outil et sa longueur.</td></tr>
+    <tr><td class="libre"><code>robot.exporter_python("prise_dobot.py")</code></td>
+      <td>&eacute;crit le script en API constructeur (<code>DobotDllType</code>), pour
+      s'ex&eacute;cuter sans le simulateur.</td></tr>
+  </table></div>
+
+  <h3>Et sur le robot r&eacute;el&nbsp;?</h3>
+  <p>Le programme est <strong>le m&ecirc;me</strong>&nbsp;: c'est le panneau
+  <span class="ui">Robot r&eacute;el</span> du simulateur qui le t&eacute;l&eacute;verse et le lance.
+  L'ordre des op&eacute;rations&nbsp;:</p>
+  <ol class="etapes">
+    <li><b>Simuler</b> jusqu'&agrave; ce que <code>controler()</code> ne renvoie plus rien.</li>
+    <li><b>V&eacute;rifier la longueur d'outil</b> mesur&eacute;e et le rep&egrave;re objet.</li>
+    <li><b>Connecter</b> la machine et faire la prise d'origine.</li>
+    <li><b>Mettre la vitesse &agrave; 30&nbsp;%</b> dans le panneau.</li>
+    <li><b>Lancer</b>, la main sur <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Espace</kbd>,
+      l'arr&ecirc;t d'urgence.</li>
+  </ol>
+  <p>Le d&eacute;tail des commandes se trouve dans la
+  <a href="fiche_interface.html#reel">fiche&nbsp;1, section&nbsp;8</a>.</p>
+</section>
+
+<!-- =============================================================== -->
+<section id="erreurs">
+  <h2><span class="num">Section 11</span>Comprendre les messages d'erreur</h2>
+  <p class="intro">Les messages du simulateur disent ce qui ne va pas. Voici ce
+  qu'ils veulent dire, et ce qu'on fait ensuite.</p>
+  <div class="cadre"><table>
+    <tr><th>Le message</th><th>Ce qui se passe</th><th>Le rem&egrave;de</th></tr>
+    <tr><td class="libre"><em>point hors d'atteinte</em></td>
+      <td>Le MGI n'a pas trouv&eacute; d'angles pour cette pose. Souvent en <em>milieu</em>
+      de segment&nbsp;: les deux extr&eacute;mit&eacute;s sont bonnes, la droite qui les joint non.</td>
+      <td>Remplacer le MOVL par un MOVJ, ou couper le trajet en deux.</td></tr>
+    <tr><td class="libre"><em>but&eacute;e franchie sur J3</em></td>
+      <td>La pose demande un angle hors plage. Typique pr&egrave;s de la colonne&nbsp;:
+      il y a une zone morte autour de l'axe.</td>
+      <td>S'&eacute;loigner de la base, ou changer la hauteur z.</td></tr>
+    <tr><td class="libre"><em>orientation inatteignable&nbsp;: l'axe z de l'outil fait
+      &hellip; deg avec la verticale</em></td>
+      <td>La matrice donn&eacute;e n'a pas son axe outil vertical vers le bas. Le
+      parall&eacute;logramme du Magician l'impose&nbsp;: la cible est refus&eacute;e plut&ocirc;t que
+      silencieusement approxim&eacute;e.</td>
+      <td>Construire la cible avec <code>cible()</code> et ne composer qu'avec des
+      translations ou des <code>rot_z</code>.</td></tr>
+    <tr><td class="libre"><em>cible() construit une matrice&hellip; elle n'en re&ccedil;oit
+      pas une</em></td>
+      <td>Vous avez pass&eacute; une matrice &agrave; <code>cible()</code>.</td>
+      <td>La donner directement &agrave; <code>movl</code>, ou &eacute;crire
+      <code>REPERE @ T</code>.</td></tr>
+    <tr><td class="libre"><em>collision</em></td>
+      <td>Le bras touche l'embase, la colonne, le plan de pose, ou <strong>se touche
+      lui-m&ecirc;me</strong>.</td>
+      <td>Passer plus haut, ou par un point de d&eacute;gagement interm&eacute;diaire.</td></tr>
+    <tr><td class="libre">Bandeau <span style="color:var(--alerte);font-weight:600">ambre</span></td>
+      <td>But&eacute;e <em>fr&ocirc;l&eacute;e</em> &agrave; moins de 5&deg;, ou approche d'une singularit&eacute;. Le
+      mod&egrave;le accepte&nbsp;; <strong>la vraie machine refusera peut-&ecirc;tre</strong>.</td>
+      <td>Se donner de la marge avant de passer au robot r&eacute;el.</td></tr>
+    <tr><td class="libre">Rien ne s'affiche</td>
+      <td>Le programme a &eacute;t&eacute; construit, puis jet&eacute;.</td>
+      <td>Il manque <code>robot.simuler()</code> &agrave; la fin du script.</td></tr>
+    <tr><td class="libre">Le robot descend trop bas</td>
+      <td>Longueur d'outil du catalogue au lieu de la longueur mesur&eacute;e.</td>
+      <td><code>regler_longueur_outil()</code>, apr&egrave;s <code>monter_outil()</code>.</td></tr>
+    <tr><td class="libre">Le d&eacute;gagement plonge</td>
+      <td><code>translation(0, 0, +h)</code> au lieu de <code>-h</code>.</td>
+      <td>L'axe z de l'outil pointe vers le bas&nbsp;: monter, c'est un z n&eacute;gatif.</td></tr>
+    <tr><td class="libre">Le point de passage est manqu&eacute;</td>
+      <td>Lissage non nul sur une instruction qui doit &ecirc;tre exacte.</td>
+      <td><code>lissage=0</code> sur les prises et les d&eacute;poses.</td></tr>
+  </table></div>
+</section>
+
+<!-- =============================================================== -->
+<section id="exercices">
+  <h2><span class="num">Section 12</span>Exercices</h2>
+  <p class="intro">Dans l'ordre. Chacun ajoute une notion &agrave; la pr&eacute;c&eacute;dente.</p>
+
+  <div class="exo">
+    <h4>Exercice 1 &mdash; prendre et poser</h4>
+    <p>&Eacute;crire un programme qui prend une pi&egrave;ce en
+    <code>(220, &minus;60, 25)</code> et la pose en <code>(220, 60, 25)</code>.</p>
+    <ol>
+      <li>Passer par un point de d&eacute;gagement 85&nbsp;mm au-dessus de chacun.</li>
+      <li>MOVJ pour les transferts, MOVL pour les descentes et les mont&eacute;es.</li>
+      <li>Ajouter une attente de 0,3&nbsp;s apr&egrave;s chaque commande de ventouse.</li>
+    </ol>
+    <p><em>&Agrave; v&eacute;rifier&nbsp;:</em> <code>controler()</code> renvoie une liste vide.</p>
+  </div>
+
+  <div class="exo">
+    <h4>Exercice 2 &mdash; mesurer l'effet du profil</h4>
+    <p>Reprendre l'exercice 1 et jouer les quatre profils, l'un apr&egrave;s l'autre.</p>
+    <ol>
+      <li>Relever la dur&eacute;e totale donn&eacute;e par <code>resume()</code>.</li>
+      <li>Relever la vitesse maximale du TCP&nbsp;:
+        <code>trajectoire().echantillonner(0.01)["V"].max()</code>.</li>
+      <li>Comparer les allures dans le panneau <span class="ui">Courbes</span>.</li>
+    </ol>
+    <p><em>Question&nbsp;:</em> pourquoi <code>"lineaire"</code> est-il le plus rapide
+    et pourtant le pire&nbsp;?</p>
+  </div>
+
+  <div class="exo">
+    <h4>Exercice 3 &mdash; une palette, avec une boucle</h4>
+    <p>D&eacute;finir un rep&egrave;re de travail et y d&eacute;poser six pi&egrave;ces en 2&times;3, au pas de
+    24&nbsp;mm.</p>
+    <ol>
+      <li>Une double boucle <code>for</code> sur les lignes et les colonnes.</li>
+      <li>D&eacute;placer ensuite le rep&egrave;re de 30&nbsp;mm en y&nbsp;: <strong>une seule ligne
+        doit changer</strong>.</li>
+    </ol>
+  </div>
+
+  <div class="exo">
+    <h4>Exercice 4 &mdash; gagner du temps de cycle</h4>
+    <p>Sur le programme de l'exercice 3, r&eacute;gler le lissage des seuls d&eacute;gagements.</p>
+    <ol>
+      <li>Mesurer le gain annonc&eacute; par <code>resume()</code> &agrave; 0, 30, 60 et 90&nbsp;%.</li>
+      <li>V&eacute;rifier dans la vue 3D que les points de d&eacute;pose restent atteints.</li>
+    </ol>
+    <p><em>Question&nbsp;:</em> &agrave; partir de quel pourcentage la trajectoire cesse-t-elle
+    d'&ecirc;tre acceptable, et pourquoi&nbsp;?</p>
+  </div>
+
+  <div class="exo">
+    <h4>Exercice 5 &mdash; dialoguer avec la cellule</h4>
+    <p>Ajouter au programme une synchronisation&nbsp;:</p>
+    <ol>
+      <li>Attendre l'entr&eacute;e EIO11 avant chaque prise, avec un
+        <code>timeout</code> de 5&nbsp;s.</li>
+      <li>Allumer la sortie EIO3 pendant tout le cycle.</li>
+      <li>Jouer le programme et basculer l'entr&eacute;e &agrave; la main depuis le panneau
+        <span class="ui">Entr&eacute;es / Sorties</span>.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="memento">
+  <h2><span class="num">Section 13</span>M&eacute;mento</h2>
+
+  <h3>Les imports</h3>
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> Pilote, cible, repere_travail
+<span class="k">from</span> dobot_sim <span class="k">import</span> homogeneous <span class="k">as</span> hg</code></pre>
+
+  <h3>Toutes les commandes</h3>
+  <div class="cadre"><table>
+    <tr><th>Mouvement</th><th></th></tr>
+    <tr><td class="libre"><code>movj(T, &hellip;)</code></td><td>articulaire &mdash; aller quelque part</td></tr>
+    <tr><td class="libre"><code>movl(T, &hellip;)</code></td><td>rectiligne &mdash; faire quelque chose</td></tr>
+    <tr><td class="libre"><code>movc(via, T, &hellip;)</code></td><td>arc de cercle</td></tr>
+    <tr><td class="libre"><code>repli()</code></td><td>retour au repos (0, 15, 30, 0)&nbsp;&deg;</td></tr>
+    <tr><th>Outil et E/S</th><th></th></tr>
+    <tr><td class="libre"><code>monter_outil(nom)</code></td><td>aucun, ventouse, pince, stylo, laser</td></tr>
+    <tr><td class="libre"><code>regler_longueur_outil(mm)</code></td><td>apr&egrave;s <code>monter_outil</code></td></tr>
+    <tr><td class="libre"><code>ventouse(b)</code> &middot; <code>pince(b)</code> &middot; <code>actionner(b)</code></td><td>commande de l'effecteur</td></tr>
+    <tr><td class="libre"><code>attendre(s)</code></td><td>temporisation</td></tr>
+    <tr><td class="libre"><code>sortie(port, etat)</code></td><td>EIO1 &agrave; EIO20</td></tr>
+    <tr><td class="libre"><code>attendre_entree(port, etat, timeout)</code></td><td>attente sur capteur</td></tr>
+    <tr><th>Rep&egrave;res</th><th></th></tr>
+    <tr><td class="libre"><code>definir_repere_objet(T)</code></td><td>plan de travail</td></tr>
+    <tr><td class="libre"><code>definir_repere_outil(T)</code></td><td>d&eacute;port et rotation de l'outil</td></tr>
+    <tr><th>R&eacute;glages et r&eacute;sultats</th><th></th></tr>
+    <tr><td class="libre"><code>regler(vitesse=, acceleration=, vitesse_articulaire=, acceleration_articulaire=, lissage=, profil=)</code></td><td>change les d&eacute;fauts</td></tr>
+    <tr><td class="libre"><code>resume()</code> &middot; <code>controler()</code> &middot; <code>trajectoire()</code></td><td>v&eacute;rification et analyse</td></tr>
+    <tr><td class="libre"><code>enregistrer(f)</code> &middot; <code>exporter_python(f)</code></td><td>fichiers</td></tr>
+    <tr><td class="libre"><code>simuler(lancer=True, bloquant=True)</code></td><td>ouvre le simulateur</td></tr>
+  </table></div>
+  <p>Toutes ces commandes renvoient le pilote&nbsp;: elles se cha&icirc;nent si vous le
+  souhaitez.</p>
+
+  <h3>Le robot en quelques nombres</h3>
+  <div class="cadre"><table>
+    <tr><th>Grandeur</th><th>Valeur</th><th></th></tr>
+    <tr><td>d1</td><td class="num">139,0 mm</td><td>hauteur de l'axe d'&eacute;paule</td></tr>
+    <tr><td>l1</td><td class="num">135,0 mm</td><td>bras arri&egrave;re, &eacute;paule &rarr; coude</td></tr>
+    <tr><td>l2</td><td class="num">147,0 mm</td><td>avant-bras, coude &rarr; poignet</td></tr>
+    <tr><td>l3</td><td class="num">59,7 mm</td><td>d&eacute;port horizontal poignet &rarr; axe outil</td></tr>
+    <tr><td>lt</td><td class="num">selon l'outil</td><td>d&eacute;port vertical jusqu'&agrave; la pointe</td></tr>
+    <tr><td>J1</td><td class="num">&minus;135&deg; &hellip; +135&deg;</td><td>base</td></tr>
+    <tr><td>J2</td><td class="num">0&deg; &hellip; +85&deg;</td><td>bras arri&egrave;re &mdash; 0&deg; = vertical</td></tr>
+    <tr><td>J3</td><td class="num">&minus;10&deg; &hellip; +95&deg;</td><td>avant-bras &mdash; 0&deg; = horizontal</td></tr>
+    <tr><td>J4</td><td class="num">&minus;90&deg; &hellip; +90&deg;</td><td>outil, avec r = J1 + J4</td></tr>
+  </table></div>
+
+  <h3>Le programme type</h3>
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> Pilote, cible
+<span class="k">from</span> dobot_sim <span class="k">import</span> homogeneous <span class="k">as</span> hg
+
+HAUT   = hg.translation(<span class="n">0</span>, <span class="n">0</span>, <span class="n">-85</span>)
+PRISE  = cible(<span class="n">220</span>, <span class="n">-60</span>, <span class="n">25</span>)
+DEPOSE = cible(<span class="n">220</span>, <span class="n">60</span>, <span class="n">25</span>)
+
+robot = Pilote(outil=<span class="k">"ventouse"</span>, vitesse=<span class="n">120</span>, vitesse_articulaire=<span class="n">60</span>)
+robot.regler_longueur_outil(<span class="n">79.3</span>)
+
+robot.repli()
+robot.movj(PRISE @ HAUT, lissage=<span class="n">50</span>)
+robot.movl(PRISE, vitesse=<span class="n">40</span>, commentaire=<span class="k">"descente sur la piece"</span>)
+robot.ventouse(<span class="k">True</span>)
+robot.attendre(<span class="n">0.3</span>)
+robot.movl(PRISE @ HAUT, vitesse=<span class="n">40</span>, lissage=<span class="n">50</span>)
+robot.movj(DEPOSE @ HAUT, lissage=<span class="n">50</span>)
+robot.movl(DEPOSE, vitesse=<span class="n">40</span>)
+robot.ventouse(<span class="k">False</span>)
+robot.attendre(<span class="n">0.3</span>)
+robot.movl(DEPOSE @ HAUT, vitesse=<span class="n">40</span>)
+robot.repli()
+
+print(robot.resume())
+print(robot.controler())
+robot.simuler()</code></pre>
+</section>
+
+<footer>
+  <p>Simulateur Dobot Magician &mdash; fiche&nbsp;2, exemples de programmation.
+  Voir aussi&nbsp;: <a href="fiche_interface.html">fiche&nbsp;1, l'interface</a>
+  et <a href="fiche_api.html">fiche&nbsp;3, la r&eacute;f&eacute;rence des commandes</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>

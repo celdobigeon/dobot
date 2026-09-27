@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulateur Dobot &mdash; L'interface</title>
+<style>
+:root{
+  --fond:#f6f7f9; --carte:#ffffff; --encre:#191d24; --encre2:#4d5666;
+  --muet:#7b8496; --trait:#dde1e8; --trait2:#eceff4;
+  --accent:#3d6fd8; --accent-doux:#eaf0fd;
+  --axe-x:#c33f3f; --axe-y:#3a9448; --axe-z:#3d6fd8; --axe-r:#7c96d8;
+  --ok:#4c8f60; --alerte:#b3781f; --faute:#c0392b;
+  --ombre:0 1px 2px rgba(20,28,45,.06), 0 6px 18px rgba(20,28,45,.05);
+  --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+    --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+    --accent:#7aa2f7; --accent-doux:#1b2330;
+    --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+    --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+    --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+  --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+  --accent:#7aa2f7; --accent-doux:#1b2330;
+  --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+  --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+  --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth; scroll-padding-top:74px;}
+body{
+  margin:0; background:var(--fond); color:var(--encre);
+  font-family:var(--serif); font-size:16.5px; line-height:1.62;
+  padding-inline:16px; padding-block:0;
+}
+.page{max-width:920px; margin:0 auto;}
+
+/* ---- en-tete ---- */
+header.une{padding-block:44px 26px; border-bottom:3px double var(--trait);}
+.surtitre{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 12px;
+}
+h1{
+  font-family:var(--sans); font-weight:650; letter-spacing:-.02em;
+  font-size:clamp(28px,5.2vw,42px); line-height:1.12; margin:0 0 10px;
+  text-wrap:balance;
+}
+.chapeau{margin:0; color:var(--encre2); font-size:17.5px; max-width:62ch;}
+.jeu-fiches{
+  margin-top:20px; font-family:var(--sans); font-size:13.5px;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+}
+.jeu-fiches a{
+  color:var(--accent); text-decoration:none;
+  border:1px solid var(--trait); border-radius:3px; padding:4px 10px;
+  background:var(--carte);
+}
+.jeu-fiches a:hover{border-color:var(--accent);}
+.jeu-fiches .ici{color:var(--muet); border-style:dashed; background:none;}
+
+/* ---- sommaire ---- */
+nav.sommaire{
+  position:sticky; top:0; z-index:5; background:var(--fond);
+  border-bottom:1px solid var(--trait); margin-bottom:8px;
+  padding-block:10px; font-family:var(--sans); font-size:13px;
+}
+nav.sommaire ol{
+  list-style:none; display:flex; flex-wrap:wrap; gap:6px 18px;
+  margin:0; padding:0; counter-reset:s;
+}
+nav.sommaire a{color:var(--encre2); text-decoration:none; white-space:nowrap;}
+nav.sommaire a::before{
+  counter-increment:s; content:counter(s,decimal-leading-zero) " ";
+  font-family:var(--mono); font-size:10.5px; color:var(--muet);
+}
+nav.sommaire a:hover{color:var(--accent);}
+
+/* ---- sections ---- */
+section{padding-block:34px 6px; border-top:1px solid var(--trait2);}
+section:first-of-type{border-top:none;}
+h2{
+  font-family:var(--sans); font-weight:640; letter-spacing:-.015em;
+  font-size:24px; line-height:1.2; margin:0 0 4px; text-wrap:balance;
+}
+h2 .num{
+  font-family:var(--mono); font-size:12px; font-weight:400;
+  color:var(--accent); letter-spacing:.1em; display:block; margin-bottom:6px;
+}
+h3{
+  font-family:var(--sans); font-weight:620; font-size:16.5px;
+  margin:26px 0 6px; letter-spacing:-.005em;
+}
+p{margin:.7em 0; max-width:68ch;}
+.intro{color:var(--encre2); max-width:66ch;}
+ul,ol.liste{max-width:66ch; padding-left:1.2em;}
+li{margin:.3em 0;}
+a{color:var(--accent);}
+
+/* ---- jetons ---- */
+.ui{
+  font-family:var(--sans); font-size:.9em; font-weight:600;
+  background:var(--accent-doux); color:var(--accent);
+  border-radius:3px; padding:1px 6px; white-space:nowrap;
+}
+kbd{
+  font-family:var(--mono); font-size:.82em; background:var(--carte);
+  border:1px solid var(--trait); border-bottom-width:2px; border-radius:4px;
+  padding:1px 6px; color:var(--encre2); white-space:nowrap;
+}
+code{font-family:var(--mono); font-size:.87em; color:var(--encre2);
+  background:var(--trait2); border-radius:3px; padding:1px 5px;}
+pre{
+  font-family:var(--mono); font-size:13px; line-height:1.55;
+  background:var(--carte); border:1px solid var(--trait); border-left:3px solid var(--accent);
+  border-radius:4px; padding:14px 16px; overflow-x:auto; margin:14px 0;
+  color:var(--encre);
+}
+pre code{background:none; padding:0; font-size:inherit; color:inherit;}
+pre .c{color:var(--muet); font-style:italic;}
+pre .k{color:var(--accent); font-weight:600;}
+pre .n{color:var(--axe-y);}
+
+/* ---- tableaux ---- */
+.cadre{overflow-x:auto; margin:16px 0;}
+table{border-collapse:collapse; width:100%; min-width:520px;
+  font-family:var(--sans); font-size:14px;}
+caption{
+  text-align:left; font-family:var(--mono); font-size:11px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muet);
+  padding-bottom:8px;
+}
+th{
+  text-align:left; font-weight:620; font-size:11.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muet);
+  border-bottom:1px solid var(--trait); padding:6px 12px 6px 0;
+}
+td{border-bottom:1px solid var(--trait2); padding:9px 12px 9px 0;
+  vertical-align:top; color:var(--encre2);}
+td:first-child{color:var(--encre); font-weight:560; white-space:nowrap;}
+td.libre:first-child{white-space:normal;}
+tr:last-child td{border-bottom:none;}
+td .mono,th .mono{font-family:var(--mono); font-size:12.5px;}
+td.num{font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---- encarts ---- */
+.note{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  box-shadow:var(--ombre); padding:14px 18px; margin:18px 0; max-width:70ch;
+}
+.note p{margin:.4em 0;}
+.note .etiquette{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; display:block; margin-bottom:5px;
+}
+.note.attention{border-left:3px solid var(--alerte);}
+.note.attention .etiquette{color:var(--alerte);}
+.note.piege{border-left:3px solid var(--faute);}
+.note.piege .etiquette{color:var(--faute);}
+.note.astuce{border-left:3px solid var(--ok);}
+.note.astuce .etiquette{color:var(--ok);}
+
+/* ---- axes colores ---- */
+.ax{font-family:var(--mono); font-weight:700;}
+.ax-x{color:var(--axe-x);} .ax-y{color:var(--axe-y);}
+.ax-z{color:var(--axe-z);} .ax-r{color:var(--axe-r);}
+
+footer{
+  margin-top:40px; padding-block:22px 48px; border-top:3px double var(--trait);
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+}
+
+@media (max-width:560px){
+  body{font-size:16px;}
+  nav.sommaire{position:static;}
+}
+@media print{
+  :root{--fond:#fff; --carte:#fff;}
+  body{font-size:11pt;} nav.sommaire{display:none;}
+  section{break-inside:auto; page-break-inside:auto;}
+  h2,h3{break-after:avoid;} .note,pre,.cadre{break-inside:avoid;}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="une">
+  <p class="surtitre">Fiche 1 &nbsp;/&nbsp; Simulateur Dobot Magician</p>
+  <h1>L'interface&nbsp;: chaque commande et son r&ocirc;le</h1>
+  <p class="chapeau">Ce que fait chaque panneau, chaque case et chaque bouton de la
+  fen&ecirc;tre de simulation &mdash; y compris les explications qui encombraient
+  l'&eacute;cran. &Agrave; garder ouvert &agrave; c&ocirc;t&eacute; du simulateur pendant la s&eacute;ance.</p>
+  <p class="jeu-fiches">
+    <span class="ici">Fiche 1 &mdash; l'interface</span>
+    <a href="fiche_programmation.html">Fiche 2 &mdash; exemples de programmation &rarr;</a>
+    <a href="fiche_api.html">Fiche 3 &mdash; r&eacute;f&eacute;rence des commandes &rarr;</a>
+  </p>
+</header>
+
+<nav class="sommaire" aria-label="Sommaire">
+  <ol>
+    <li><a href="#fenetre">La fen&ecirc;tre</a></li>
+    <li><a href="#commande">Commande</a></li>
+    <li><a href="#programme">Programme</a></li>
+    <li><a href="#matrices">Matrices</a></li>
+    <li><a href="#courbes">Courbes</a></li>
+    <li><a href="#es">Entr&eacute;es / Sorties</a></li>
+    <li><a href="#journal">Journal</a></li>
+    <li><a href="#reel">Robot r&eacute;el</a></li>
+    <li><a href="#menus">Menus</a></li>
+    <li><a href="#raccourcis">Raccourcis</a></li>
+  </ol>
+</nav>
+
+<section id="fenetre">
+  <h2><span class="num">Section 01</span>La fen&ecirc;tre et ses panneaux</h2>
+
+  <p class="intro">Au centre, la <strong>vue 3D</strong> du robot. Tout autour, sept
+  <strong>panneaux</strong> d&eacute;tachables&nbsp;: on les d&eacute;place, on les empile en
+  onglets, on les ferme. Au-dessus, un <strong>bandeau d'alerte</strong> appara&icirc;t
+  d&egrave;s que la pose courante pose probl&egrave;me.</p>
+
+  <h3>Le bandeau d'alerte</h3>
+  <p>Il a deux niveaux, et la distinction compte&nbsp;:</p>
+  <div class="cadre"><table>
+    <tr><td><span style="color:var(--faute);font-weight:700">Fond rouge</span></td>
+      <td>d&eacute;faut <strong>bloquant</strong>&nbsp;: cible hors d'atteinte, collision
+      avec l'embase, la colonne ou le plan de pose, auto-collision d'un maillon
+      avec un autre, ou <strong>mouvement refus&eacute;</strong> parce qu'il sortirait
+      des but&eacute;es. L'animation s'arr&ecirc;te.</td></tr>
+    <tr><td><span style="color:var(--alerte);font-weight:700">Fond ambre</span></td>
+      <td>r&eacute;serve entam&eacute;e&nbsp;: la pose reste admissible pour le mod&egrave;le, mais une
+      but&eacute;e est <em>fr&ocirc;l&eacute;e</em> &agrave; moins de 5&nbsp;&deg;, ou la configuration s'approche
+      d'une singularit&eacute;. La vraie machine, elle, refuse souvent ces poses&nbsp;: ses
+      but&eacute;es ne sont jamais exactement celles de la table.</td></tr>
+  </table></div>
+  <p>Le d&eacute;tail complet de l'alerte s'&eacute;crit dans le panneau <span class="ui">Journal</span>.</p>
+
+  <h3>Les sept panneaux</h3>
+  <div class="cadre"><table>
+    <caption>Menu Fen&ecirc;tres &mdash; chaque case affiche ou masque son panneau</caption>
+    <tr><td>Commande</td><td>piloter la pose du robot&nbsp;: curseurs articulaires,
+      curseurs cart&eacute;siens, outil, rep&egrave;res.</td></tr>
+    <tr><td>Programme</td><td>&eacute;diter et jouer la suite d'instructions.</td></tr>
+    <tr><td>Matrices homog&egrave;nes</td><td>les matrices 4&times;4 de la pose courante, en clair.
+      <strong>Masqu&eacute; &agrave; l'ouverture</strong>&nbsp;: cochez-le dans ce menu quand
+      vous en avez besoin.</td></tr>
+    <tr><td>Courbes</td><td>angles articulaires et vitesse du TCP en fonction du temps.</td></tr>
+    <tr><td>Entr&eacute;es / Sorties</td><td>les 20 ports tout-ou-rien du contr&ocirc;leur.</td></tr>
+    <tr><td>Journal</td><td>l'historique&nbsp;: alertes, envois, r&eacute;ponses du robot r&eacute;el.</td></tr>
+    <tr><td>Robot r&eacute;el</td><td>liaison s&eacute;rie et pilotage de la machine physique.</td></tr>
+  </table></div>
+
+  <p>Les panneaux du bas sont <strong>empil&eacute;s en onglets</strong>&nbsp;: cliquez sur
+  l'onglet voulu pour le mettre devant. &Agrave; l'ouverture, trois y sont &mdash;
+  <strong>Courbes</strong> devant, puis E/S et Journal. Le quatri&egrave;me,
+  <strong>Matrices homog&egrave;nes</strong>, est <strong>masqu&eacute;</strong>&nbsp;: c'est un
+  panneau de cours, qu'on appelle quand on en a besoin.</p>
+
+  <div class="note astuce">
+    <span class="etiquette">Reprendre la main sur la disposition</span>
+    <p><span class="ui">Agrandir les courbes</span> <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>C</kbd>
+    &mdash; met les courbes devant et leur donne toute la hauteur du bas.</p>
+    <p><span class="ui">Disposition par d&eacute;faut</span> &mdash; remet exactement
+    l'agencement d'ouverture&nbsp;: positions, tailles, onglets, <em>et
+    visibilit&eacute;</em>. Les matrices redeviennent donc masqu&eacute;es.</p>
+    <p><span class="ui">Tout r&eacute;afficher</span> <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>R</kbd>
+    &mdash; rouvre les panneaux ferm&eacute;s <em>et</em> les ram&egrave;ne devant. Utile quand on
+    recoche un panneau et qu'on ne le voit pas&nbsp;: il &eacute;tait rouvert, mais cach&eacute;
+    derri&egrave;re l'onglet voisin.</p>
+  </div>
+</section>
+
+<section id="commande">
+  <h2><span class="num">Section 02</span>Panneau Commande</h2>
+  <p class="intro">Quatre sections empil&eacute;es. Le titre de chacune est une case &agrave;
+  cocher&nbsp;: <strong>la d&eacute;cocher replie la section</strong> et lib&egrave;re de la place.</p>
+
+  <h3>Articulaire &mdash; commander les quatre angles</h3>
+  <p>Un curseur par articulation. On donne directement les angles&nbsp;: c'est le
+  <strong>mod&egrave;le g&eacute;om&eacute;trique direct</strong> qui en d&eacute;duit la pose de l'outil.</p>
+  <div class="cadre"><table>
+    <tr><th>Axe</th><th>R&ocirc;le</th><th>But&eacute;es</th></tr>
+    <tr><td>J1 base</td><td>rotation de la colonne autour de la verticale</td><td class="num">&minus;135&deg; &hellip; +135&deg;</td></tr>
+    <tr><td>J2 bras arri&egrave;re</td><td>&eacute;paule&nbsp;; 0&deg; = bras arri&egrave;re vertical</td><td class="num">0&deg; &hellip; +85&deg;</td></tr>
+    <tr><td>J3 avant-bras</td><td>coude&nbsp;; 0&deg; = avant-bras horizontal</td><td class="num">&minus;10&deg; &hellip; +95&deg;</td></tr>
+    <tr><td>J4 outil</td><td>rotation propre de l'outil</td><td class="num">&minus;90&deg; &hellip; +90&deg;</td></tr>
+  </table></div>
+  <p>Deux boutons&nbsp;: <span class="ui">Z&eacute;ro</span> met les quatre angles &agrave; 0, et
+  <span class="ui">Repli</span> ram&egrave;ne &agrave; la configuration de repos
+  (0, 15, 30, 0)&nbsp;&deg;, celle sur laquelle s'ouvre le simulateur.</p>
+
+  <h3>Cart&eacute;sien &mdash; commander la pointe de l'outil</h3>
+  <p>Quatre curseurs, aux couleurs des tri&egrave;dres de la vue 3D&nbsp;:
+  <span class="ax ax-x">X</span> vers l'avant, <span class="ax ax-y">Y</span> vers la
+  gauche, <span class="ax ax-z">Z</span> en hauteur au-dessus du plan de pose, et
+  <span class="ax ax-r">Rz</span>, rotation de l'outil autour de la verticale,
+  avec <code>Rz = J1 + J4</code>.</p>
+  <p><strong>Chaque d&eacute;placement d'un curseur appelle le mod&egrave;le g&eacute;om&eacute;trique inverse.</strong>
+  Si le point demand&eacute; sort de l'espace atteignable, le robot ne bouge pas, les
+  axes concern&eacute;s passent en rouge, et <strong>le bloc de lecture juste en
+  dessous</strong> annonce le motif exact&nbsp;: quel point a &eacute;t&eacute; refus&eacute;, quelle
+  distance &eacute;paule-poignet il demandait, et laquelle est admissible.</p>
+  <p><code>Rx = 180&deg;</code> et <code>Ry = 0&deg;</code> ne sont pas commandables&nbsp;:
+  le parall&eacute;logramme du Magician maintient l'outil vertical, quoi qu'il arrive.
+  C'est un robot &agrave; quatre degr&eacute;s de libert&eacute;, pas six. Le panneau ne les affiche
+  donc pas&nbsp;; la contrainte est rappel&eacute;e dans l'infobulle du curseur
+  <span class="ax ax-r">Rz</span>, le seul qu'elle concerne.</p>
+  <div class="cadre"><table>
+    <tr><td class="libre"><span class="ui">appliquer le MGI pendant le glissement</span></td>
+      <td>Coch&eacute; (d&eacute;faut)&nbsp;: le mod&egrave;le suit le curseur en temps r&eacute;el, on voit le bras
+      balayer toutes les poses interm&eacute;diaires. D&eacute;coch&eacute;&nbsp;: la consigne n'est
+      appliqu&eacute;e qu'au <strong>rel&acirc;chement</strong>, sans passer par les poses
+      interm&eacute;diaires. Utile quand le chemin interm&eacute;diaire traverse une zone
+      interdite alors que le point d'arriv&eacute;e, lui, est bon.</td></tr>
+    <tr><td><span class="ui">Appliquer le MGI</span></td>
+      <td>force le calcul sur les valeurs affich&eacute;es.</td></tr>
+    <tr><td><span class="ui">Resynchroniser</span></td>
+      <td>op&eacute;ration inverse&nbsp;: recopie la pose courante du robot dans les curseurs.</td></tr>
+  </table></div>
+
+  <h3>Outil &mdash; ce qui est mont&eacute; au bout du bras</h3>
+  <p>La <strong>longueur de l'outil alimente le d&eacute;port <code>lt</code> du mod&egrave;le</strong>&nbsp;:
+  une fois l'outil mont&eacute;, la coordonn&eacute;e <span class="ax ax-z">Z</span> d&eacute;signe sa
+  <strong>pointe</strong> et non plus la bride. Changer d'outil change donc le MGI,
+  et l'enveloppe de travail avec lui.</p>
+  <div class="cadre"><table>
+    <caption>Catalogue &mdash; longueurs nominales et commande de protocole</caption>
+    <tr><th>Outil</th><th>Longueur</th><th>Commandable&nbsp;?</th><th>Description</th></tr>
+    <tr><td>aucun (bride nue)</td><td class="num">0 mm</td><td>non</td>
+      <td>Z d&eacute;signe l'axe du poignet, &agrave; 59,7&nbsp;mm en avant du coude.</td></tr>
+    <tr><td>ventouse</td><td class="num">62 mm</td><td>oui</td>
+      <td>kit ventouse&nbsp;: &eacute;lectrovanne, tige et cuvette. Command&eacute;e par
+      <code>SetEndEffectorSuctionCup</code>.</td></tr>
+    <tr><td>pince</td><td class="num">78 mm</td><td>oui</td>
+      <td>pince pneumatique &agrave; deux doigts, ouverture 26&nbsp;mm. Command&eacute;e par
+      <code>SetEndEffectorGripper</code>.</td></tr>
+    <tr><td>porte-stylo</td><td class="num">70 mm</td><td>non</td>
+      <td>porte-stylo pour le trac&eacute;. Aucun actionneur.</td></tr>
+    <tr><td>laser</td><td class="num">56 mm</td><td>oui</td>
+      <td>module de gravure. Command&eacute; par <code>SetEndEffectorLaser</code>.
+      <strong>Attention au rayonnement</strong> sur le robot r&eacute;el.</td></tr>
+  </table></div>
+  <p>Ces descriptions sont celles du catalogue&nbsp;: le panneau ne les affiche
+  plus, elles apparaissent dans l'infobulle de la liste <span class="ui">outil
+  mont&eacute;</span> et suivent l'outil choisi.</p>
+  <p>Le bouton <span class="ui">Actionner</span> bascule l'outil&nbsp;: aspiration pour la
+  ventouse, fermeture pour la pince, allumage pour le laser. Sans effet sur un
+  outil passif.</p>
+  <div class="note piege">
+    <span class="etiquette">Ces longueurs sont NOMINALES</span>
+    <p>Un montage r&eacute;el s'en &eacute;carte souvent&nbsp;: cuvette diff&eacute;rente, rallonge, embase
+    imprim&eacute;e. Sur la machine du labo, la ventouse mesure <strong>79,3&nbsp;mm</strong> et
+    non 62. Une erreur de longueur se paie int&eacute;gralement sur Z&nbsp;: le robot
+    descend trop bas, ou pas assez.</p>
+    <p><strong>Pour mesurer&nbsp;:</strong> amenez la pointe au contact du plan de travail,
+    lisez le Z annonc&eacute; par le mod&egrave;le, et ajoutez-le &agrave; la longueur courante. Si le
+    mod&egrave;le annonce +17,3&nbsp;mm alors que la pointe touche, l'outil est 17,3&nbsp;mm
+    plus long que pr&eacute;vu. La valeur se d&eacute;clare dans le programme &mdash; voir la
+    <a href="fiche_programmation.html#outil">fiche&nbsp;2</a>.</p>
+  </div>
+
+  <h3>Rep&egrave;res &mdash; d&eacute;crire la cellule</h3>
+  <p>Deux rep&egrave;res d&eacute;crivent la cellule. Ils se <strong>lisent</strong> ici en
+  (X, Y, Z, Rz) &mdash; Rx et Ry n'y figurent pas, le parall&eacute;logramme les impose
+  &mdash; et ils se <strong>saisissent en matrice homog&egrave;ne 4&times;4</strong>.</p>
+  <div class="cadre"><table>
+    <tr><td>Rep&egrave;re OUTIL</td>
+      <td>de l'axe de rotation de l'outil &agrave; sa pointe. Il autorise un
+      <strong>d&eacute;port lat&eacute;ral</strong> et une <strong>rotation propre</strong>, que la
+      seule longueur ne sait pas d&eacute;crire.</td></tr>
+    <tr><td>Rep&egrave;re OBJET</td>
+      <td>de la base au plan de travail. Les cibles marqu&eacute;es <em>objet</em> y sont
+      exprim&eacute;es&nbsp;: d&eacute;placer le montage ne demande alors de changer
+      qu'<strong>une seule matrice</strong>, pas toutes les cibles du programme.</td></tr>
+  </table></div>
+  <p><span class="ui">Modifier&hellip;</span> ouvre la <strong>matrice 4&times;4</strong>&nbsp;:
+  seize cases, dont les quatre de la derni&egrave;re ligne sont montr&eacute;es mais fig&eacute;es &agrave;
+  (0,&nbsp;0,&nbsp;0,&nbsp;1). Le dialogue relit la matrice &agrave; chaque chiffre tap&eacute;
+  et affiche ce qu'elle signifie en (X, Y, Z, Rz), ou le motif du refus&nbsp;; il
+  rappelle aussi &agrave; quoi sert le rep&egrave;re. <span class="ui">Par d&eacute;faut</span>
+  revient au rep&egrave;re neutre&nbsp;: d&eacute;port purement vertical d&eacute;duit de l'outil pour
+  l'un, rep&egrave;re de base pour l'autre.</p>
+
+  <div class="note astuce">
+    <span class="etiquette">Une rotation tap&eacute;e au clavier est arrondie</span>
+    <p>cos&nbsp;45&deg; s'&eacute;crit 0,7071 dans une case &agrave; quatre d&eacute;cimales. L'&eacute;cart
+    suffirait &agrave; faire &eacute;chouer le contr&ocirc;le d'orthonormalit&eacute;&nbsp;: le dialogue
+    recale donc la rotation sur la plus proche rotation exacte et vous dit de
+    combien elle a boug&eacute;. Il ne refuse qu'au-del&agrave; de 10<sup>&minus;3</sup>, o&ugrave;
+    ce n'est plus un arrondi mais une erreur.</p>
+  </div>
+
+  <h3>Le bloc de lecture, sous les curseurs cart&eacute;siens</h3>
+  <p><em>O&ugrave; est le bras</em> et <em>pourquoi il n'est pas ailleurs</em> sont une
+  seule question&nbsp;: les deux r&eacute;ponses tiennent dans le m&ecirc;me bloc, plac&eacute; sous
+  les curseurs qui les produisent.</p>
+  <p>Il montre <strong>soit l'un, soit l'autre</strong>&nbsp;:</p>
+  <div class="cadre"><table>
+    <tr><th>Quand</th><th>Ce qu'il montre</th></tr>
+    <tr><td class="libre">le MGI a &eacute;chou&eacute;</td>
+      <td><strong>seulement</strong> le motif du refus&nbsp;: le point refus&eacute;, la
+      distance &eacute;paule-poignet demand&eacute;e, la plage admissible, et le rappel que
+      le robot reste &agrave; sa position pr&eacute;c&eacute;dente.</td></tr>
+    <tr><td>sinon</td>
+      <td>les coordonn&eacute;es du <strong>TCP</strong>, la <strong>port&eacute;e
+      horizontale</strong>, la <strong>manipulabilit&eacute;</strong> &mdash; indice de
+      Yoshikawa, plus elle est faible plus on s'approche d'une singularit&eacute;
+      &mdash; puis <strong>but&eacute;es d&eacute;pass&eacute;es</strong> ou
+      <strong>collision</strong> s'il y a lieu, sinon
+      <span style="color:var(--ok);font-weight:600">configuration admissible</span>.</td></tr>
+  </table></div>
+  <p>Le TCP dispara&icirc;t pendant un refus parce qu'il d&eacute;crirait la pose
+  <strong>tenue</strong>, pas celle dont on parle&nbsp;: les lire l'une sous
+  l'autre ferait cohabiter deux situations dans le m&ecirc;me bloc. Il revient d&egrave;s
+  que le MGI aboutit.</p>
+  <p>Le bloc <strong>s'encadre de rouge</strong> d&egrave;s qu'il a une mauvaise nouvelle
+  &agrave; annoncer, et redevient neutre &agrave; la pose suivante. Le verdict vert ne
+  s'affiche jamais en m&ecirc;me temps qu'un d&eacute;faut&nbsp;: ce serait se contredire.</p>
+</section>
+
+<section id="programme">
+  <h2><span class="num">Section 03</span>Panneau Programme</h2>
+  <p class="intro">La liste des instructions, la barre d'outils qui les manipule, le
+  formulaire de la ligne s&eacute;lectionn&eacute;e et les commandes de lecture. Le
+  <em>contenu</em> des instructions est d&eacute;taill&eacute; dans la
+  <a href="fiche_programmation.html">fiche&nbsp;2</a>&nbsp;; ici, les commandes.</p>
+
+  <h3>Barre d'&eacute;dition</h3>
+  <div class="cadre"><table>
+    <tr><td>Ajouter</td><td>ins&egrave;re une instruction apr&egrave;s la ligne courante. La
+      <strong>fl&egrave;che du bouton ouvre le catalogue</strong>&nbsp;: MOVJ, MOVL, MOVC,
+      ATTENTE, OUTIL, SORTIE, ENTR&Eacute;E.</td></tr>
+    <tr><td>Dupliquer</td><td>copie la ligne s&eacute;lectionn&eacute;e juste en dessous.</td></tr>
+    <tr><td>Supprimer</td><td>retire la ligne s&eacute;lectionn&eacute;e.</td></tr>
+    <tr><td>Monter / Descendre</td><td>d&eacute;place la ligne dans la s&eacute;quence.</td></tr>
+  </table></div>
+
+  <h3>Instruction s&eacute;lectionn&eacute;e</h3>
+  <p>Le formulaire de la ligne courante. Son titre est une case &agrave; cocher&nbsp;:
+  <strong>la d&eacute;cocher replie le formulaire</strong> quand on veut voir la liste en entier.</p>
+  <div class="cadre"><table>
+    <tr><td>type</td><td>MOVJ, MOVL, MOVC, ATTENTE, OUTIL, SORTIE, ENTR&Eacute;E.</td></tr>
+    <tr><td>mode</td><td>cible lue en coordonn&eacute;es cart&eacute;siennes, ou en angles articulaires.</td></tr>
+    <tr><td>rep&egrave;re</td><td>rep&egrave;re dans lequel les coordonn&eacute;es ci-dessus sont exprim&eacute;es&nbsp;:
+      <em>base</em> ou <em>objet</em>. Le bouton <span class="ui">Saisir&hellip;</span>
+      &agrave; c&ocirc;t&eacute; ouvre la cible sous forme de <strong>matrice 4&times;4</strong>.</td></tr>
+    <tr><td class="libre">vitesse / dur&eacute;e</td>
+      <td><em>vitesse</em>&nbsp;: la dur&eacute;e est calcul&eacute;e &agrave; partir de la longueur du chemin.
+      <em>dur&eacute;e</em>&nbsp;: la dur&eacute;e est impos&eacute;e telle quelle.</td></tr>
+    <tr><td>profil</td><td>loi horaire&nbsp;: lin&eacute;aire, trap&egrave;ze, polyn&ocirc;me 5, sinus.</td></tr>
+    <tr><td class="libre">lissage</td>
+      <td>arrondi du raccord <strong>avec l'instruction suivante</strong>, en pourcentage.
+      0 = point d'arr&ecirc;t exact, 100 = recouvrement maximal. Le point de passage
+      n'est alors plus atteint exactement.</td></tr>
+    <tr><td>port</td><td>num&eacute;ro de port EIO (1 &agrave; 20) pour SORTIE et ENTR&Eacute;E.</td></tr>
+  </table></div>
+
+  <h3>Ex&eacute;cution</h3>
+  <div class="cadre"><table>
+    <tr><td>Lancer / Pause</td><td><kbd>Espace</kbd> &mdash; joue l'animation, ou la suspend.</td></tr>
+    <tr><td>Arr&ecirc;ter</td><td><kbd>Ctrl</kbd>+<kbd>.</kbd> &mdash; revient au d&eacute;but.</td></tr>
+    <tr><td>Pas suivant / pr&eacute;c&eacute;dent</td><td><kbd>Ctrl</kbd>+<kbd>&rarr;</kbd> et
+      <kbd>Ctrl</kbd>+<kbd>&larr;</kbd> &mdash; avance d'une instruction.</td></tr>
+    <tr><td>Aller &agrave; la ligne</td><td><kbd>Ctrl</kbd>+<kbd>Entr&eacute;e</kbd> &mdash; place le robot
+      sur la cible de la ligne s&eacute;lectionn&eacute;e.</td></tr>
+    <tr><td>Curseur de temps</td><td>fait d&eacute;filer la trajectoire &agrave; la main.</td></tr>
+    <tr><td class="libre">Facteur de vitesse</td><td>vitesse de <em>lecture</em> de l'animation.
+      Ne change pas le programme, seulement le temps qu'on met &agrave; le regarder.</td></tr>
+    <tr><td class="libre"><span class="ui">se positionner sur la ligne s&eacute;lectionn&eacute;e</span></td>
+      <td>cliquer une ligne du programme am&egrave;ne aussit&ocirc;t le robot sur sa cible.</td></tr>
+  </table></div>
+
+  <div class="note attention">
+    <span class="etiquette">Arr&ecirc;t de s&eacute;curit&eacute;</span>
+    <p>Menu <span class="ui">Ex&eacute;cution</span> &rsaquo; <span class="ui">Arr&ecirc;t de s&eacute;curit&eacute;
+    (but&eacute;es et collisions)</span>. Coch&eacute; &mdash; c'est le d&eacute;faut &mdash; il gouverne
+    deux choses&nbsp;: il <strong>refuse toute pose hors but&eacute;es</strong>, d'o&ugrave;
+    qu'elle vienne, et il <strong>coupe l'animation</strong> en cas de collision.
+    D&eacute;cochez-le pour laisser la faute se produire et l'observer &mdash; c'est
+    souvent plus parlant en TP que de lire le message d'erreur.</p>
+  </div>
+
+  <div class="note piege">
+    <span class="etiquette">Le mod&egrave;le ne franchit pas ses but&eacute;es</span>
+    <p>Une pose hors course est <strong>refus&eacute;e avant d'&ecirc;tre appliqu&eacute;e</strong>&nbsp;:
+    le bras reste o&ugrave; il est, le bandeau nomme l'axe fautif et sa plage, et le
+    champ que vous venez de pousser revient tout seul &agrave; la valeur tenue.
+    Montrer le robot dans une posture que la machine ne prendrait jamais
+    donnerait une fausse id&eacute;e de ce qui est r&eacute;alisable&nbsp;: <strong>une
+    trajectoire valid&eacute;e &agrave; l'&eacute;cran doit passer sur la table.</strong></p>
+    <p>En mode articulaire, les champs de cible sont en plus <strong>born&eacute;s &agrave;
+    la course de leur axe</strong>&nbsp;: taper 180 sur J1 donne 135.</p>
+    <p>Une seule exception&nbsp;: le <span class="ui">miroir</span> du panneau
+    Robot r&eacute;el, qui lit les angles de la machine. Son r&ocirc;le est de montrer ce
+    qu'elle fait, y compris hors de la table du mod&egrave;le.</p>
+  </div>
+</section>
+
+<section id="matrices">
+  <h2><span class="num">Section 04</span>Panneau Matrices homog&egrave;nes</h2>
+  <p class="intro">Les matrices 4&times;4 de la pose courante, &eacute;crites en clair et
+  remises &agrave; jour &agrave; chaque mouvement&nbsp;: c'est le panneau &agrave; ouvrir pour le
+  cours de mod&eacute;lisation. Il ne s'affiche <strong>pas</strong> au lancement &mdash;
+  cochez <span class="ui">Fen&ecirc;tres</span> &rsaquo; <span class="ui">Matrices
+  homog&egrave;nes</span>, ou <kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>R</kbd> qui rouvre
+  tout.</p>
+  <p>On y lit la composition des transformations de la base jusqu'&agrave; la pointe de
+  l'outil&nbsp;: chaque liaison apporte sa matrice, le produit donne la situation du
+  TCP. La partie sup&eacute;rieure gauche 3&times;3 est la rotation, la derni&egrave;re colonne la
+  position en millim&egrave;tres.</p>
+  <p>Le menu <span class="ui">Aide</span> &rsaquo; <span class="ui">Aide-m&eacute;moire matrices
+  homog&egrave;nes</span> rappelle les conventions&nbsp;: composition, inversion, passage
+  du rep&egrave;re outil au rep&egrave;re de base.</p>
+</section>
+
+<section id="courbes">
+  <h2><span class="num">Section 05</span>Panneau Courbes</h2>
+  <p class="intro">Deux trac&eacute;s c&ocirc;te &agrave; c&ocirc;te, sur toute la dur&eacute;e du programme. Un
+  trait vertical marque l'instant courant et suit l'animation.</p>
+  <div class="cadre"><table>
+    <tr><td class="libre">Angles articulaires (deg)</td><td>J1 &agrave; J4. On y voit imm&eacute;diatement
+      quelle articulation sature, et &agrave; quel moment.</td></tr>
+    <tr><td class="libre">Vitesse du TCP et altitude</td>
+      <td>vitesse en mm/s (trait plein) et hauteur Z en mm (tirets). La comparaison
+      des deux montre l'effet du profil de vitesse et du lissage&nbsp;: un raccord
+      bien liss&eacute; ne repasse pas par z&eacute;ro entre deux segments.</td></tr>
+  </table></div>
+  <p><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>C</kbd> agrandit ce panneau d'un coup.</p>
+</section>
+
+<section id="es">
+  <h2><span class="num">Section 06</span>Panneau Entr&eacute;es / Sorties</h2>
+  <p class="intro">Le contr&ocirc;leur expose 20 ports multiplex&eacute;s, EIO1 &agrave; EIO20. Le
+  simulateur ne mod&eacute;lise que le tout-ou-rien, ce qui couvre l'essentiel des TP&nbsp;:
+  commander un v&eacute;rin ou un voyant, attendre l'acquittement d'un capteur, se
+  synchroniser avec un convoyeur.</p>
+  <p><strong>Une sortie est un ordre, une entr&eacute;e est une information.</strong> Les sorties
+  sont pilot&eacute;es par le programme&nbsp;; les entr&eacute;es viennent de la cellule &mdash; dans le
+  simulateur, c'est vous qui les basculez &agrave; la main, exactement comme un capteur
+  le ferait.</p>
+
+  <div class="note piege">
+    <span class="etiquette">L'effecteur n'est PAS ici</span>
+    <p>V&eacute;rifi&eacute; sur machine&nbsp;: ventouse, pince et laser <strong>ne sont pas c&acirc;bl&eacute;s sur
+    ces sorties</strong>. Les actionner une &agrave; une, de EIO1 &agrave; EIO20, n'a aucun effet sur
+    eux. Ils ont leur propre circuit et leurs propres commandes dans le protocole.
+    On les pilote &agrave; la main par le bouton <span class="ui">Actionner</span> de la
+    section Outil, dans le panneau Commande.</p>
+    <p>Ces ports servent aux p&eacute;riph&eacute;riques de la cellule&nbsp;: voyants, v&eacute;rins,
+    convoyeur, capteurs.</p>
+  </div>
+
+  <div class="cadre"><table>
+    <caption>Affectations usuelles sur le Magician</caption>
+    <tr><th>Ports</th><th>Connecteur</th></tr>
+    <tr><td class="num">EIO1, EIO2</td><td>GP1</td></tr>
+    <tr><td class="num">EIO3, EIO4</td><td>GP2</td></tr>
+    <tr><td class="num">EIO5, EIO6</td><td>GP3</td></tr>
+    <tr><td class="num">EIO11</td><td>SW1</td></tr>
+    <tr><td class="num">EIO12</td><td>SW2</td></tr>
+    <tr><td class="num">EIO15, EIO16</td><td>GP4</td></tr>
+    <tr><td class="num">EIO17, EIO18</td><td>GP5</td></tr>
+  </table></div>
+
+  <h3>Les deux cases de report vers le robot r&eacute;el</h3>
+  <div class="cadre"><table>
+    <tr><td class="libre"><span class="ui">r&eacute;percuter les sorties sur le robot r&eacute;el</span></td>
+      <td>un clic sur une sortie l'applique aussi &agrave; la machine&nbsp;; le port est
+      configur&eacute; en sortie au premier usage.
+      <strong style="color:var(--faute)">Attention&nbsp;: cela actionne le mat&eacute;riel
+      branch&eacute; dessus.</strong></td></tr>
+    <tr><td class="libre"><span class="ui">lire les entr&eacute;es sur le robot r&eacute;el</span></td>
+      <td>les boutons d'entr&eacute;e cessent d'&ecirc;tre des interrupteurs&nbsp;: ils affichent
+      l'&eacute;tat vrai des capteurs de la cellule. Lecture seule, aucune commande n'est
+      envoy&eacute;e.</td></tr>
+  </table></div>
+</section>
+
+<section id="journal">
+  <h2><span class="num">Section 07</span>Panneau Journal</h2>
+  <p class="intro">L'historique horodat&eacute; de la session&nbsp;: chargements de programme,
+  alertes d&eacute;taill&eacute;es du bandeau, &eacute;changes avec le robot r&eacute;el, alarmes du
+  contr&ocirc;leur, erreurs de script.</p>
+  <p>C'est ici qu'on va lire <em>pourquoi</em> quelque chose a &eacute;chou&eacute;. Le bandeau
+  annonce le premier d&eacute;faut&nbsp;; le journal les donne tous.</p>
+</section>
+
+<section id="reel">
+  <h2><span class="num">Section 08</span>Panneau Robot r&eacute;el</h2>
+  <p class="intro">Le pont vers la machine physique. <strong>Tout ce qui fait bouger le
+  robot demande une confirmation explicite et porte un fond rouge</strong>&nbsp;: on ne
+  d&eacute;clenche pas un mouvement r&eacute;el par inadvertance en cliquant &agrave; c&ocirc;t&eacute;.</p>
+  <p>Quand la machine est effectivement pilot&eacute;e, un <strong>t&eacute;moin appara&icirc;t dans la
+  fen&ecirc;tre graphique</strong>&nbsp;: ce qu'on voit &agrave; l'&eacute;cran bouge aussi sur la table.</p>
+
+  <h3>Liaison</h3>
+  <div class="cadre"><table>
+    <tr><td>port</td><td>liste des ports s&eacute;rie. Le Magician se pr&eacute;sente en
+      <em>USB-SERIE CH340</em> &mdash; ou en <em>CP210x</em> selon l'exemplaire.</td></tr>
+    <tr><td>Chercher</td><td>relit la liste des ports disponibles.</td></tr>
+    <tr><td>Connecter</td><td>ouvre la liaison &agrave; 115200 bauds et interroge le
+      contr&ocirc;leur&nbsp;: nom et version de firmware.</td></tr>
+    <tr><td>&eacute;tat</td><td>hors ligne, connect&eacute; ou en d&eacute;faut, et le d&eacute;tail des alarmes.</td></tr>
+  </table></div>
+
+  <h3>Mise &agrave; l'origine</h3>
+  <div class="cadre"><table>
+    <tr><td class="libre"><span class="ui">Prise d'origine</span></td>
+      <td>le robot parcourt toute sa course&nbsp;: <strong>d&eacute;gagez la zone</strong> avant de
+      cliquer.</td></tr>
+    <tr><td class="libre"><span class="ui">D&eacute;clarer la posture d'&eacute;querre</span></td>
+      <td>fixe l'origine <strong>sans prise d'origine</strong>&nbsp;: rien ne bouge. &Agrave; faire
+      bras arri&egrave;re <strong>vertical</strong> et avant-bras <strong>horizontal</strong>.
+      &Agrave; refaire apr&egrave;s chaque mise sous tension.</td></tr>
+    <tr><td class="libre"><span class="ui">aide au recalage&nbsp;: &eacute;cart &agrave; la posture d'&eacute;querre</span></td>
+      <td>affiche l'&eacute;cart de J2 et J3 &agrave; cette posture de r&eacute;f&eacute;rence, pour v&eacute;rifier le
+      recalage d'un coup d'&oelig;il.</td></tr>
+    <tr><td class="libre"><span class="ui">Effacer les d&eacute;fauts</span></td>
+      <td>acquitte les alarmes du contr&ocirc;leur. <strong>La cause reste &agrave; corriger</strong>&nbsp;:
+      le robot refusera de nouveau. L'erreur de but&eacute;e, elle, s'efface toute seule
+      d&egrave;s que le bras revient dans sa plage.</td></tr>
+  </table></div>
+
+  <h3>Miroir et pilotage &mdash; deux sens oppos&eacute;s</h3>
+  <div class="cadre"><table>
+    <tr><td class="libre"><span class="ui">miroir&nbsp;: le mod&egrave;le 3D suit le robot r&eacute;el</span></td>
+      <td><strong>Machine &rarr; &eacute;cran.</strong> Lit les angles de la machine et les applique
+      au mod&egrave;le. Ce sont les m&ecirc;mes quatre angles&nbsp;: aucune conversion. Rien ne
+      bouge sur la table&nbsp;; on d&eacute;place le bras &agrave; la main et on le regarde suivre
+      &agrave; l'&eacute;cran.</td></tr>
+    <tr><td class="libre"><span class="ui">pilotage&nbsp;: le robot r&eacute;el suit les curseurs et l'outil</span></td>
+      <td><strong>&Eacute;cran &rarr; machine.</strong> Chaque curseur rel&acirc;ch&eacute; envoie le robot sur la
+      pose affich&eacute;e &mdash; articulaire comme cart&eacute;sien, c'est la m&ecirc;me configuration.
+      Le bouton <span class="ui">Actionner</span> commande aussi l'effecteur r&eacute;el.
+      <strong style="color:var(--faute)">Le robot bouge &agrave; chaque rel&acirc;chement.</strong></td></tr>
+  </table></div>
+  <p>Les deux s'excluent&nbsp;: activer l'un coupe l'autre. Se d&eacute;connecter coupe le
+  pilotage. Une pose en d&eacute;faut n'est jamais envoy&eacute;e.</p>
+
+  <h3>Ex&eacute;cution r&eacute;elle</h3>
+  <div class="cadre"><table>
+    <tr><td class="libre">vitesse (%)</td>
+      <td>bride <strong>toutes</strong> les vitesses du contr&ocirc;leur.
+      <strong>30&nbsp;% pour une premi&egrave;re ex&eacute;cution</strong>, 100&nbsp;% une fois le
+      programme s&ucirc;r.</td></tr>
+    <tr><td class="libre"><span class="ui">T&eacute;l&eacute;verser le programme</span></td>
+      <td>remplit la file du contr&ocirc;leur. Le robot ne bouge pas encore.
+      Facultatif&nbsp;: <span class="ui">Lancer</span> s'en charge tout seul.</td></tr>
+    <tr><td class="libre"><span class="ui">Lancer</span></td>
+      <td>joue le programme sur la machine. La file du contr&ocirc;leur
+      <strong>se vide en s'ex&eacute;cutant</strong>&nbsp;: si elle est &eacute;puis&eacute;e, le programme est
+      t&eacute;l&eacute;vers&eacute; automatiquement. Rejouer deux fois de suite ne demande donc rien de
+      plus qu'un second clic.</td></tr>
+    <tr><td><span class="ui">Suspendre</span></td><td>met la file en pause, sans la vider.</td></tr>
+    <tr><td class="libre"><strong style="color:var(--faute)">ARR&Ecirc;T D'URGENCE</strong></td>
+      <td><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Espace</kbd> &mdash; coupe le mouvement en
+      cours et vide la file.</td></tr>
+  </table></div>
+</section>
+
+<section id="menus">
+  <h2><span class="num">Section 09</span>Les menus</h2>
+
+  <h3>Fichier</h3>
+  <div class="cadre"><table>
+    <tr><td>Nouveau programme</td><td>repart d'un programme vide.</td></tr>
+    <tr><td class="libre">Ouvrir&hellip; / Enregistrer sous&hellip;</td><td>programme au format JSON.
+      Le fichier porte aussi l'outil mont&eacute; et sa longueur.</td></tr>
+    <tr><td class="libre">Ex&eacute;cuter un script Python&hellip;</td><td>joue un script de pilotage dans
+      cette fen&ecirc;tre. Voir la <a href="fiche_programmation.html">fiche&nbsp;2</a>.</td></tr>
+    <tr><td class="libre">Rejouer le dernier script</td><td><kbd>F5</kbd> &mdash; relit le fichier et le
+      rejoue&nbsp;: la boucle de travail quand on &eacute;dite le script &agrave; c&ocirc;t&eacute;.</td></tr>
+    <tr><td class="libre">Exporter un script Dobot&hellip;</td><td>&eacute;crit le programme en appels
+      <code>DobotDllType</code>, l'API officielle du constructeur.</td></tr>
+    <tr><td class="libre">Exporter les consignes en CSV&hellip;</td><td>&eacute;chantillonne la trajectoire
+      pour l'exploiter dans un tableur.</td></tr>
+  </table></div>
+
+  <h3>Affichage</h3>
+  <div class="cadre"><table>
+    <tr><td>Maillages CAO</td><td>le mod&egrave;le 3D complet du constructeur.</td></tr>
+    <tr><td class="libre">Tri&egrave;dre du rep&egrave;re de base</td><td>x&nbsp;rouge, y&nbsp;vert, z&nbsp;bleu.</td></tr>
+    <tr><td>Rep&egrave;res des liaisons</td><td>un tri&egrave;dre par articulation&nbsp;: la lecture
+      g&eacute;om&eacute;trique du mod&egrave;le.</td></tr>
+    <tr><td>Cibles du programme</td><td>les points du programme dans l'espace.</td></tr>
+    <tr><td>Rep&egrave;res des cibles</td><td>leur orientation, en plus de leur position.</td></tr>
+    <tr><td>Squelette</td><td>le robot r&eacute;duit &agrave; ses segments&nbsp;: plus lisible que les
+      maillages pour comprendre la cin&eacute;matique.</td></tr>
+    <tr><td>Grille</td><td>quadrillage du plan de pose.</td></tr>
+    <tr><td>Espace de travail</td><td>l'enveloppe atteignable, qui d&eacute;pend de l'outil mont&eacute;.</td></tr>
+    <tr><td>Trace du TCP</td><td>le sillage de la pointe&nbsp;; <span class="ui">Effacer la
+      trace</span> le remet &agrave; z&eacute;ro.</td></tr>
+    <tr><td class="libre">Zoom / Recadrer</td><td><kbd>Ctrl</kbd>+<kbd>+</kbd>, <kbd>Ctrl</kbd>+<kbd>&minus;</kbd>,
+      <kbd>Ctrl</kbd>+<kbd>0</kbd>.</td></tr>
+    <tr><td>Vues</td><td>iso, face, c&ocirc;t&eacute;, dessus, arri&egrave;re.</td></tr>
+    <tr><td class="libre">Basculer mod&egrave;le CAO / simplifi&eacute;</td><td>bascule rapide entre les deux
+      repr&eacute;sentations.</td></tr>
+    <tr><td class="libre">Calibrer le mod&egrave;le 3D&hellip;</td><td>recale les maillages sur les rep&egrave;res
+      des corps, si un OBJ est d&eacute;cal&eacute;.</td></tr>
+  </table></div>
+</section>
+
+<section id="raccourcis">
+  <h2><span class="num">Section 10</span>Raccourcis clavier</h2>
+  <div class="cadre"><table>
+    <tr><th>Touches</th><th>Action</th></tr>
+    <tr><td><kbd>Espace</kbd></td><td>lancer / mettre en pause l'animation</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>.</kbd></td><td>arr&ecirc;ter et revenir au d&eacute;but</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>&rarr;</kbd> / <kbd>Ctrl</kbd>+<kbd>&larr;</kbd></td><td>pas suivant / pr&eacute;c&eacute;dent</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Entr&eacute;e</kbd></td><td>aller &agrave; la ligne s&eacute;lectionn&eacute;e</td></tr>
+    <tr><td><kbd>F5</kbd></td><td>rejouer le dernier script Python</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>ex&eacute;cuter un script Python&hellip;</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd> / <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>nouveau / ouvrir / enregistrer sous</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>Ctrl</kbd>+<kbd>&minus;</kbd> / <kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>zoom avant / arri&egrave;re / recadrer</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>C</kbd></td><td>agrandir les courbes</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>R</kbd></td><td>tout r&eacute;afficher</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>Espace</kbd></td><td><strong style="color:var(--faute)">arr&ecirc;t d'urgence</strong> du robot r&eacute;el</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td>quitter</td></tr>
+  </table></div>
+</section>
+
+<footer>
+  <p>Simulateur Dobot Magician &mdash; fiche&nbsp;1, l'interface.
+  Suite&nbsp;: <a href="fiche_programmation.html">fiche&nbsp;2, exemples de
+  programmation</a> et <a href="fiche_api.html">fiche&nbsp;3, r&eacute;f&eacute;rence des
+  commandes</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>
