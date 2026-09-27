@@ -29,10 +29,12 @@ from __future__ import annotations
 import getpass
 import importlib
 import json
+import os
 import struct
 from typing import Any, Callable, Dict, Optional
 
-__all__ = ["nom_service", "envoyer", "Serveur", "ATTENTE", "reseau"]
+__all__ = ["nom_service", "envoyer", "Serveur", "ATTENTE", "reseau",
+           "VARIABLE_SERVICE"]
 
 #: delai d'attente, en millisecondes, pour joindre un simulateur
 ATTENTE = 800
@@ -55,13 +57,26 @@ def reseau():
         return None
 
 
+#: variable d'environnement qui isole une passerelle des autres
+VARIABLE_SERVICE = "DOBOT_SIM_SERVICE"
+
+
 def nom_service() -> str:
     """
     Nom du tube, propre a l'utilisateur.
 
     Deux comptes ouvrant chacun un simulateur sur la meme machine ne
     doivent pas se marcher dessus.
+
+    `DOBOT_SIM_SERVICE` permet de choisir un autre nom : deux simulateurs
+    independants cohabitent alors sur le meme compte -- deux postes de TP
+    sur une machine partagee, ou une recette qui ne doit pas parler a la
+    fenetre ouverte a cote.
     """
+    choisi = os.environ.get(VARIABLE_SERVICE, "").strip()
+    if choisi:
+        return "dobot_sim_{}".format(
+            "".join(c for c in choisi if c.isalnum() or c in "_-") or "x")
     try:
         qui = getpass.getuser()
     except Exception:                        # pragma: no cover
