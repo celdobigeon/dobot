@@ -12,6 +12,29 @@ from __future__ import annotations
 import sys
 
 
+def sonder_rendu() -> None:
+    """Essaie un vrai contexte OpenGL, comme le fera l'interface."""
+    import os
+
+    # Sans affichage, creer une QApplication abandonnerait le processus.
+    if sys.platform.startswith("linux") and not (
+            os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        print("  rendu 3D     non teste (aucun affichage)")
+        return
+    try:
+        from dobot_sim.viewer3d import sonder_opengl
+        from pyqtgraph.Qt import QtWidgets
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        erreur, pilote = sonder_opengl()
+    except Exception as exc:
+        erreur, pilote = "{}: {}".format(type(exc).__name__, exc), ""
+    if erreur:
+        print("  rendu 3D     INDISPONIBLE -> repli sur les vues 2D")
+        print("               " + erreur)
+    else:
+        print("  rendu 3D     OK ({})".format(pilote))
+
+
 def verifier() -> int:
     """Diagnostic sans interface : dependances, modele CAO, coherence MGD/MGI."""
     import importlib
@@ -37,7 +60,8 @@ def verifier() -> int:
         ok = False
     try:
         importlib.import_module("OpenGL")
-        print("  PyOpenGL     present -> rendu 3D disponible")
+        print("  PyOpenGL     present")
+        sonder_rendu()
     except ImportError:
         print("  PyOpenGL     absent  -> repli sur les vues 2D")
 

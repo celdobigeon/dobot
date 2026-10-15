@@ -20,7 +20,7 @@ from . import homogeneous as hg
 from .meshes import Piece
 from .robot import DobotMagician
 
-__all__ = ["Vue3D"]
+__all__ = ["Vue3D", "sonder_opengl"]
 
 COULEUR_X = (0.90, 0.25, 0.25, 1.0)
 COULEUR_Y = (0.30, 0.75, 0.35, 1.0)
@@ -86,6 +86,52 @@ try:
         ])
 except Exception:                       # pragma: no cover
     NUANCEUR = "shaded"                 # repli sur le nuanceur standard
+
+
+def sonder_opengl() -> tuple:
+    """
+    Verifie, AVANT de construire la vue, que le rendu 3D marchera vraiment.
+
+    Renvoie ``(erreur, pilote)`` : ``erreur`` vide si tout va bien, sinon la
+    raison ; ``pilote`` decrit la carte et la version d'OpenGL.
+
+    Un widget OpenGL ne leve aucune exception quand le rendu echoue : la
+    fenetre reste simplement vide. D'ou cette sonde : on ouvre un contexte
+    hors ecran avec Qt, puis on interroge ce MEME contexte par PyOpenGL. Si
+    PyOpenGL ne le voit pas (cas Wayland/EGL contre XWayland/GLX), ou si la
+    version est trop ancienne pour les nuanceurs, la vue 2D prend le relais.
+    Exige qu'une QApplication existe deja.
+    """
+    from pyqtgraph.Qt import QtGui
+
+    ctx = QtGui.QOpenGLContext()
+    if not ctx.create():
+        return "impossible de creer un contexte OpenGL", ""
+    surface = QtGui.QOffscreenSurface()
+    surface.setFormat(ctx.format())
+    surface.create()
+    if not surface.isValid() or not ctx.makeCurrent(surface):
+        return "contexte OpenGL inutilisable", ""
+    try:
+        fmt = ctx.format()
+        if (fmt.majorVersion(), fmt.minorVersion()) < (2, 0):
+            return ("OpenGL {}.{} : la version 2.0 est requise"
+                    .format(fmt.majorVersion(), fmt.minorVersion())), ""
+        from OpenGL import GL
+        version = GL.glGetString(GL.GL_VERSION)
+        rendu = GL.glGetString(GL.GL_RENDERER)
+        if not version:
+            import os
+            return ("PyOpenGL ne voit pas le contexte de Qt (plateforme {!r})"
+                    .format(os.environ.get("PYOPENGL_PLATFORM", "auto"))), ""
+        pilote = "{} -- OpenGL {}".format(
+            (rendu or b"?").decode(errors="replace"),
+            version.decode(errors="replace"))
+        return "", pilote
+    except Exception as exc:
+        return "{}: {}".format(type(exc).__name__, exc), ""
+    finally:
+        ctx.doneCurrent()
 
 
 def _toujours_visible(item, profondeur: int = 100) -> None:

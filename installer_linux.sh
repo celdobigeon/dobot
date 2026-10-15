@@ -28,20 +28,20 @@ if command -v apt-get >/dev/null; then
     $SUDO apt-get update
     $SUDO apt-get install -y \
         python3 python3-venv python3-pip \
-        libgl1 libegl1 libglib2.0-0 libdbus-1-3 libfontconfig1 \
+        libgl1 libegl1 libgl1-mesa-dri mesa-utils libglib2.0-0 libdbus-1-3 libfontconfig1 \
         libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
         libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 \
-        libxcb-shape0 libxcb-cursor0
+        libxcb-shape0 libxcb-cursor0 libxcb-xkb1
 elif command -v dnf >/dev/null; then
     $SUDO dnf install -y \
         python3 python3-pip \
-        mesa-libGL mesa-libEGL glib2 dbus-libs fontconfig \
+        mesa-libGL mesa-libEGL mesa-dri-drivers glx-utils glib2 dbus-libs fontconfig \
         libxkbcommon-x11 xcb-util-wm xcb-util-image xcb-util-keysyms \
         xcb-util-renderutil xcb-util-cursor
 elif command -v pacman >/dev/null; then
     $SUDO pacman -S --needed --noconfirm \
         python python-pip \
-        mesa glib2 dbus fontconfig \
+        mesa mesa-utils glib2 dbus fontconfig \
         libxkbcommon-x11 xcb-util-wm xcb-util-image xcb-util-keysyms \
         xcb-util-renderutil xcb-util-cursor
 else

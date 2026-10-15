@@ -10,7 +10,9 @@ Organisation :
 
 from __future__ import annotations
 
+import os
 import struct
+import sys
 import traceback
 from typing import List, Optional, Sequence
 
@@ -31,11 +33,12 @@ from .trajectory import PROFILS, Trajectoire
 from .viewer2d import Vue2D
 
 try:
-    from .viewer3d import Vue3D
+    from .viewer3d import Vue3D, sonder_opengl
     ERREUR_OPENGL = ""
 except Exception as _exc:                    # pragma: no cover
-    Vue3D = None
+    Vue3D = sonder_opengl = None
     ERREUR_OPENGL = "{}: {}".format(type(_exc).__name__, _exc)
+PILOTE_OPENGL = ""
 
 QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction
 
@@ -747,17 +750,29 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         return besoin + 12          # marges du dock
 
     def _creer_vue(self) -> None:
-        if Vue3D is not None:
+        # DOBOT_VUE=2d force les projections 2D ; DOBOT_VUE=3d force OpenGL
+        # sans sonde prealable. Par defaut, la sonde decide.
+        choix = os.environ.get("DOBOT_VUE", "").strip().lower()
+        erreur = ERREUR_OPENGL
+        if Vue3D is not None and choix == "2d":
+            erreur = "vue 2D imposee par DOBOT_VUE=2d"
+        elif Vue3D is not None and choix != "3d":
+            erreur, pilote = sonder_opengl()
+            globals()["PILOTE_OPENGL"] = pilote
+
+        self.mode_3d = False
+        if Vue3D is not None and not erreur:
             try:
                 self.vue = Vue3D(self.robot)
                 self.mode_3d = True
             except Exception as exc:          # pragma: no cover
-                self.vue = Vue2D(self.robot)
-                self.mode_3d = False
-                globals()["ERREUR_OPENGL"] = str(exc)
-        else:                                  # pragma: no cover
+                erreur = "{}: {}".format(type(exc).__name__, exc)
+        if not self.mode_3d:
             self.vue = Vue2D(self.robot)
-            self.mode_3d = False
+            globals()["ERREUR_OPENGL"] = erreur
+            if choix != "2d":
+                print("Vue 3D indisponible, repli sur les vues 2D.\n"
+                      "  OpenGL : {}".format(erreur), file=sys.stderr)
 
         # Bandeau d'alerte au-dessus de la vue. Un programme dont les cibles
         # sont hors d'atteinte se joue quand meme -- le robot se replie sur
@@ -3763,6 +3778,8 @@ Singularite quand det(J) -> 0 : TCP sur l'axe vertical, bras tendu ou replie.
                "Geometrie : d1={:.0f}, l1={:.0f}, l2={:.0f}, l3={:.0f} mm"
                .format(moteur, self.robot.geo.d1, self.robot.geo.l1,
                        self.robot.geo.l2, self.robot.geo.l3))
+        if PILOTE_OPENGL:
+            msg += "<br>Pilote : {}".format(PILOTE_OPENGL)
         if ERREUR_OPENGL:
             msg += "<br><br><i>OpenGL : {}</i>".format(ERREUR_OPENGL)
         QtWidgets.QMessageBox.about(self, "A propos", msg)

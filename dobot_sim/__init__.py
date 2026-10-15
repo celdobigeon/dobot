@@ -25,6 +25,19 @@ Exemple minimal
 >>> q = r.mgi(T)                       # modele geometrique inverse
 """
 
+import os as _os
+import sys as _sys
+
+# Linux sous Wayland (Ubuntu par defaut) : PyQt5 installe par pip n'a pas de
+# greffon Wayland et ouvre sa fenetre via XWayland, avec un contexte GLX.
+# PyOpenGL, voyant une session Wayland, choisirait EGL : ses appels partiraient
+# alors dans le mauvais contexte et la vue 3D resterait vide. On aligne les
+# deux sur X11/GLX. A faire avant tout import d'OpenGL ; setdefault laisse a
+# l'utilisateur le dernier mot via les variables d'environnement.
+if _sys.platform.startswith("linux") and _os.environ.get("DISPLAY"):
+    _os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    _os.environ.setdefault("PYOPENGL_PLATFORM", "glx")
+
 from .homogeneous import (composer, formater, identite, interpoler, inverse,
                           position_de, rot_x, rot_y, rot_z, rotation_de,
                           translation)

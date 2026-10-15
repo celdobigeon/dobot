@@ -26,10 +26,19 @@ Cette commande vérifie les dépendances, teste la cohérence MGD/MGI sur
 2000 configurations tirées au hasard, compare la jacobienne analytique aux
 différences finies, et liste les pièces du modèle 3D effectivement trouvées.
 
+Sous Linux, `./installer_linux.sh` installe en une fois les paquets système,
+un environnement virtuel `.venv` et l'accès au port série du robot.
+
 > Si `PyOpenGL` est absent ou si la machine n'a pas de pilote OpenGL
 > exploitable, le simulateur bascule automatiquement sur deux projections 2D
 > (vue méridienne et vue de dessus). Toutes les autres fonctions restent
-> identiques.
+> identiques. Un vrai contexte OpenGL est essayé au démarrage : s'il ne
+> répond pas, la raison est affichée dans le terminal et dans *Aide ▸ A
+> propos*. La variable `DOBOT_VUE=2d` (ou `3d`) impose l'une ou l'autre vue.
+>
+> Sous Linux en session Wayland (Ubuntu par défaut), la fenêtre passe par
+> XWayland : le simulateur règle lui-même `QT_QPA_PLATFORM=xcb` et
+> `PYOPENGL_PLATFORM=glx`, faute de quoi la vue 3D resterait vide.
 
 ---
 
