@@ -26,8 +26,12 @@ Cette commande vérifie les dépendances, teste la cohérence MGD/MGI sur
 2000 configurations tirées au hasard, compare la jacobienne analytique aux
 différences finies, et liste les pièces du modèle 3D effectivement trouvées.
 
-Sous Linux, `./installer_linux.sh` installe en une fois les paquets système,
-un environnement virtuel `.venv` et l'accès au port série du robot.
+Sous Linux, `./installer_linux.sh` crée l'environnement virtuel `.venv` et
+y installe les dépendances, **sans droits administrateur** ; il termine par
+`python main.py --verifier`, qui dit aussi si le port du robot est
+accessible depuis ce compte. Si ce n'est pas le cas, seul l'administrateur
+peut y remédier, une fois par poste : `sudo ./admin/configurer_poste_linux.sh`
+(paquets système, port série ouvert à tous les comptes, retrait de brltty).
 
 > Si `PyOpenGL` est absent ou si la machine n'a pas de pilote OpenGL
 > exploitable, le simulateur bascule automatiquement sur deux projections 2D

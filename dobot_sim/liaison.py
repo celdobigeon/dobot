@@ -38,7 +38,9 @@ jamais de commande de son propre chef. L'arret d'urgence
 
 from __future__ import annotations
 
+import os
 import struct
+import sys
 import threading
 import time
 
@@ -217,6 +219,59 @@ def ports_disponibles() -> List[Tuple[str, str]]:
     return [(d, desc) for _, d, desc in trouves]
 
 
+def brltty_actif() -> bool:
+    """
+    Vrai si brltty tourne (Linux). Ce service pour afficheurs braille
+    s'empare des ponts CH340 : le port du Dobot apparait puis disparait.
+    """
+    try:
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open("/proc/{}/comm".format(pid)) as f:
+                        if f.read().strip().startswith("brltty"):
+                            return True
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return False
+
+
+def _conseil_ouverture(exc: Exception) -> str:
+    """Explication, selon le systeme, d'un echec d'ouverture du port."""
+    detail = str(exc)
+    bas = detail.lower()
+    # Linux : le port existe mais l'utilisateur n'a pas le droit de l'ouvrir.
+    # Meme texte que sous Windows ("Access is denied"), mais cause toute
+    # autre : sous Windows, c'est le port deja pris.
+    if sys.platform.startswith("linux") and (
+            "errno 13" in bas or "permission denied" in bas):
+        return ("\n  Votre compte n'a pas le droit d'utiliser ce port. Cela ne"
+                "\n  se regle pas sans droits administrateur : signalez-le a"
+                "\n  l'enseignant. Le poste doit etre configure une fois par"
+                "\n  admin/configurer_poste_linux.sh.")
+    if "errno 2" in bas or "no such file" in bas or "filenotfound" in bas:
+        conseil = "\n  Le port n'existe plus : robot debranche ou eteint ?"
+        if sys.platform.startswith("linux") and brltty_actif():
+            conseil += ("\n  brltty tourne sur ce poste : il capture le port du"
+                        "\n  Dobot. Signalez-le a l'enseignant (le poste doit"
+                        "\n  etre configure par admin/configurer_poste_linux.sh).")
+        return conseil
+    # un port serie ne s'ouvre qu'une fois : l'erreur la plus frequente
+    # n'est pas un robot absent, c'est un autre programme qui tient deja
+    # la liaison (verrou exclusif sous Linux/macOS, refus sous Windows)
+    if ("access" in bas or "acc" in bas or "denied" in bas
+            or "lock" in bas or "busy" in bas):
+        return ("\n  Le port est deja pris. Fermez ce qui l'occupe :"
+                "\n    - une autre fenetre du simulateur, ou son "
+                "panneau Robot reel (bouton Deconnecter)"
+                "\n    - un 'calibrer_robot.py --suivre' en cours "
+                "(Ctrl+C)"
+                "\n    - DobotStudio")
+    return ""
+
+
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -270,22 +325,15 @@ class LiaisonDobot:
             raise ErreurLiaison(
                 "le module pyserial est absent : pip install pyserial") from exc
         try:
+            # exclusive : sous Linux et macOS, rien n'empeche par defaut deux
+            # programmes d'ouvrir le meme port, et leurs trames se melent.
+            # Le verrou fait echouer le second, comme Windows le fait de
+            # lui-meme.
             self._serie = serial.Serial(self.port, self.baud, timeout=self.delai,
-                                        write_timeout=self.delai)
+                                        write_timeout=self.delai, exclusive=True)
         except Exception as exc:
-            detail = str(exc)
-            # un port serie ne s'ouvre qu'une fois : l'erreur la plus
-            # frequente n'est pas un robot absent, c'est un autre
-            # programme qui tient deja la liaison
-            if "Access" in detail or "Acc" in detail or "denied" in detail:
-                detail += ("\n  Le port est deja pris. Fermez ce qui l'occupe :"
-                           "\n    - une autre fenetre du simulateur, ou son "
-                           "panneau Robot reel (bouton Deconnecter)"
-                           "\n    - un 'calibrer_robot.py --suivre' en cours "
-                           "(Ctrl+C)"
-                           "\n    - DobotStudio")
-            raise ErreurLiaison("ouverture de {} impossible : {}"
-                                .format(self.port, detail)) from exc
+            raise ErreurLiaison("ouverture de {} impossible : {}{}".format(
+                self.port, exc, _conseil_ouverture(exc))) from exc
         # Le pont USB-serie a besoin d'un instant, et le tampon peut contenir
         # les restes d'une session precedente.
         #

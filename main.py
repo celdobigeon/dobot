@@ -35,6 +35,33 @@ def sonder_rendu() -> None:
         print("  rendu 3D     OK ({})".format(pilote))
 
 
+def sonder_port() -> None:
+    """Le robot reel est-il utilisable depuis CE compte ? Sans rien ouvrir."""
+    import os
+
+    try:
+        from dobot_sim.liaison import brltty_actif, ports_disponibles
+    except ImportError as exc:
+        print("  port serie   non teste ({})".format(exc))
+        return
+    ports = ports_disponibles()
+    if not ports:
+        print("  port serie   aucun (robot branche et allume ?)")
+    for device, description in ports:
+        if not os.path.exists(device) or os.access(device, os.R_OK | os.W_OK):
+            etat = "accessible"
+        else:
+            etat = "REFUSE a ce compte"
+        print("  port serie   {} ({}) : {}".format(device, description, etat))
+        if etat != "accessible" and sys.platform.startswith("linux"):
+            print("               il faut appartenir au groupe dialout, ce qui"
+                  " demande\n               l'administrateur du poste"
+                  " (admin/configurer_poste_linux.sh)")
+    if sys.platform.startswith("linux") and brltty_actif():
+        print("  brltty       actif : il peut capturer le port du Dobot"
+              " (le port\n               apparait puis disparait)")
+
+
 def verifier() -> int:
     """Diagnostic sans interface : dependances, modele CAO, coherence MGD/MGI."""
     import importlib
@@ -64,6 +91,7 @@ def verifier() -> int:
         sonder_rendu()
     except ImportError:
         print("  PyOpenGL     absent  -> repli sur les vues 2D")
+    sonder_port()
 
     if not ok:
         print("\nInstallation incomplete : pip install -r requirements.txt")
