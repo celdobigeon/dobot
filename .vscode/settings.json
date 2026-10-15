@@ -9,5 +9,6 @@
   "files.associations": {
     "*.stp": "plaintext"
   },
-  "python-envs.defaultEnvManager": "ms-python.python:system"
+  "python-envs.defaultEnvManager": "ms-python.python:system",
+  "cmake.sourceDirectory": "/Users/olivierly/Programmation/Enseignement/Dobot/dobot/Magician & Accessories-2D&3D files/Magician & Accessories-2D&3D files （模型文件&尺寸图）/magician_description"
 }
