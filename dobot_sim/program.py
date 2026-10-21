@@ -13,9 +13,9 @@ import numpy as np
 
 from .robot import (DobotMagician, cible, decomposer_cible,
                     verifier_repere_objet)
-from .trajectory import (SegmentArticulaire, SegmentAttente, SegmentCirculaire,
-                         SegmentLineaire, Trajectoire, creer_profil,
-                         creer_profil_vitesse)
+from .trajectory import (SegmentAction, SegmentArticulaire, SegmentAttente,
+                         SegmentCirculaire, SegmentLineaire, Trajectoire,
+                         creer_profil, creer_profil_vitesse)
 
 __all__ = ["Instruction", "Programme", "Evenement", "TYPES_INSTRUCTION",
            "TYPES_MOUVEMENT"]
@@ -296,7 +296,11 @@ class Programme:
                 seg = SegmentAttente(robot, q, max(instr.duree, 1e-3), etiquette)
 
             elif instr.type in ("OUTIL", "SORTIE"):
-                seg = SegmentAttente(robot, q, DUREE_LOGIQUE, etiquette)
+                # SegmentAction et non SegmentAttente : une action ne
+                # demande pas de temps, elle ne neutralise donc pas le
+                # lissage du mouvement qui la precede. Lisser un point
+                # ou l'on agit, c'est agir avant d'y etre.
+                seg = SegmentAction(robot, q, DUREE_LOGIQUE, etiquette)
                 logiques.append((len(segments), instr))
 
             elif instr.type == "ENTREE":

@@ -32,7 +32,7 @@ __all__ = [
     "Profil", "ProfilLineaire", "ProfilTrapeze", "ProfilPolynomial5", "ProfilSinus",
     "creer_profil", "creer_profil_vitesse", "PROFILS",
     "Segment", "SegmentArticulaire", "SegmentLineaire", "SegmentCirculaire",
-    "SegmentAttente", "Trajectoire",
+    "SegmentAttente", "SegmentAction", "Trajectoire",
 ]
 
 
@@ -458,6 +458,25 @@ class SegmentAttente(Segment):
         return self.q0.copy()
 
 
+class SegmentAction(SegmentAttente):
+    """
+    Commande logique instantanee : ventouse, pince, laser, sortie TOR.
+
+    Le robot y est immobile comme dans une temporisation, mais la nature
+    est differente et la Trajectoire les traite differemment. Une ATTENTE
+    est un temps DEMANDE : le lissage ne doit pas l'absorber. Une ACTION
+    ne demande aucun temps, elle part a l'instant ou la file l'atteint --
+    donc, si le mouvement precedent est lisse, AVANT que la cible soit
+    atteinte et robot en marche.
+
+    C'est volontaire : garantir qu'une prise se fasse a l'arret releve de
+    celui qui programme, pas du modele. On ne lisse pas un point ou l'on
+    agit, et c'est la reflexion a mener.
+    """
+
+    type_mouvement = "ACTION"
+
+
 # ===========================================================================
 # Trajectoire complete
 # ===========================================================================
@@ -519,7 +538,11 @@ class Trajectoire:
         for i in range(n - 1):
             a, b = self.segments[i], self.segments[i + 1]
             # on ne lisse jamais autour d'une temporisation : une attente
-            # demandee doit etre respectee
+            # demandee -- un delai, un capteur -- doit etre respectee.
+            # Une ACTION, elle, se lisse comme le reste : elle ne demande
+            # aucun temps, et le modele n'a pas a garantir en douce que la
+            # cible est atteinte avant qu'elle parte. C'est au programme de
+            # ne pas lisser un point ou il agit.
             if a.type_mouvement == "ATTENTE" or b.type_mouvement == "ATTENTE":
                 continue
             # la fraction porte sur le recouvrement MAXIMAL admissible, si

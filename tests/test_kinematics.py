@@ -1061,6 +1061,51 @@ class TestInstructionsES(unittest.TestCase):
         self.assertEqual(traj.recouvrements[0], 0.0)
         self.assertEqual(traj.recouvrements[1], 0.0)
 
+    def test_une_action_ne_neutralise_PAS_le_lissage_voisin(self):
+        """
+        Une action -- ventouse, pince, sortie -- ne demande aucun temps :
+        elle ne doit donc pas proteger en douce le mouvement qui la
+        precede. Lisser un point ou l'on agit, c'est agir avant d'y etre,
+        et c'est au programme de ne pas le faire.
+        """
+        I = self.Instruction
+        commun = dict(mode="cartesien", mode_temps="vitesse", vitesse=120)
+        for type_action, extra in (("OUTIL", dict(etat=True)),
+                                   ("SORTIE", dict(port=3, etat=True))):
+            prog = self.Programme([
+                I(type="MOVL", pose=[200, 0, 100, 0], lissage=100, **commun),
+                I(type=type_action, **extra),
+                I(type="MOVL", pose=[240, 0, 100, 0], lissage=100, **commun),
+            ])
+            traj = prog.construire(self.robot)
+            self.assertEqual(traj.segments[1].type_mouvement, "ACTION",
+                             type_action + " doit compiler en SegmentAction")
+            self.assertGreater(traj.recouvrements[0], 0.0,
+                               type_action + " ne doit pas annuler le lissage")
+
+    def test_une_action_lissee_part_avant_la_cible(self):
+        """La consequence concrete : l'action part en mouvement."""
+        import numpy as np
+        I = self.Instruction
+        commun = dict(mode="cartesien", mode_temps="vitesse", vitesse=150)
+        cible = [220, -60, 25, 0]
+        instructions = lambda liss: [
+            I(type="MOVL", pose=[220, -60, 110, 0], **commun),
+            I(type="MOVL", pose=cible, lissage=liss, **commun),
+            I(type="OUTIL", etat=True),
+            I(type="MOVL", pose=[220, -60, 110, 0], lissage=liss, **commun),
+        ]
+        ecarts = {}
+        for liss in (0, 100):
+            prog = self.Programme(instructions(liss))
+            traj = prog.construire(self.robot)
+            e = traj.echantillonner(0.001)
+            t = prog.evenements[0].t
+            i = int(np.searchsorted(e["t"], t))
+            ecarts[liss] = float(np.linalg.norm(e["P"][i] - np.array(cible[:3])))
+        self.assertLess(ecarts[0], 1e-6, "sans lissage, l'action part sur la cible")
+        self.assertGreater(ecarts[100], 0.5, "avec lissage, elle part avant")
+
     def test_ports_utilises(self):
         prog = self._programme()
         self.assertEqual(prog.ports_utilises(), ([3], [5]))
