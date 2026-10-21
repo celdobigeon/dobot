@@ -307,6 +307,7 @@ table.compacte td{vertical-align:top;}
   consulter, valable pour n'importe quelle activit&eacute;&nbsp;&mdash; on n'en lit jamais
   que l'entr&eacute;e dont on a besoin.</p>
   <p class="jeu-fiches">
+    <a href="fiche_index.html">&larr; Index &mdash; programmation sous VS-Code</a>
     <a href="fiche_interface.html">&larr; Fiche 1 &mdash; l'interface</a>
     <a href="fiche_programmation.html">&larr; Fiche 2 &mdash; exemples de programmation</a>
     <span class="ici">Fiche 3 &mdash; r&eacute;f&eacute;rence</span>
@@ -382,6 +383,35 @@ table.compacte td{vertical-align:top;}
   Les coordonn&eacute;es <code>(x, y, z, r)</code> n'en sont qu'une &eacute;criture abr&eacute;g&eacute;e,
   possible seulement parce que la m&eacute;canique du Magician impose l'orientation de
   l'outil.</p>
+
+  <!-- memo:matrice-a-la-main -->
+  <h3>&Eacute;crire une matrice &agrave; la main</h3>
+  <p>Les fabriques <code>cible()</code> et <code>repere_travail()</code> ne font
+  qu'assembler des nombres dans un tableau&nbsp;: rien n'emp&ecirc;che de l'&eacute;crire
+  directement, et c'est souvent plus clair pour poser une convention.</p>
+<pre><code><span class="c"># un REPERE DE TRAVAIL : axe z vers le HAUT, rotation = identite</span>
+MAGASIN = np.array([[<span class="n">1</span>, <span class="n">0</span>, <span class="n">0</span>, <span class="n">215</span>],
+                    [<span class="n">0</span>, <span class="n">1</span>, <span class="n">0</span>, <span class="n">-95</span>],
+                    [<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>,  <span class="n">25</span>],
+                    [<span class="n">0</span>, <span class="n">0</span>, <span class="n">0</span>,   <span class="n">1</span>]], dtype=float)
+
+<span class="c"># une CIBLE au meme endroit : axe z retourne vers le BAS</span>
+PRISE = np.array([[<span class="n">1</span>,  <span class="n">0</span>,  <span class="n">0</span>, <span class="n">215</span>],
+                  [<span class="n">0</span>, <span class="n">-1</span>,  <span class="n">0</span>, <span class="n">-95</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>, <span class="n">-1</span>,  <span class="n">25</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>,  <span class="n">0</span>,   <span class="n">1</span>]], dtype=float)
+
+<span class="c"># un REPERE OUTIL : de l'axe de rotation a la pointe, z vers le BAS</span>
+OUTIL = np.array([[<span class="n">1</span>,  <span class="n">0</span>,  <span class="n">0</span>,    <span class="n">0</span>],
+                  [<span class="n">0</span>, <span class="n">-1</span>,  <span class="n">0</span>,    <span class="n">0</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>, <span class="n">-1</span>, <span class="n">-79.3</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>,  <span class="n">0</span>,    <span class="n">1</span>]], dtype=float)</code></pre>
+  <p>Deux matrices suffisent ensuite &agrave; tout composer&nbsp;: le retournement
+  <code>Rx(180&deg;)</code>, qui fait d'un rep&egrave;re une cible, et une translation
+  pure. L'op&eacute;rateur de composition est <code>@</code>&nbsp;; post-multiplier,
+  c'est se d&eacute;placer dans le rep&egrave;re de l'<strong>outil</strong>,
+  pr&eacute;-multiplier dans celui de la <strong>base</strong>.</p>
+  <!-- /memo:matrice-a-la-main -->
   <div class="matrice">
     <span class="etiq">T&nbsp;=</span>
     <div class="grille">

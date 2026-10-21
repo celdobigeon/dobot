@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index &mdash; programmation sous VS-Code</title>
+<style>
+
+:root{
+  --fond:#f6f7f9; --carte:#ffffff; --encre:#191d24; --encre2:#4d5666;
+  --muet:#7b8496; --trait:#dde1e8; --trait2:#eceff4;
+  --accent:#3d6fd8; --accent-doux:#eaf0fd;
+  --axe-x:#c33f3f; --axe-y:#3a9448; --axe-z:#3d6fd8; --axe-r:#7c96d8;
+  --ok:#4c8f60; --alerte:#b3781f; --faute:#c0392b;
+  --ombre:0 1px 2px rgba(20,28,45,.06), 0 6px 18px rgba(20,28,45,.05);
+  --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+    --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+    --accent:#7aa2f7; --accent-doux:#1b2330;
+    --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+    --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+    --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+  --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+  --accent:#7aa2f7; --accent-doux:#1b2330;
+  --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+  --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+  --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth; scroll-padding-top:74px;}
+body{
+  margin:0; background:var(--fond); color:var(--encre);
+  font-family:var(--serif); font-size:16.5px; line-height:1.62;
+  padding-inline:16px; padding-block:0;
+}
+.page{max-width:920px; margin:0 auto;}
+
+/* ---- en-tete ---- */
+header.une{padding-block:44px 26px; border-bottom:3px double var(--trait);}
+.surtitre{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 12px;
+}
+h1{
+  font-family:var(--sans); font-weight:650; letter-spacing:-.02em;
+  font-size:clamp(28px,5.2vw,42px); line-height:1.12; margin:0 0 10px;
+  text-wrap:balance;
+}
+.chapeau{margin:0; color:var(--encre2); font-size:17.5px; max-width:62ch;}
+.jeu-fiches{
+  margin-top:20px; font-family:var(--sans); font-size:13.5px;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+}
+.jeu-fiches a{
+  color:var(--accent); text-decoration:none;
+  border:1px solid var(--trait); border-radius:3px; padding:4px 10px;
+  background:var(--carte);
+}
+.jeu-fiches a:hover{border-color:var(--accent);}
+.jeu-fiches .ici{color:var(--muet); border-style:dashed; background:none;}
+
+/* ---- sommaire ---- */
+nav.sommaire{
+  position:sticky; top:0; z-index:5; background:var(--fond);
+  border-bottom:1px solid var(--trait); margin-bottom:8px;
+  padding-block:10px; font-family:var(--sans); font-size:13px;
+}
+nav.sommaire ol{
+  list-style:none; display:flex; flex-wrap:wrap; gap:6px 18px;
+  margin:0; padding:0; counter-reset:s;
+}
+nav.sommaire a{color:var(--encre2); text-decoration:none; white-space:nowrap;}
+nav.sommaire a::before{
+  counter-increment:s; content:counter(s,decimal-leading-zero) " ";
+  font-family:var(--mono); font-size:10.5px; color:var(--muet);
+}
+nav.sommaire a:hover{color:var(--accent);}
+
+/* ---- sections ---- */
+section{padding-block:34px 6px; border-top:1px solid var(--trait2);}
+section:first-of-type{border-top:none;}
+h2{
+  font-family:var(--sans); font-weight:640; letter-spacing:-.015em;
+  font-size:24px; line-height:1.2; margin:0 0 4px; text-wrap:balance;
+}
+h2 .num{
+  font-family:var(--mono); font-size:12px; font-weight:400;
+  color:var(--accent); letter-spacing:.1em; display:block; margin-bottom:6px;
+}
+h3{
+  font-family:var(--sans); font-weight:620; font-size:16.5px;
+  margin:26px 0 6px; letter-spacing:-.005em;
+}
+p{margin:.7em 0; max-width:68ch;}
+.intro{color:var(--encre2); max-width:66ch;}
+ul,ol.liste{max-width:66ch; padding-left:1.2em;}
+li{margin:.3em 0;}
+a{color:var(--accent);}
+
+/* ---- jetons ---- */
+.ui{
+  font-family:var(--sans); font-size:.9em; font-weight:600;
+  background:var(--accent-doux); color:var(--accent);
+  border-radius:3px; padding:1px 6px; white-space:nowrap;
+}
+kbd{
+  font-family:var(--mono); font-size:.82em; background:var(--carte);
+  border:1px solid var(--trait); border-bottom-width:2px; border-radius:4px;
+  padding:1px 6px; color:var(--encre2); white-space:nowrap;
+}
+code{font-family:var(--mono); font-size:.87em; color:var(--encre2);
+  background:var(--trait2); border-radius:3px; padding:1px 5px;}
+pre{
+  font-family:var(--mono); font-size:13px; line-height:1.55;
+  background:var(--carte); border:1px solid var(--trait); border-left:3px solid var(--accent);
+  border-radius:4px; padding:14px 16px; overflow-x:auto; margin:14px 0;
+  color:var(--encre);
+}
+pre code{background:none; padding:0; font-size:inherit; color:inherit;}
+pre .c{color:var(--muet); font-style:italic;}
+pre .k{color:var(--accent); font-weight:600;}
+pre .n{color:var(--axe-y);}
+
+/* ---- tableaux ---- */
+.cadre{overflow-x:auto; margin:16px 0;}
+table{border-collapse:collapse; width:100%; min-width:520px;
+  font-family:var(--sans); font-size:14px;}
+caption{
+  text-align:left; font-family:var(--mono); font-size:11px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muet);
+  padding-bottom:8px;
+}
+th{
+  text-align:left; font-weight:620; font-size:11.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muet);
+  border-bottom:1px solid var(--trait); padding:6px 12px 6px 0;
+}
+td{border-bottom:1px solid var(--trait2); padding:9px 12px 9px 0;
+  vertical-align:top; color:var(--encre2);}
+td:first-child{color:var(--encre); font-weight:560; white-space:nowrap;}
+td.libre:first-child{white-space:normal;}
+tr:last-child td{border-bottom:none;}
+td .mono,th .mono{font-family:var(--mono); font-size:12.5px;}
+td.num{font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---- encarts ---- */
+.note{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  box-shadow:var(--ombre); padding:14px 18px; margin:18px 0; max-width:70ch;
+}
+.note p{margin:.4em 0;}
+.note .etiquette{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; display:block; margin-bottom:5px;
+}
+.note.attention{border-left:3px solid var(--alerte);}
+.note.attention .etiquette{color:var(--alerte);}
+.note.piege{border-left:3px solid var(--faute);}
+.note.piege .etiquette{color:var(--faute);}
+.note.astuce{border-left:3px solid var(--ok);}
+.note.astuce .etiquette{color:var(--ok);}
+
+/* ---- axes colores ---- */
+.ax{font-family:var(--mono); font-weight:700;}
+.ax-x{color:var(--axe-x);} .ax-y{color:var(--axe-y);}
+.ax-z{color:var(--axe-z);} .ax-r{color:var(--axe-r);}
+
+footer{
+  margin-top:40px; padding-block:22px 48px; border-top:3px double var(--trait);
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+}
+
+@media (max-width:560px){
+  body{font-size:16px;}
+  nav.sommaire{position:static;}
+}
+@media print{
+  :root{--fond:#fff; --carte:#fff;}
+  body{font-size:11pt;} nav.sommaire{display:none;}
+  section{break-inside:auto; page-break-inside:auto;}
+  h2,h3{break-after:avoid;} .note,pre,.cadre{break-inside:avoid;}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+
+/* ---- figures ---- */
+figure.schema{
+  margin:24px 0; padding:18px 18px 14px; background:var(--carte);
+  border:1px solid var(--trait); border-radius:5px; box-shadow:var(--ombre);
+}
+figure.schema svg{width:100%; height:auto; display:block;}
+figcaption{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin-top:12px; max-width:62ch;
+}
+.s-os{stroke:var(--encre2); stroke-width:7; stroke-linecap:round; fill:none;}
+.s-cote{stroke:var(--muet); stroke-width:1; fill:none;}
+.s-pointille{stroke:var(--muet); stroke-width:1; stroke-dasharray:4 4; fill:none;}
+.s-sol{stroke:var(--trait); stroke-width:2;}
+.s-txt{font-family:var(--sans); font-size:12px; fill:var(--encre2);}
+.s-cle{font-family:var(--sans); font-size:12.5px; font-weight:650; fill:var(--encre);}
+.s-mut{font-family:var(--sans); font-size:11.5px; fill:var(--muet);}
+.s-x{stroke:var(--axe-x); fill:var(--axe-x);}
+.s-z{stroke:var(--axe-z); fill:var(--axe-z);}
+.s-pt{fill:var(--accent);}
+.s-arc{stroke:var(--accent); stroke-width:1.6; fill:none;}
+
+/* ---- badges de parametres ---- */
+.oblig,.opt{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.09em;
+  text-transform:uppercase; border-radius:2px; padding:1px 5px;
+  white-space:nowrap; font-weight:400;
+}
+.oblig{color:var(--faute); border:1px solid var(--faute);}
+.opt{color:var(--muet); border:1px solid var(--trait);}
+td .arg{font-family:var(--mono); font-size:12.5px; color:var(--encre); font-weight:600;}
+
+/* ---- exercices ---- */
+.exo{
+  background:var(--carte); border:1px solid var(--trait);
+  border-left:3px solid var(--accent); border-radius:5px;
+  padding:14px 18px 16px; margin:16px 0; max-width:70ch; box-shadow:var(--ombre);
+}
+.exo h4{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 8px; font-weight:400;
+}
+.exo p{margin:.35em 0;}
+.exo ol{margin:.4em 0; padding-left:1.15em;}
+
+/* ---- etapes numerotees ---- */
+ol.etapes{list-style:none; padding:0; counter-reset:e; max-width:68ch;}
+ol.etapes > li{
+  counter-increment:e; position:relative; padding-left:38px; margin:14px 0;
+}
+ol.etapes > li::before{
+  content:counter(e); position:absolute; left:0; top:1px;
+  font-family:var(--mono); font-size:12px; color:var(--accent);
+  border:1px solid var(--accent); border-radius:50%;
+  width:24px; height:24px; line-height:22px; text-align:center;
+}
+ol.etapes b{font-family:var(--sans); font-size:.97em;}
+/* ---- matrices homogenes ---- */
+.matrice{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  margin:16px 0; font-family:var(--mono); font-size:13px;
+}
+.matrice .etiq{font-style:italic; color:var(--encre2); font-size:14px;}
+.matrice .grille{
+  display:grid; grid-template-columns:repeat(4, minmax(0, auto));
+  gap:5px 20px; padding:10px 16px; position:relative;
+  font-variant-numeric:tabular-nums;
+}
+.matrice .grille::before,.matrice .grille::after{
+  content:""; position:absolute; top:0; bottom:0; width:8px;
+  border:2px solid var(--muet);
+}
+.matrice .grille::before{left:0; border-right:none;}
+.matrice .grille::after{right:0; border-left:none;}
+.matrice .grille span{text-align:right; white-space:nowrap; color:var(--encre2);}
+.matrice .grille span.pos{color:var(--accent); font-weight:700;}
+.matrice .grille span.bas{color:var(--muet);}
+.legende-mat{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin:-4px 0 18px; max-width:64ch;
+}
+@media (max-width:520px){
+  .matrice{font-size:11.5px; gap:8px;}
+  .matrice .grille{gap:4px 10px; padding:8px 12px;}
+}
+.paire{display:flex; flex-wrap:wrap; gap:4px 38px; align-items:center;}
+.paire .matrice{margin:10px 0;}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="une">
+  <p class="surtitre">Simulateur Dobot Magician &middot; universit&eacute; de Bordeaux</p>
+  <h1>Programmation sous VS-Code</h1>
+  <p class="chapeau">L'index&nbsp;: ce qu'on &eacute;crit, et comment on l'&eacute;crit. Les
+  explications sont dans les fiches&nbsp;2 et&nbsp;3.</p>
+  <p class="jeu-fiches">
+    <span class="ici">Index &mdash; programmation sous VS-Code</span>
+    <a href="fiche_interface.html">Fiche 1 &mdash; l'interface</a>
+    <a href="fiche_programmation.html">Fiche 2 &mdash; exemples de programmation</a>
+    <a href="fiche_api.html">Fiche 3 &mdash; r&eacute;f&eacute;rence des commandes</a>
+  </p>
+</header>
+
+<section id="entete">
+  <h2><span class="num">00</span>L'en-t&ecirc;te</h2>
+<pre><code><span class="k">import</span> numpy <span class="k">as</span> np
+<span class="k">from</span> dobot_sim <span class="k">import</span> Pilote
+
+robot = Pilote(nom=<span class="n">"cycle"</span>, outil=<span class="n">"ventouse"</span>,
+               vitesse=<span class="n">140</span>, acceleration=<span class="n">600</span>, vitesse_articulaire=<span class="n">50</span>)</code></pre>
+</section>
+
+<section id="outil">
+  <h2><span class="num">01</span>Le rep&egrave;re outil</h2>
+  <p class="intro">De l'axe de rotation de l'outil &agrave; sa pointe. Axe z vers le bas.</p>
+
+<pre><code><span class="c"># ventouse droite de 79,3 mm</span>
+OUTIL = np.array([[<span class="n">1</span>,  <span class="n">0</span>,  <span class="n">0</span>,    <span class="n">0</span>],
+                  [<span class="n">0</span>, <span class="n">-1</span>,  <span class="n">0</span>,    <span class="n">0</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>, <span class="n">-1</span>, <span class="n">-79.3</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>,  <span class="n">0</span>,    <span class="n">1</span>]], dtype=float)
+
+<span class="c"># pince deportee : 18 mm selon x, -6 mm selon y, 78 mm de long</span>
+OUTIL = np.array([[<span class="n">1</span>,  <span class="n">0</span>,  <span class="n">0</span>,  <span class="n">18</span>],
+                  [<span class="n">0</span>, <span class="n">-1</span>,  <span class="n">0</span>,  <span class="n">-6</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>, <span class="n">-1</span>, <span class="n">-78</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>,  <span class="n">0</span>,   <span class="n">1</span>]], dtype=float)
+
+robot.definir_repere_outil(OUTIL)</code></pre>
+
+  <p class="legende-mat">D&eacute;tail&nbsp;:
+  <a href="fiche_programmation.html#reperes">fiche&nbsp;2, section&nbsp;09</a> &middot;
+  <a href="fiche_api.html#p-reperes">fiche&nbsp;3, <code>definir_repere_outil</code></a></p>
+</section>
+
+<section id="cibles">
+  <h2><span class="num">02</span>Les cibles</h2>
+  <p class="intro">Position et orientation ensemble. Axe z vers le bas&nbsp;:
+  c'est la direction d'approche.</p>
+
+<pre><code><span class="c"># cible a (220 ; -60 ; 25), outil non tourne</span>
+PRISE = np.array([[<span class="n">1</span>,  <span class="n">0</span>,  <span class="n">0</span>, <span class="n">220</span>],
+                  [<span class="n">0</span>, <span class="n">-1</span>,  <span class="n">0</span>, <span class="n">-60</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>, <span class="n">-1</span>,  <span class="n">25</span>],
+                  [<span class="n">0</span>,  <span class="n">0</span>,  <span class="n">0</span>,   <span class="n">1</span>]], dtype=float)
+
+<span class="c"># la meme, tournee de 20 deg autour de z : c = cos 20, s = sin 20</span>
+DEPOSE = np.array([[<span class="n">0.9397</span>,  <span class="n">0.3420</span>,  <span class="n">0</span>, <span class="n">205</span>],
+                   [<span class="n">0.3420</span>, <span class="n">-0.9397</span>,  <span class="n">0</span>,  <span class="n">75</span>],
+                   [<span class="n">0</span>,       <span class="n">0</span>,      <span class="n">-1</span>,  <span class="n">25</span>],
+                   [<span class="n">0</span>,       <span class="n">0</span>,       <span class="n">0</span>,   <span class="n">1</span>]], dtype=float)
+
+<span class="c"># un degagement de 85 mm vers le haut, dans le repere de l'OUTIL</span>
+HAUT = np.array([[<span class="n">1</span>, <span class="n">0</span>, <span class="n">0</span>,   <span class="n">0</span>],
+                 [<span class="n">0</span>, <span class="n">1</span>, <span class="n">0</span>,   <span class="n">0</span>],
+                 [<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>, <span class="n">-85</span>],
+                 [<span class="n">0</span>, <span class="n">0</span>, <span class="n">0</span>,   <span class="n">1</span>]], dtype=float)
+
+PRISE @ HAUT                      <span class="c"># 85 mm au-dessus de PRISE</span></code></pre>
+
+  <p class="legende-mat">D&eacute;tail&nbsp;:
+  <a href="fiche_programmation.html#cible">fiche&nbsp;2, section&nbsp;03</a> &middot;
+  <a href="fiche_api.html#f-cible">fiche&nbsp;3, <code>cible</code></a></p>
+</section>
+
+<section id="movj">
+  <h2><span class="num">03</span>movj() &mdash; articulaire</h2>
+  <p class="intro">Les quatre angles interpol&eacute;s ensemble. Le plus rapide, chemin
+  non ma&icirc;tris&eacute;.</p>
+
+<pre><code>robot.movj(PRISE @ HAUT, lissage=<span class="n">70</span>)</code></pre>
+
+  <p class="legende-mat">D&eacute;tail&nbsp;:
+  <a href="fiche_programmation.html#mouvements">fiche&nbsp;2, section&nbsp;04</a> &middot;
+  <a href="fiche_api.html#p-movj">fiche&nbsp;3, <code>movj</code></a></p>
+</section>
+
+<section id="movl">
+  <h2><span class="num">04</span>movl() &mdash; lin&eacute;aire</h2>
+  <p class="intro">La pointe suit une droite. Approche, descente, d&eacute;gagement.</p>
+
+<pre><code>robot.movl(PRISE, vitesse=<span class="n">50</span>)</code></pre>
+
+  <p class="legende-mat">D&eacute;tail&nbsp;:
+  <a href="fiche_programmation.html#mouvements">fiche&nbsp;2, section&nbsp;04</a> &middot;
+  <a href="fiche_api.html#p-movl">fiche&nbsp;3, <code>movl</code></a></p>
+</section>
+
+<section id="movc">
+  <h2><span class="num">05</span>movc() &mdash; circulaire</h2>
+  <p class="intro">Un arc d&eacute;fini par trois points&nbsp;: le point courant, un
+  passage, l'arriv&eacute;e.</p>
+
+<pre><code>robot.movc(via=PASSAGE, T=DEPOSE)</code></pre>
+
+  <p class="legende-mat">D&eacute;tail&nbsp;:
+  <a href="fiche_programmation.html#mouvements">fiche&nbsp;2, section&nbsp;04</a> &middot;
+  <a href="fiche_api.html#p-movc">fiche&nbsp;3, <code>movc</code></a></p>
+</section>
+
+<section id="sortie">
+  <h2><span class="num">06</span>Lancer</h2>
+<pre><code><span class="k">print</span>(robot.resume())
+robot.simuler()                   <span class="c"># F5 sous VS-Code</span></code></pre>
+</section>
+
+<footer>
+  <p class="legende-mat">Universit&eacute; de Bordeaux &middot; simulateur Dobot Magician
+  &middot; les exemples comment&eacute;s sont dans la
+  <a href="fiche_programmation.html">fiche&nbsp;2</a>, chaque commande en d&eacute;tail
+  dans la <a href="fiche_api.html#index">fiche&nbsp;3</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>
