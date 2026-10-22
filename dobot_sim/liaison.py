@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Sequence, Tuple
 
 __all__ = [
-    "ErreurLiaison", "ErreurTrame", "CommandeDobot", "PTP", "FonctionES",
+    "ErreurLiaison", "ErreurTrame", "FilePleine", "CommandeDobot", "PTP", "FonctionES",
     "construire_trame", "decoder_trame", "LiaisonDobot", "ports_disponibles",
     "BAUD", "EN_TETE",
 ]
@@ -65,6 +65,17 @@ class ErreurLiaison(RuntimeError):
 
 class ErreurTrame(ErreurLiaison):
     """Trame recue invalide : en-tete, longueur ou checksum incoherents."""
+
+
+class FilePleine(ErreurLiaison):
+    """
+    Commande en file REFUSEE : la file du controleur est pleine.
+
+    Le controleur repond quand meme, mais avec des parametres vides au lieu
+    de l'index (protocole V1.1.5, tableau 198 : "queuedCmdIndex or Empty").
+    La commande n'est PAS stockee : il faut la renvoyer quand une place se
+    libere, c'est-a-dire une fois la file demarree.
+    """
 
 
 class CommandeDobot:
@@ -315,6 +326,9 @@ class LiaisonDobot:
     _serie: Any = field(default=None, init=False, repr=False)
     _verrou: Any = field(default_factory=threading.RLock, init=False, repr=False)
     _dernier_index: int = field(default=0, init=False)
+    # incremente a chaque vidage : permet a qui alimente la file de savoir
+    # qu'elle a ete videe sous ses pieds (arret d'urgence, pilotage...)
+    generation_file: int = field(default=0, init=False)
 
     # -- cycle de vie -------------------------------------------------------
 
@@ -416,9 +430,16 @@ class LiaisonDobot:
                         raise ErreurTrame(
                             "reponse de la commande {} alors que {} etait "
                             "demandee".format(rid, identifiant))
-                    if en_file and len(reponse) >= 8:
+                    if en_file:
+                        if len(reponse) < 8:
+                            # reponse valide, mais commande non stockee
+                            raise FilePleine(
+                                "commande {} refusee : file du controleur "
+                                "pleine".format(identifiant))
                         self._dernier_index = struct.unpack("<Q", reponse[:8])[0]
                     return reponse
+                except FilePleine:
+                    raise                   # renvoyer tout de suite ne sert a rien
                 except ErreurLiaison as exc:
                     derniere = exc
                     time.sleep(0.05)
@@ -574,8 +595,10 @@ class LiaisonDobot:
                       struct.pack("<B2f", 0, 0.0, 0.0), ecriture=True)
 
     def vider_file(self) -> None:
-        self.echanger(CommandeDobot.FILE_VIDER, ecriture=True)
-        self._dernier_index = 0
+        with self._verrou:
+            self.echanger(CommandeDobot.FILE_VIDER, ecriture=True)
+            self._dernier_index = 0
+            self.generation_file += 1
 
     def demarrer_file(self) -> None:
         self.echanger(CommandeDobot.FILE_DEMARRER, ecriture=True)

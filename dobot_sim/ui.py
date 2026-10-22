@@ -2022,12 +2022,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
 
         La file du controleur se CONSOMME : chaque commande executee
         disparait. Apres une execution, il n'y reste rien -- relancer sans
-        televerser ne ferait donc rien du tout.
+        televerser ne ferait donc rien du tout. Idem apres un vidage
+        (arret d'urgence, pilotage manuel).
         """
-        if self.pont.index_final <= 0:
-            return True
         try:
-            return self.pont.liaison.index_courant() >= self.pont.index_final
+            return not self.pont.programme_en_file()
         except Exception:
             return True
 
@@ -2251,6 +2250,16 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             .format(x, y, z, r, xs, ys, zs, rs,
                     etat.index_courant, etat.index_final))
         self.barre_reel.setValue(int(round(100 * etat.progression)))
+
+        # Le fil qui alimente la file n'ecrit pas dans le journal : il
+        # depose ce qu'il a rencontre, et c'est ici qu'on le relit. Sans
+        # cela, un programme abandonne en cours de route s'arreterait sans
+        # que rien ne le dise -- et on chercherait du cote du programme.
+        incident = getattr(self.pont, "_incident", "")
+        if incident:
+            self.pont._incident = ""
+            self.journal("ROBOT REEL : " + incident)
+            self._alerter([incident])
 
         # Un defaut du controleur FIGE la file : la barre s'arrete en cours
         # de route. Le dire haut et fort, sans quoi on cherche longtemps.

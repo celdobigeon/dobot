@@ -14,6 +14,7 @@ releve sur une machine reelle (firmware 3.7.0), consigne dans le README.
 import os
 import struct
 import sys
+import time
 import unittest
 
 import numpy as np
@@ -21,8 +22,9 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dobot_sim import DobotMagician, Pilote, cible
-from dobot_sim.liaison import (CommandeDobot, ErreurLiaison, ErreurTrame, PTP,
-                               LiaisonDobot, Pose, construire_trame,
+from dobot_sim.liaison import (CommandeDobot, ErreurLiaison, ErreurTrame,
+                               FilePleine, PTP, LiaisonDobot, Pose,
+                               construire_trame,
                                decoder_trame, resume_alarmes)
 from dobot_sim.reel import ErreurPont, PontReel
 
@@ -104,20 +106,25 @@ class SerieSimulee:
     Repond a toute commande comme le ferait la machine : reponse vide pour
     une commande immediate, index sur 64 bits pour une commande en file.
     Conserve la file pour que les tests puissent l'inspecter.
+
+    Avec `capacite`, la file refuse ce qui depasse, par une reponse vide,
+    tant qu'elle est arretee. Demarree, elle execute tout instantanement.
     """
 
     is_open = True
 
     def __init__(self, pose=(208.9, 205.5, 73.9, 44.5),
                  angles=(44.5, 40.6, 11.2, 0.0), biais=(61.0, 0.0, 0.0),
-                 erreur=(0.0, 0.0)):
+                 erreur=(0.0, 0.0), capacite=None):
         self.pose = pose
         self.angles = angles
         self.biais = biais
         self.erreur = erreur
+        self.capacite = capacite
         self.file = []              # (identifiant, parametres)
         self.immediates = []
         self.index = 0
+        self.execute = 0            # index de la derniere commande executee
         self.demarree = False
         self._sortie = b""
         self.octets_ecrits = 0
@@ -150,8 +157,13 @@ class SerieSimulee:
     # -- comportement du controleur
     def _traiter(self, ident, params, en_file):
         if en_file:
+            if (self.capacite is not None
+                    and self.index - self.execute >= self.capacite):
+                return b""                  # file pleine : commande perdue
             self.index += 1
             self.file.append((ident, params))
+            if self.demarree:
+                self.execute = self.index
             return struct.pack("<Q", self.index)
 
         self.immediates.append((ident, params))
@@ -180,11 +192,101 @@ class SerieSimulee:
             return bytes((params[0] if params else 1, 1))
         if ident == CommandeDobot.FILE_DEMARRER:
             self.demarree = True
+            self.execute = self.index
         elif ident == CommandeDobot.FILE_ARRETER:
             self.demarree = False
         elif ident == CommandeDobot.FILE_VIDER:
             self.file.clear()
+            self.execute = self.index
         return b""
+
+
+class ControleurFidele(SerieSimulee):
+    """
+    Controleur a file BORNEE, qui se vide au fil du temps.
+
+    `SerieSimulee` est commode pour tester le protocole, mais sa file
+    parait toujours vide : elle repond a GetQueuedCmdCurrentIndex par le
+    dernier index accepte, et considere tout execute des le demarrage.
+    Aucun probleme de debit ne peut s'y voir.
+
+    Celui-ci se comporte comme la machine :
+      - l'index courant est celui de la commande EN COURS ;
+      - la file se consomme a `cadence` secondes par commande ;
+      - pleine, elle refuse franchement (reponse vide) ou, si
+        `silencieux`, repond un index valide et JETTE la commande ;
+      - avec `muette_tous_les`, une commande sur N reste sans reponse,
+        comme lorsque le lien serie rate une trame.
+    """
+
+    def __init__(self, capacite_file=12, cadence=0.002, silencieux=False,
+                 muette_tous_les=0, **kw):
+        super().__init__(capacite=None, **kw)
+        self.capacite_file = capacite_file
+        self.cadence = cadence
+        self.silencieux = silencieux
+        self.muette_tous_les = muette_tous_les
+        self.jetees = 0
+        self.muettes = 0
+        self.occupation_max = 0
+        self._t0 = None
+        self._recues = 0
+
+    def avancer(self, tout=False):
+        """Le temps passe : le controleur execute sa file."""
+        if tout:
+            self.execute = len(self.file)
+            return
+        if not self.demarree:
+            return
+        if self._t0 is None:
+            self._t0 = time.time()
+        self.execute = min(len(self.file),
+                           int((time.time() - self._t0) / self.cadence))
+
+    def _traiter(self, ident, params, en_file):
+        self.avancer()
+        if en_file:
+            self._recues += 1
+            if (self.muette_tous_les
+                    and self._recues % self.muette_tous_les == 0):
+                self.muettes += 1
+                return None                      # le lien a rate la reponse
+            occupation = len(self.file) - self.execute
+            self.occupation_max = max(self.occupation_max, occupation)
+            if occupation >= self.capacite_file:
+                if not self.silencieux:
+                    return b""                   # refus visible
+                self.index += 1
+                self.jetees += 1                 # acceptee... puis jetee
+                return struct.pack("<Q", self.index)
+            self.index += 1
+            self.file.append((ident, params))
+            return struct.pack("<Q", self.index)
+
+        if ident == CommandeDobot.FILE_INDEX_COURANT:
+            return struct.pack("<Q", self.execute)
+        if ident == CommandeDobot.FILE_DEMARRER:
+            self.demarree = True
+            self._t0 = time.time()
+            return b""
+        if ident == CommandeDobot.FILE_VIDER:
+            self.file.clear()
+            self.execute = 0
+            self._t0 = None
+            return b""
+        return super()._traiter(ident, params, en_file)
+
+    def write(self, trame):
+        self.octets_ecrits += len(trame)
+        ident, ctrl, params = decoder_trame(trame)
+        en_file = bool(ctrl & 2)
+        reponse = self._traiter(ident, params, en_file)
+        if reponse is None:
+            return len(trame)                    # muet : rien a lire
+        self._sortie += construire_trame(ident, reponse, bool(ctrl & 1),
+                                         en_file)
+        return len(trame)
 
 
 def _liaison_simulee(faux=None):
@@ -464,6 +566,192 @@ class TestPont(unittest.TestCase):
         self.assertEqual(multiplexages[0][0], 1)        # port 1
         self.assertEqual(len([p for i, p in self.faux.file
                               if i == CommandeDobot.ES_SORTIE]), 3)
+
+    def test_cadence_identique_non_renvoyee(self):
+        r = Pilote(nom="t", outil="ventouse", vitesse=60, acceleration=300)
+        for _ in range(3):
+            r.movl(cible(220, 0, 60))
+            r.movl(cible(220, 0, 20))
+        self.pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        reglages = [i for i, _ in self.faux.file
+                    if i == CommandeDobot.PARAMS_PTP_CARTESIEN]
+        self.assertEqual(len(reglages), 1)
+
+    # -- file du controleur trop petite pour le programme
+
+    def _cycles(self, n):
+        r = Pilote(nom="t", outil="ventouse", vitesse=60, acceleration=300,
+                   vitesse_articulaire=30)
+        for _ in range(n):
+            r.repli()
+            r.movj(cible(220, 0, 60))
+            r.movl(cible(220, 0, 20), vitesse=30)
+            r.ventouse(True)
+            r.attendre(0.3)
+            r.movl(cible(220, 0, 60))
+            r.ventouse(False)
+        r.repli()
+        return r
+
+    def _pont_capacite(self, capacite):
+        faux = SerieSimulee(capacite=capacite)
+        pont = PontReel(self.modele)
+        pont.liaison = _liaison_simulee(faux)
+        pont.biais = (61.0, 0.0, 0.0)
+        return pont, faux
+
+    def test_file_pleine_signalee_par_la_liaison(self):
+        faux = SerieSimulee(capacite=2)
+        li = _liaison_simulee(faux)
+        li.ptp(PTP.MOVJ_XYZ, 200, 0, 0, 0)
+        li.ptp(PTP.MOVJ_XYZ, 200, 0, 0, 0)
+        with self.assertRaises(FilePleine):
+            li.ptp(PTP.MOVJ_XYZ, 200, 0, 0, 0)
+        self.assertEqual(len(faux.file), 2)
+
+    def test_le_surplus_part_pendant_l_execution(self):
+        # Reference : le meme programme, joue jusqu'au bout. Le
+        # televersement ne remplit plus la file au-dela de la marge -- il
+        # faut donc demarrer pour que le reste s'ecoule, file illimitee ou
+        # non.
+        r = self._cycles(10)
+        self.pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        self.pont.demarrer()
+        if self.pont._alimentation is not None:
+            self.pont._alimentation.join(5.0)
+        attendu = list(self.faux.file)
+        self.assertGreater(len(attendu), PontReel.MARGE_FILE,
+                           "le programme de reference doit deborder la marge")
+
+        pont, faux = self._pont_capacite(8)
+        final = pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        self.assertEqual(len(faux.file), 8)          # rien n'est perdu...
+        self.assertFalse(pont.termine())
+        self.assertEqual(final, len(attendu))        # ...et la fin est connue
+        pont.demarrer()
+        pont._alimentation.join(5.0)
+        self.assertEqual(faux.file, attendu)         # tout, dans l'ordre
+        self.assertTrue(pont.termine())
+
+    def test_le_televersement_ne_deborde_pas_la_file(self):
+        """
+        Le televersement s'arrete a la marge, sans rien demander au
+        controleur.
+
+        C'est la correction de la panne des 21 % : on ne peut pas se fier
+        a un refus, car la machine, pleine, repond un index valide et
+        JETTE la commande. On compte donc, au lieu de demander.
+        """
+        r = self._cycles(10)
+        n = self.pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        self.assertGreater(n, PontReel.MARGE_FILE)
+        self.assertEqual(len(self.faux.file), PontReel.MARGE_FILE)
+        self.assertEqual(len(self.pont._reste), n - PontReel.MARGE_FILE)
+        self.assertLessEqual(PontReel.MARGE_FILE, PontReel.CAPACITE_FILE)
+
+    def test_un_long_programme_passe_en_entier(self):
+        """
+        La panne des 21 %, et sa non-regression.
+
+        Un programme de 150 commandes s'arretait a 32 sur la machine du
+        labo -- la profondeur de sa file. Le pont detectait alors une file
+        pleine a une reponse VIDE ; la machine, pleine, repond un index
+        valide et jette la commande. Le pont croyait donc avoir tout
+        envoye, ne gardait rien a renvoyer, et le robot s'arretait au bout
+        de ce que la file contenait vraiment.
+
+        Le controleur simule des autres tests ne pouvait pas le montrer :
+        il repond a GetQueuedCmdCurrentIndex par le dernier index ACCEPTE
+        et considere tout execute des le demarrage -- sa file parait
+        toujours vide. Celui-ci se comporte comme la machine, et le test
+        est joue sous les DEUX hypotheses : qu'elle refuse franchement, ou
+        qu'elle jette en silence. Dans les deux cas, tout doit passer.
+        """
+        for silencieux in (False, True):
+            r = self._cycles(10)
+            # la profondeur relevee sur la machine : la marge se tient en
+            # dessous, et c'est ce qui protege du controleur silencieux
+            faux = ControleurFidele(capacite_file=PontReel.CAPACITE_FILE,
+                                    silencieux=silencieux)
+            pont = PontReel(self.modele)
+            pont.liaison = _liaison_simulee(faux)
+            pont.biais = (61.0, 0.0, 0.0)
+
+            attendu = pont.televerser(r.programme, r.q_depart, outil="ventouse")
+            pont.demarrer()
+            pont._alimentation.join(20.0)
+            faux.avancer(tout=True)
+
+            cas = "silencieux" if silencieux else "franc"
+            self.assertEqual(faux.jetees, 0,
+                             "controleur %s : %d commande(s) jetee(s)"
+                             % (cas, faux.jetees))
+            self.assertEqual(len(faux.file), attendu,
+                             "controleur %s : %d commandes recues sur %d"
+                             % (cas, len(faux.file), attendu))
+            self.assertLessEqual(faux.occupation_max, PontReel.MARGE_FILE,
+                                 "controleur %s : la file a ete remplie a %d"
+                                 % (cas, faux.occupation_max))
+            self.assertEqual(pont._incident, "")
+
+    def test_une_file_plus_courte_que_prevu_fait_reculer_la_marge(self):
+        """
+        La profondeur de file n'est pas publiee par le protocole, et rien
+        ne garantit qu'elle vaille 32 sur tous les firmwares. Quand le
+        controleur REFUSE, il nous renseigne : on en tient compte au lieu
+        de retomber sur le meme mur.
+
+        Face a un controleur qui jette en silence, en revanche, aucun
+        repli n'est possible : la marge doit alors etre choisie sous la
+        profondeur reelle. C'est tout l'objet de CAPACITE_FILE.
+        """
+        r = self._cycles(10)
+        courte = 9
+        self.assertLess(courte, PontReel.MARGE_FILE)
+        faux = ControleurFidele(capacite_file=courte, silencieux=False)
+        pont = PontReel(self.modele)
+        pont.liaison = _liaison_simulee(faux)
+        pont.biais = (61.0, 0.0, 0.0)
+
+        attendu = pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        self.assertLess(pont.marge, PontReel.MARGE_FILE, "marge non reduite")
+        pont.demarrer()
+        pont._alimentation.join(20.0)
+        faux.avancer(tout=True)
+        self.assertEqual(faux.jetees, 0)
+        self.assertEqual(len(faux.file), attendu)
+
+    def test_une_trame_perdue_n_abandonne_pas_le_programme(self):
+        """
+        Un lien serie rate une reponse de temps en temps. Abandonner le
+        reste du programme pour autant laisserait le robot s'arreter au
+        milieu du cycle, sans rien dire.
+        """
+        r = self._cycles(10)
+        faux = ControleurFidele(capacite_file=12, muette_tous_les=11)
+        pont = PontReel(self.modele)
+        pont.liaison = _liaison_simulee(faux)
+        pont.liaison.delai = 0.05
+        pont.biais = (61.0, 0.0, 0.0)
+
+        attendu = pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        pont.demarrer()
+        pont._alimentation.join(30.0)
+        faux.avancer(tout=True)
+        self.assertGreater(faux.muettes, 0, "aucune reponse perdue : test vain")
+        self.assertEqual(len(faux.file), attendu)
+        self.assertEqual(pont._incident, "")
+
+    def test_vidage_abandonne_le_surplus(self):
+        r = self._cycles(10)
+        pont, faux = self._pont_capacite(8)
+        pont.televerser(r.programme, r.q_depart, outil="ventouse")
+        pont.liaison.vider_file()                    # pilotage, urgence...
+        self.assertFalse(pont.programme_en_file())
+        pont.demarrer()
+        if pont._alimentation is not None:
+            pont._alimentation.join(5.0)
+        self.assertEqual(faux.file, [])
 
 
 if __name__ == "__main__":

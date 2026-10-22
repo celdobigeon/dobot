@@ -1615,6 +1615,40 @@ geste explicite :
 > l'enchaîner autant de fois qu'on veut. Le bouton *Téléverser* reste là
 > pour qui veut séparer les deux temps.
 
+### La file est courte, et elle ne le dit pas
+
+Elle tient une **trentaine de commandes**. Un programme plus long n'y entre
+pas d'un coup : le pont en dépose une partie, garde le reste, et l'écoule
+pendant l'exécution, au rythme où la file se vide. Une boucle de dix cycles
+passe donc sans que rien n'ait à être découpé à la main.
+
+> **Pourquoi on compte au lieu de demander.** Le protocole V1.1.5 a
+> **supprimé** `GetQueuedCmdLeftSpace` — c'est écrit dans son historique,
+> page 3. Il n'existe plus aucun moyen d'interroger la place libre. Le pont
+> la déduit donc des index : `dernier_index − index_courant` est le nombre
+> de commandes en vol, et il ne le laisse pas dépasser **24**.
+
+> **La panne qui a conduit à ce réglage.** Une boucle de dix cycles —
+> 130 instructions, 150 commandes — s'arrêtait à **21 %**, soit
+> 32 commandes, sans alarme ni message. Le pont détectait une file pleine à
+> une **réponse vide** (tableau 198 du protocole : *« queuedCmdIndex or
+> Empty »*). La machine, pleine, répond en fait un **index valide et jette
+> la commande** : le pont croyait avoir tout envoyé, ne gardait rien à
+> renvoyer, et le robot s'arrêtait au bout de ce que la file contenait
+> vraiment.
+>
+> Le contrôleur simulé des tests, lui, refusait franchement — il avait été
+> écrit d'après cette hypothèse. Les 31 tests du protocole passaient donc
+> au vert pendant que la machine s'arrêtait au quart du programme. Un
+> contrôleur simulé plus fidèle a été ajouté depuis : file bornée qui se
+> vide avec le temps, index de la commande **en cours**, et les deux
+> comportements possibles quand elle est pleine.
+
+Si un firmware a une file plus courte et qu'il **refuse** franchement, le
+pont le voit et réduit sa marge de lui-même, en le signalant dans le
+journal. S'il jette en silence, rien ne peut le détecter : c'est pourquoi
+la marge se tient sous la profondeur relevée.
+
 ```python
 from dobot_sim.reel import PontReel
 
