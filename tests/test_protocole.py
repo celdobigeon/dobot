@@ -90,9 +90,11 @@ class TestCadrage(unittest.TestCase):
 
     def test_resume_alarmes(self):
         self.assertEqual(resume_alarmes([]), [])
-        self.assertIn("butee", resume_alarmes([0x62])[0])
+        self.assertIn("J2 en butee negative", resume_alarmes([0x43])[0])
+        self.assertIn("J3 en butee positive", resume_alarmes([0x44])[0])
+        self.assertIn("hors de l'espace", resume_alarmes([0x11])[0])
         # un code inconnu renvoie vers le bon document plutot que d'etre devine
-        self.assertIn("Dobot ALARM", resume_alarmes([0xFE])[0])
+        self.assertIn("ALARM", resume_alarmes([0xFE])[0])
 
 
 # ---------------------------------------------------------------------------

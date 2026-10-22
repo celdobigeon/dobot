@@ -55,8 +55,24 @@ def _police_fixe(taille: int = 9) -> QtGui.QFont:
     return f
 
 
-def _spin(mini, maxi, pas=1.0, suffixe="", decimales=2, valeur=0.0):
-    s = QtWidgets.QDoubleSpinBox()
+class _ChampPas(QtWidgets.QDoubleSpinBox):
+    """
+    Champ numerique qui signale les changements PAR PAS : fleches, touches
+    haut/bas, molette. Ce sont des gestes complets, au meme titre qu'un
+    curseur relache, alors que `editingFinished` ne part qu'a la perte du
+    focus ou sur Entree.
+    """
+
+    pas = QtCore.Signal() if hasattr(QtCore, "Signal") else QtCore.pyqtSignal()
+
+    def stepBy(self, n):
+        super().stepBy(n)
+        self.pas.emit()
+
+
+def _spin(mini, maxi, pas=1.0, suffixe="", decimales=2, valeur=0.0,
+          classe=QtWidgets.QDoubleSpinBox):
+    s = classe()
     s.setRange(mini, maxi)
     s.setSingleStep(pas)
     s.setDecimals(decimales)
@@ -179,6 +195,9 @@ def _icone(nom: str) -> QtGui.QIcon:
         p.drawRect(QtCore.QRectF(10, 8, 5, 16))
         p.drawRect(QtCore.QRectF(18, 8, 5, 16))
         p.restore()
+    elif nom == "recharger":             # fleche qui tourne sur elle-meme
+        p.drawArc(QtCore.QRectF(7, 7, 18, 18), 60 * 16, 290 * 16)
+        plein(((20.5, 3.5), (27.5, 9.0), (19.5, 12.5)))
     elif nom == "arreter":
         p.save()
         p.setPen(QtCore.Qt.NoPen)
@@ -277,7 +296,8 @@ class Curseur(QtWidgets.QWidget):
         self.curseur.setRange(int(round(mini * self._k)), int(round(maxi * self._k)))
         self.curseur.setValue(self._vers_entier(valeur))
         self.curseur.setPageStep(max(int(round(10 * self._k)), 1))
-        self.champ = _spin(mini, maxi, 1.0, suffixe, 2, valeur)
+        self.champ = _spin(mini, maxi, 1.0, suffixe, 2, valeur,
+                           classe=_ChampPas)
         # un peu plus etroit que le defaut : "180,00 deg" y tient encore,
         # et le panneau Commande cesse de deborder
         self.champ.setMinimumWidth(84)
@@ -292,6 +312,15 @@ class Curseur(QtWidgets.QWidget):
             lambda: self.valeurValidee.emit(self.valeur()))
         self.champ.editingFinished.connect(
             lambda: self.valeurValidee.emit(self.valeur()))
+        # Fleches du champ : on valide quand les clics CESSENT. Un bouton
+        # garde enfonce repete le pas une dizaine de fois par seconde ; sans
+        # ce delai, chacun partirait vers la machine.
+        self._pas_valide = QtCore.QTimer(self)
+        self._pas_valide.setSingleShot(True)
+        self._pas_valide.setInterval(250)
+        self._pas_valide.timeout.connect(
+            lambda: self.valeurValidee.emit(self.valeur()))
+        self.champ.pas.connect(self._pas_valide.start)
 
     def _vers_entier(self, v: float) -> int:
         return int(round(float(v) * self._k))
@@ -947,7 +976,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         b = QtWidgets.QHBoxLayout()
         for txt, val in (("Zero", [0, 0, 0, 0]), ("Repli", list(self.robot.q_home))):
             bt = QtWidgets.QPushButton(txt)
-            bt.clicked.connect(lambda _=False, v=val: self._appliquer_q(np.array(v, float)))
+            bt.clicked.connect(lambda _=False, v=val: self._bouton_posture(v))
             b.addWidget(bt)
         la.addLayout(b)
 
@@ -1323,6 +1352,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.barre_exec = QtWidgets.QToolBar()
         self.barre_exec.setIconSize(QtCore.QSize(20, 20))
         self.barre_exec.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        a = self.barre_exec.addAction(_icone("recharger"),
+                                      "Recharger le programme")
+        a.setToolTip("reexecute le dernier script Python et recharge son "
+                     "programme (F5)\na faire apres l'avoir modifie dans "
+                     "l'editeur")
+        a.triggered.connect(self._rejouer_script)
+        self.barre_exec.addSeparator()
         self.act_lecture = self.barre_exec.addAction(_icone("lire"), "Lancer")
         self.act_lecture.setToolTip("lancer ou mettre en pause (Espace)")
         self.act_lecture.triggered.connect(self._basculer_lecture)
@@ -1522,6 +1558,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.bt_home.setToolTip("le robot parcourt toute sa course : degagez la zone")
         self.bt_home.clicked.connect(self._reel_home)
         ml.addWidget(self.bt_home)
+        self.bt_reel_repli = QtWidgets.QPushButton("Repli")
+        self.bt_reel_repli.setToolTip(
+            "envoie le robot en position de repos J = (0, 15, 30, 0) deg\n"
+            "simple mouvement articulaire : ne recale rien\n"
+            "fonctionne sans la case pilotage")
+        self.bt_reel_repli.clicked.connect(self._reel_repli)
+        ml.addWidget(self.bt_reel_repli)
 
         self.bt_televerser = QtWidgets.QPushButton("Televerser le programme")
         self.bt_televerser.setToolTip(
@@ -1752,7 +1795,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         # ATTENTION, ce controle ne dit RIEN de la calibration : pose et
         # angles viennent des memes compteurs, ils restent d'accord entre
         # eux meme si le zero a derive. Pour la prise d'origine, c'est le
-        # miroir 3D qui tranche -- ou l'alarme 0x11.
+        # miroir 3D qui tranche.
         etat = "connecte sur {}, firmware {}".format(port, version)
         try:
             ecart, _ = self.pont.coherence()
@@ -1857,6 +1900,44 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self.pont.prise_origine()
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Robot reel", str(exc))
+
+    def _bouton_posture(self, q) -> None:
+        """
+        Boutons Zero et Repli du panneau Commande : le modele y va, et le
+        robot reel suit si la case pilotage est cochee -- comme pour un
+        curseur relache.
+        """
+        self._appliquer_q(np.array(q, float))
+        self._reel_envoyer_pose()
+
+    def _reel_repli(self) -> None:
+        """
+        Envoie le robot reel en position de repli, comme `robot.repli()`.
+
+        Independant de la case pilotage : c'est le geste de fin de manip,
+        ou de remise en place avant un programme. Un MOVJ en angles, comme
+        le pilotage, donc sans conversion de coordonnees.
+        """
+        q = [float(v) for v in self.robot.q_home]
+        if not self._confirmer_mouvement(
+                "Repli",
+                "Le robot va rejoindre sa position de repos J = ({:.0f}, "
+                "{:.0f}, {:.0f}, {:.0f}) deg, a {:.0f} % de la vitesse "
+                "nominale.".format(*q, self.sp_reel_ratio.value())):
+            return
+        try:
+            li = self.pont.liaison
+            # comme le pilotage : couper et vider, pour que le repli ne
+            # s'empile pas derriere un reste de programme
+            li.arreter_file()
+            li.vider_file()
+            li.ptp(PTP.MOVJ_ANGLE, *q)
+            li.demarrer_file()
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Robot reel", str(exc))
+            return
+        self.journal("robot reel envoye en repli : J = ({:.0f}, {:.0f}, "
+                     "{:.0f}, {:.0f}) deg".format(*q))
 
     def _reel_file_epuisee(self) -> bool:
         """
@@ -2062,6 +2143,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
     def _reel_rafraichir(self) -> None:
         """Interroge la machine et, si le miroir est actif, anime le modele."""
         try:
+            # la file du controleur ne tient que 32 commandes : on la
+            # recomplete a chaque tour (5 Hz) avec la suite du programme
+            self.pont.alimenter()
             etat = self.pont.etat()
         except Exception as exc:
             self.minuteur_reel.stop()
@@ -2089,9 +2173,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.lab_reel_pose.setText(
             "controleur  x={:7.1f} y={:7.1f} z={:7.1f} r={:6.1f}\n"
             "simulateur  x={:7.1f} y={:7.1f} z={:7.1f} r={:6.1f}\n"
-            "file : index {} / {}"
+            "file : index {} / {}{}"
             .format(x, y, z, r, xs, ys, zs, rs,
-                    etat.index_courant, etat.index_final))
+                    etat.index_courant, etat.index_final,
+                    "  ({} en reserve)".format(self.pont.en_reserve)
+                    if self.pont.en_reserve else ""))
         self.barre_reel.setValue(int(round(100 * etat.progression)))
 
         # Un defaut du controleur FIGE la file : la barre s'arrete en cours
@@ -2567,7 +2653,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         fichier.addSeparator()
         self._action(fichier, "Executer un script Python...", self._executer_script,
                      "Ctrl+R")
-        self._action(fichier, "Rejouer le dernier script", self._rejouer_script,
+        self._action(fichier, "Recharger le programme (dernier script)",
+                     self._rejouer_script,
                      "F5")
         fichier.addSeparator()
         self._action(fichier, "Exporter un script Dobot (DobotDllType)...",
@@ -2878,7 +2965,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
     #: angles de la MACHINE : son role est de montrer ce qu'elle fait, y
     #: compris hors de la table du modele, et la brider mentirait sur
     #: l'etat reel. "init" et "refus" reappliquent une pose deja connue.
-    SOURCES_LIBRES = ("miroir", "init", "refus")
+    # "reel" : le miroir montre la machine telle qu'elle EST. Refuser sa
+    # pose parce qu'elle sort des butees masquerait justement le defaut.
+    SOURCES_LIBRES = ("reel", "init", "refus")
 
     def _appliquer_q(self, q, source: str = "") -> None:
         q = np.asarray(q, dtype=float)
@@ -3425,6 +3514,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         """
         prog = Programme.depuis_dict(charge["programme"])
         depart = charge.get("q_depart")
+        if charge.get("script"):
+            # pour le bouton Recharger : reexecuter ce script-la
+            self._dernier_script = charge["script"]
         self.charger_programme(prog, np.asarray(depart, dtype=float)
                                if depart is not None else None)
         self.journal("programme '{}' recu d'un script exterieur : "
@@ -3687,6 +3779,18 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._dernier_script = chemin
         espace = {"__name__": "__main__", "__file__": chemin}
         self.journal("--- execution de {} ---".format(chemin))
+        # comme "python script.py" : le dossier du script passe en tete de
+        # sys.path, pour qu'il retrouve ses propres modules
+        dossier = os.path.dirname(os.path.abspath(chemin))
+        sys.path.insert(0, dossier)
+        # Python garde en memoire les modules deja importes : un module
+        # d'aide voisin du script, modifie entre deux rechargements, ne
+        # serait pas relu. On les oublie -- sauf le simulateur lui-meme.
+        for nom, module in list(sys.modules.items()):
+            fichier = getattr(module, "__file__", None) or ""
+            if (fichier and not nom.startswith("dobot_sim")
+                    and os.path.dirname(os.path.abspath(fichier)) == dossier):
+                del sys.modules[nom]
         try:
             with open(chemin, "r", encoding="utf-8") as f:
                 code = compile(f.read(), chemin, "exec")
@@ -3697,6 +3801,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 self, "Script", "Le script a echoue.\n\n"
                                 "Le detail est dans l'onglet Journal.")
             return
+        finally:
+            if dossier in sys.path:
+                sys.path.remove(dossier)
         self.journal("script termine")
 
     def _rejouer_script(self) -> None:

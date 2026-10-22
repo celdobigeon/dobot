@@ -315,6 +315,9 @@ class LiaisonDobot:
     _serie: Any = field(default=None, init=False, repr=False)
     _verrou: Any = field(default_factory=threading.RLock, init=False, repr=False)
     _dernier_index: int = field(default=0, init=False)
+    #: appele apres chaque vidage de la file : le pont y abandonne les
+    #: commandes qu'il gardait en reserve (voir PontReel.alimenter)
+    sur_vidage: Any = field(default=None, init=False, repr=False)
 
     # -- cycle de vie -------------------------------------------------------
 
@@ -576,6 +579,8 @@ class LiaisonDobot:
     def vider_file(self) -> None:
         self.echanger(CommandeDobot.FILE_VIDER, ecriture=True)
         self._dernier_index = 0
+        if self.sur_vidage is not None:
+            self.sur_vidage()
 
     def demarrer_file(self) -> None:
         self.echanger(CommandeDobot.FILE_DEMARRER, ecriture=True)
@@ -674,9 +679,14 @@ class LiaisonDobot:
         pour convertir correctement les coordonnees.
         """
         p = self.echanger(CommandeDobot.PARAMS_EFFECTEUR)
-        if len(p) < 12:
-            raise ErreurTrame("GetEndEffectorParams : {} octets".format(len(p)))
-        return struct.unpack("<3f", p[:12])
+        if len(p) >= 12:
+            return struct.unpack("<3f", p[:12])
+        # Certains firmwares (3.3.0 constate) ne renvoient que xBias, sur
+        # 4 octets. Verifie sur machine : la pose annoncee par le controleur
+        # s'explique exactement avec ce xBias et yBias = zBias = 0.
+        if len(p) >= 4:
+            return struct.unpack("<f", p[:4])[0], 0.0, 0.0
+        raise ErreurTrame("GetEndEffectorParams : {} octets".format(len(p)))
 
     def sortie(self, port: int, niveau: bool) -> int:
         self.echanger(CommandeDobot.ES_SORTIE,
@@ -708,26 +718,49 @@ def resume_alarmes(indices: Sequence[int]) -> List[str]:
     connus: Dict[int, str] = {
         0x00: "reinitialisation du controleur",
         0x01: "commande indefinie",
-        0x02: "parametres de commande manquants",
-        0x03: "parametres de commande hors bornes",
-        0x11: "prise d'origine non effectuee",
-        0x40: "MGI : point hors d'atteinte",
-        0x41: "MGI : limite de l'espace de travail",
-        0x42: "MGI : butee articulaire",
-        0x60: "J1 en butee positive",
-        0x61: "J1 en butee negative",
-        0x62: "J2 en butee positive",
-        0x63: "J2 en butee negative",
-        0x64: "J3 en butee positive",
-        0x65: "J3 en butee negative",
-        0x66: "J4 en butee positive",
-        0x67: "J4 en butee negative",
+        0x02: "erreur du systeme de fichiers",
+        0x03: "communication MCU-FPGA en echec a l'initialisation",
+        0x04: "capteur d'angle : valeur aberrante",
+        # planification : refus AVANT le mouvement
+        0x10: "planif. : point de depart ou d'arrivee singulier",
+        0x11: "planif. : cible hors de l'espace de travail",
+        0x12: "planif. : la cible sort des butees articulaires",
+        0x13: "planif. : points repetes (ARC ou JUMP)",
+        0x14: "planif. : parametres d'arc incorrects",
+        0x15: "planif. : parametres JUMP incorrects",
+        0x16: "planif. : changement de bras sur une droite",
+        0x17: "planif. : la droite sort de l'espace de travail",
+        0x18: "planif. : l'arc sort de l'espace de travail",
+        0x19: "planif. : type de mouvement invalide",
+        0x1A: "planif. : parametres de vitesse incorrects",
+        0x1B: "planif. : calcul CP en echec",
+        # mouvement : defaut PENDANT le deplacement
+        0x20: "mouvement : singularite rencontree",
+        0x21: "mouvement : sortie de l'espace de travail",
+        0x22: "mouvement : butee articulaire atteinte",
     }
-    # Le protocole V1.1.5 ne donne PAS la table des alarmes : sa section 1.5
-    # renvoie au "Dobot ALARM document", qui ne fait pas partie du projet.
-    # Les libelles ci-dessus sont donc partiels, et un code inconnu est
-    # signale comme tel plutot que devine.
+    for k, j in enumerate(("J1", "J2", "J3", "J4")):
+        connus[0x30 + k] = "{} en survitesse".format(j)
+        connus[0x40 + 2 * k] = "{} en butee positive".format(j)
+        connus[0x41 + 2 * k] = "{} en butee negative".format(j)
+        connus[0x50 + k] = "{} a perdu des pas".format(j)
+        for d, quoi in enumerate(("variateur en defaut", "depassement",
+                                  "erreur de poursuite")):
+            connus[0x60 + 3 * k + d] = "{} : {}".format(j, quoi)
+    connus[0x48] = "parallelogramme (J2+J3) en butee haute"
+    connus[0x49] = "parallelogramme (J2+J3) en butee basse"
+    for base, moteur in ((0x70, "moteur arriere (J2)"),
+                         (0x80, "moteur avant (J3)"),
+                         (0x90, "moteur Z"), (0xA0, "moteur R")):
+        for i in range(0x0F):
+            connus[base + i] = "{} : defaut materiel".format(moteur)
+    for i in range(3):
+        connus[0xB0 + i] = "E/S de bout de bras : defaut materiel"
+    # Le protocole V1.1.5 ne contient PAS cette table : sa section 1.5
+    # renvoie au "Dobot Magician ALARM Description", absent du projet. Les
+    # codes ci-dessus suivent ce document tel que le reprend la bibliotheque
+    # pydobot ; ils sont confirmes sur machine pour 0x43 / 0x44 (J2 a -9 deg).
     return ["alarme 0x{:02X} : {}".format(
-        i, connus.get(i, "code absent du protocole V1.1.5 ; voir le document "
-                         "Dobot ALARM"))
+        i, connus.get(i, "code inconnu ; voir le document Dobot Magician "
+                         "ALARM Description"))
             for i in indices]

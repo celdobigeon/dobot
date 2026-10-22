@@ -840,6 +840,15 @@ robot.regler_longueur_outil(79.3)      # APRES monter_outil, qui remet 62
 > catalogue et le `z` ne désignerait plus le même point. Un JSON antérieur,
 > qui n'en porte pas, revient proprement au catalogue.
 
+> **Relever des poses au panneau.** Le X, Y, Z du panneau *Cartésien*
+> désigne la pointe de l'outil, calculée avec la longueur **en vigueur à
+> l'instant de la lecture** — celle de la ligne *longueur* de la section
+> Outil. Un programme chargé impose la sienne : après avoir lancé un script
+> à 79,3 mm, le panneau reste à 79,3 mm. Recopier ces valeurs dans un
+> script réglé sur 62 mm enverrait le robot 17,3 mm plus bas. **Même
+> longueur au relevé et dans le script**, et le point est le même, que la
+> longueur soit exacte ou non.
+
 > **Pourquoi pas un fichier de configuration machine ?** Essayé, puis
 > retiré. Faire lire une longueur mesurée par `outils.outil()` la rendait
 > globale : le modèle, les exemples et six tests unitaires changeaient de
@@ -1249,6 +1258,30 @@ du contrôleur à celui de la dernière commande envoyée pour suivre l'avancée
 | `OUTIL` | `SetEndEffectorSuctionCup` / `Gripper` / `Laser` selon l'outil monté |
 | vitesse, accélération | `SetPTPJointParams` ou `SetPTPCoordinateParams`, **mises en file** pour prendre effet au bon moment |
 
+### La file ne tient que 32 commandes
+
+Mesuré sur la machine (firmware 3.7.0), file arrêtée, en y empilant des
+attentes de 0 s : le contrôleur accepte **32 commandes**. Au-delà, il
+répond normalement mais **jette la commande** et renvoie le même index —
+aucune erreur. Un programme de 72 instructions (93 commandes, vitesses
+comprises) s'arrêtait ainsi au bout de 32, sans explication.
+
+Le téléversement verse donc le programme **au fil de l'eau** : il prépare
+toutes les commandes, en dépose 30 (deux places de marge), et le panneau
+*Robot réel* recomplète la file cinq fois par seconde à mesure qu'elle se
+vide. Une commande jetée malgré tout se repère à son index qui n'avance
+pas : elle reste en réserve et repart au tour suivant. Le panneau affiche
+le nombre de commandes **en réserve**.
+
+> **Gardez la fenêtre ouverte pendant l'exécution** : c'est elle qui
+> alimente la file. Fermée, le robot s'arrête après ses 30 dernières
+> commandes.
+
+> **Sécurité.** Tout vidage de la file — arrêt d'urgence, pilotage,
+> *Repli*, prise d'origine, *Effacer les défauts*, déconnexion — abandonne
+> aussi la réserve : la suite d'un ancien programme ne repart jamais.
+> *Suspendre* la conserve.
+
 ### Le repère du contrôleur n'est pas celui du modèle
 
 Mesuré sur une machine réelle (firmware 3.7.0), `GetPose` annonce :
@@ -1535,6 +1568,18 @@ bouton de la fourche enfoncé — puis déclarez. Rien ne bouge.
 
 ### Prise d'origine
 
+> **Séquence de début de séance, validée sur la machine (firmware 3.7.0).**
+> Le contrôleur annonçait J2 = −9° et J3 en butée, alarmes 0x43 et 0x44,
+> alors que le bras était dans sa course.
+>
+> 1. **Déclarer la posture d'équerre** (bouton de la fourche enfoncé, bras
+>    arrière vertical, avant-bras horizontal) : J2 et J3 deviennent justes.
+>    `ResetPose` ne porte que ces deux angles — **J1 reste faux**.
+> 2. **Prise d'origine** : elle retrouve J1. Précédée de l'équerre, elle
+>    **aboutit**, alors qu'elle partait en butée sans elle.
+> 3. Contrôler au **miroir** que le modèle colle au bras, puis *Effacer les
+>    défauts*.
+
 Le Magician retrouve ses repères par une **prise d'origine** : le bras
 parcourt toute sa course, remet ses compteurs à zéro, puis se parque sur le
 point enregistré dans `HOMEParams`. Elle est nécessaire après chaque mise
@@ -1547,8 +1592,8 @@ d'être déplacé à la main. Trois indices, du plus fiable au plus faible :
 1. **le miroir 3D** — mettez le bras réel dans une posture reconnaissable et
    regardez le modèle. S'ils diffèrent, les zéros ont dérivé. C'est le test
    décisif, et c'est immédiat ;
-2. l'**alarme 0x11** *prise d'origine non effectuée*, quand le firmware la
-   lève ;
+2. des **alarmes de butée** (0x40 à 0x49) alors que le bras est
+   visiblement dans sa course : le contrôleur le croit ailleurs ;
 3. le robot va systématiquement « à côté » de ses cibles, d'un décalage
    constant.
 

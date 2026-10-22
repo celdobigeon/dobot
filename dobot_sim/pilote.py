@@ -50,6 +50,21 @@ from .trajectory import PROFILS, Trajectoire
 __all__ = ["Pilote"]
 
 
+def _script_appelant() -> str:
+    """
+    Chemin absolu du script lance (F5 dans VS Code), ou "" en console.
+
+    La fenetre le retient : son bouton Recharger pourra ainsi reexecuter
+    le script modifie sans repasser par l'editeur.
+    """
+    import os
+    import sys
+
+    principal = sys.modules.get("__main__")
+    chemin = getattr(principal, "__file__", "") or ""
+    return os.path.abspath(chemin) if chemin.endswith(".py") else ""
+
+
 class Pilote:
     """
     Constructeur de programme, pense pour l'ecriture au fil du script.
@@ -429,7 +444,8 @@ class Pilote:
         app = QtWidgets.QApplication.instance()
         if app is None and envoyer({"programme": self.programme.vers_dict(),
                                     "q_depart": [float(v) for v in self.q_depart],
-                                    "lancer": bool(lancer)}):
+                                    "lancer": bool(lancer),
+                                    "script": _script_appelant()}):
             print("programme envoye au simulateur deja ouvert "
                   "({} instructions)".format(len(self.programme)))
             return 0

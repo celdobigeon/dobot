@@ -62,6 +62,40 @@ class ErreurPont(RuntimeError):
     """Le programme ne peut pas etre transmis en l'etat."""
 
 
+#: capacite de la file du controleur, MESUREE (firmware 3.7.0) : au-dela,
+#: la commande est acceptee en apparence mais jetee, avec le meme index
+CAPACITE_FILE = 32
+#: places laissees libres, par prudence
+MARGE_FILE = 2
+
+
+class _Enregistreur(LiaisonDobot):
+    """
+    Fausse liaison qui ENREGISTRE les trames au lieu de les envoyer.
+
+    Le pont traduit le programme comme d'habitude (memes methodes ptp,
+    arc, ventouse...), mais vers cette liaison : on obtient la liste
+    exacte des commandes, dans l'ordre, prete a etre versee au controleur.
+    """
+
+    def __init__(self):
+        super().__init__(port="(enregistrement)")
+        self.commandes: List[Tuple[int, bytes, bool, bool]] = []
+
+    @property
+    def ouverte(self) -> bool:
+        return True
+
+    def echanger(self, identifiant: int, params: bytes = b"",
+                 ecriture: bool = False, en_file: bool = False,
+                 essais: int = 3) -> bytes:
+        self.commandes.append((int(identifiant), bytes(params),
+                               bool(ecriture), bool(en_file)))
+        if en_file:
+            self._dernier_index += 1
+        return struct.pack("<Q", self._dernier_index)
+
+
 @dataclass
 class EtatReel:
     """Instantane de la machine, pour l'affichage."""
@@ -103,6 +137,9 @@ class PontReel:
         self.index_final = 0
         self._index_depart = 0
         self._ports_configures: set = set()
+        # commandes preparees mais pas encore dans la file du controleur
+        self._envois: List[Tuple[int, bytes, bool, bool]] = []
+        self._dernier_envoye = 0
 
     # -- connexion ----------------------------------------------------------
 
@@ -114,8 +151,19 @@ class PontReel:
         """Ouvre la liaison et releve la configuration. Ne fait RIEN bouger."""
         self.deconnecter()
         self.liaison = LiaisonDobot(port, journal=self.journal).ouvrir()
-        version = self.liaison.version()
-        self.biais = self.liaison.biais_effecteur()
+        # tout vidage de la file, d'ou qu'il vienne -- arret d'urgence,
+        # pilotage, repli, prise d'origine --, abandonne aussi la reserve :
+        # la suite d'un ancien programme ne doit jamais repartir
+        self.liaison.sur_vidage = self._abandonner_envois
+        try:
+            version = self.liaison.version()
+            self.biais = self.liaison.biais_effecteur()
+        except Exception:
+            # Sans cela le port resterait ouvert -- et verrouille -- derriere
+            # un etat "connexion impossible" : plus rien ne pourrait l'ouvrir,
+            # pas meme un nouvel essai depuis cette fenetre.
+            self.deconnecter()
+            raise
         self.journal("robot reel connecte sur {} - firmware {}".format(port, version))
         self.journal("  EndEffectorParams du controleur : xBias={:.2f} "
                      "yBias={:.2f} zBias={:.2f} mm"
@@ -133,6 +181,7 @@ class PontReel:
         return version
 
     def deconnecter(self) -> None:
+        self._abandonner_envois()
         if self.liaison is not None:
             try:
                 self.liaison.fermer()
@@ -307,17 +356,77 @@ class PontReel:
         li.vider_file()
         self._index_depart = li.index_courant()
         n = len(programme.instructions)
-        dernier = self._index_depart
 
+        # La file du controleur ne tient que CAPACITE_FILE commandes, et au-
+        # dela il JETTE sans rien dire (il renvoie le meme index). On
+        # prepare donc tout le programme, puis on le verse au fil de l'eau :
+        # alimenter() recomplete la file a mesure qu'elle se vide.
+        enreg = _Enregistreur()
         for k, ins in enumerate(programme.instructions):
-            dernier = self._emettre(li, ins, programme, outil)
+            self._emettre(enreg, ins, programme, outil)
             if progression is not None:
                 progression(k + 1, n)
+        self._envois = list(enreg.commandes)
+        self._dernier_envoye = self._index_depart
+        en_file = sum(1 for c in self._envois if c[3])
+        self.index_final = self._index_depart + en_file
 
-        self.index_final = dernier
-        self.journal("programme televerse : {} instructions, index {} -> {}"
-                     .format(n, self._index_depart, dernier))
-        return dernier
+        self.alimenter()
+        reste = len(self._envois)
+        self.journal("programme televerse : {} instructions, {} commandes, "
+                     "index {} -> {}{}".format(
+                         n, en_file, self._index_depart, self.index_final,
+                         "" if not reste else
+                         " ; {} en reserve, versees pendant l'execution"
+                         .format(reste)))
+        return self.index_final
+
+    # -- versement au fil de l'eau -----------------------------------------
+
+    @property
+    def en_reserve(self) -> int:
+        """Commandes preparees qui n'ont pas encore pu entrer dans la file."""
+        return len(self._envois)
+
+    def _abandonner_envois(self) -> None:
+        if self._envois:
+            self.journal("{} commande(s) en reserve abandonnee(s)"
+                         .format(len(self._envois)))
+        self._envois = []
+
+    def alimenter(self) -> int:
+        """
+        Recomplete la file du controleur avec les commandes en reserve.
+
+        A appeler regulierement pendant l'execution ; sans reserve, ne fait
+        rien. Retourne le nombre de commandes envoyees.
+
+        Deux garde-fous : on ne depasse pas CAPACITE_FILE - MARGE_FILE
+        commandes en attente, et si le controleur renvoie un index qui
+        n'avance pas, c'est qu'il a jete la commande -- elle reste alors en
+        reserve pour le prochain passage.
+        """
+        if not self._envois or not self.connecte:
+            return 0
+        li = self.liaison
+        courant = li.index_courant()
+        envoyees = 0
+        while self._envois:
+            ident, params, ecriture, en_file = self._envois[0]
+            if en_file and (self._dernier_envoye - courant
+                            >= CAPACITE_FILE - MARGE_FILE):
+                break
+            reponse = li.echanger(ident, params, ecriture=ecriture,
+                                  en_file=en_file)
+            if en_file:
+                idx = (struct.unpack("<Q", reponse[:8])[0]
+                       if len(reponse) >= 8 else None)
+                if idx is None or idx <= self._dernier_envoye:
+                    break                    # jetee : file pleine
+                self._dernier_envoye = idx
+            self._envois.pop(0)
+            envoyees += 1
+        return envoyees
 
     def _emettre(self, li: LiaisonDobot, ins, programme, outil: str) -> int:
         """Traduit UNE instruction en commande(s) de file."""
@@ -417,6 +526,7 @@ class PontReel:
         """Bloque jusqu'a la fin du programme. Reserve aux scripts."""
         debut = time.time()
         while time.time() - debut < limite:
+            self.alimenter()
             if self.termine():
                 return True
             time.sleep(periode)
