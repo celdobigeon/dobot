@@ -46,7 +46,7 @@ import time
 
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 __all__ = [
     "ErreurLiaison", "ErreurTrame", "FilePleine", "CommandeDobot", "PTP", "FonctionES",
@@ -127,6 +127,11 @@ class CommandeDobot:
     FILE_ARRET_FORCE = 242      # 1.19.3
     FILE_VIDER = 245            # 1.19.6
     FILE_INDEX_COURANT = 246    # 1.19.7  -> uint64
+    # GetQueuedCmdLeftSpace : RETIRE du protocole V1.1.5 (voir son
+    # historique, page 3), mais toujours implemente par le firmware --
+    # releve sur 4.0.3, qui repond 32 file vide et 0 file pleine. On s'en
+    # sert quand il repond, et on s'en passe sinon.
+    FILE_PLACE_RESTANTE = 247
 
 
 class PTP:
@@ -326,6 +331,9 @@ class LiaisonDobot:
     _serie: Any = field(default=None, init=False, repr=False)
     _verrou: Any = field(default_factory=threading.RLock, init=False, repr=False)
     _dernier_index: int = field(default=0, init=False)
+    # le firmware repond-il encore a GetQueuedCmdLeftSpace ? passe a True
+    # au premier refus, pour ne pas le redemander a chaque commande
+    _place_restante_absente: bool = field(default=False, init=False)
     # incremente a chaque vidage : permet a qui alimente la file de savoir
     # qu'elle a ete videe sous ses pieds (arret d'urgence, pilotage...)
     generation_file: int = field(default=0, init=False)
@@ -436,7 +444,19 @@ class LiaisonDobot:
                             raise FilePleine(
                                 "commande {} refusee : file du controleur "
                                 "pleine".format(identifiant))
-                        self._dernier_index = struct.unpack("<Q", reponse[:8])[0]
+                        index = struct.unpack("<Q", reponse[:8])[0]
+                        # Mesure sur firmware 4.0.3 : la file pleine ne
+                        # repond PAS vide. Elle repond huit octets d'allure
+                        # normale, mais l'index N'AVANCE PLUS -- et la
+                        # commande est jetee. Un index qui ne progresse pas
+                        # est donc le vrai signal de refus ; sans lui, on
+                        # croit avoir televerse un programme dont les trois
+                        # quarts n'existent nulle part.
+                        if index <= self._dernier_index:
+                            raise FilePleine(
+                                "commande {} jetee : file pleine (l'index "
+                                "reste a {})".format(identifiant, index))
+                        self._dernier_index = index
                     return reponse
                 except FilePleine:
                     raise                   # renvoyer tout de suite ne sert a rien
@@ -512,6 +532,31 @@ class LiaisonDobot:
     def dernier_index(self) -> int:
         """Index renvoye par la derniere commande mise en file."""
         return self._dernier_index
+
+    def place_restante(self) -> Optional[int]:
+        """
+        Places libres dans la file, ou None si le firmware l'ignore.
+
+        Le protocole V1.1.5 a retire cette commande, mais les firmwares
+        la servent encore : 4.0.3 repond 32 file vide, 0 file pleine.
+        Quand elle repond, c'est la grandeur la plus sure qui soit --
+        elle vient du controleur lui-meme. Sinon on se rabat sur l'ecart
+        des index, qui ne demande rien a personne.
+
+        Le resultat est mis en cache : inutile de redemander a chaque
+        commande si le firmware ne sait pas repondre.
+        """
+        if self._place_restante_absente:
+            return None
+        try:
+            p = self.echanger(CommandeDobot.FILE_PLACE_RESTANTE, essais=1)
+        except ErreurLiaison:
+            self._place_restante_absente = True
+            return None
+        if len(p) < 4:
+            self._place_restante_absente = True
+            return None
+        return int(struct.unpack("<I", p[:4])[0])
 
     # -- ecritures immediates ----------------------------------------------
 

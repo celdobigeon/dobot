@@ -257,13 +257,18 @@ class ControleurFidele(SerieSimulee):
             if occupation >= self.capacite_file:
                 if not self.silencieux:
                     return b""                   # refus visible
-                self.index += 1
-                self.jetees += 1                 # acceptee... puis jetee
+                # Mesure sur firmware 4.0.3 : la reponse fait bien huit
+                # octets, mais l'index N'AVANCE PAS et la commande est
+                # jetee. C'est exactement ce que fait la machine.
+                self.jetees += 1
                 return struct.pack("<Q", self.index)
             self.index += 1
             self.file.append((ident, params))
             return struct.pack("<Q", self.index)
 
+        if ident == CommandeDobot.FILE_PLACE_RESTANTE:
+            libre = self.capacite_file - (len(self.file) - self.execute)
+            return struct.pack("<I", max(0, libre))
         if ident == CommandeDobot.FILE_INDEX_COURANT:
             return struct.pack("<Q", self.execute)
         if ident == CommandeDobot.FILE_DEMARRER:
@@ -600,6 +605,47 @@ class TestPont(unittest.TestCase):
         pont.biais = (61.0, 0.0, 0.0)
         return pont, faux
 
+    def test_un_index_qui_n_avance_pas_est_une_file_pleine(self):
+        """
+        Releve sur la machine (firmware 4.0.3) : pleine, elle ne repond
+        pas vide. Elle repond huit octets d'allure normale, mais l'index
+        reste le meme -- et la commande est jetee.
+
+        Sans cette detection, le pont croyait televerser un programme
+        dont les trois quarts n'existaient nulle part : c'est la panne
+        des 21 %.
+        """
+        faux = ControleurFidele(capacite_file=4, silencieux=True)
+        li = _liaison_simulee(faux)
+        for _ in range(4):
+            li.ptp(PTP.MOVJ_XYZ, 200, 0, 0, 0)
+        avant = li.dernier_index
+        with self.assertRaises(FilePleine):
+            li.ptp(PTP.MOVJ_XYZ, 200, 0, 0, 0)
+        self.assertEqual(li.dernier_index, avant, "l'index ne doit pas bouger")
+        self.assertEqual(len(faux.file), 4)
+
+    def test_la_place_restante_est_lue_quand_le_firmware_repond(self):
+        """
+        GetQueuedCmdLeftSpace a ete RETIRE du protocole V1.1.5, mais le
+        firmware 4.0.3 le sert encore : 32 file vide, 0 file pleine. On
+        s'en sert quand il repond, et on s'en passe sinon -- sans le
+        redemander a chaque commande.
+        """
+        faux = ControleurFidele(capacite_file=6)
+        li = _liaison_simulee(faux)
+        self.assertEqual(li.place_restante(), 6)
+        li.ptp(PTP.MOVJ_XYZ, 200, 0, 0, 0)
+        self.assertEqual(li.place_restante(), 5)
+
+        muet = SerieSimulee()                    # firmware qui l'ignore
+        li2 = _liaison_simulee(muet)
+        self.assertIsNone(li2.place_restante())
+        self.assertTrue(li2._place_restante_absente)
+        avant = len(muet.immediates)
+        self.assertIsNone(li2.place_restante())  # plus jamais redemande
+        self.assertEqual(len(muet.immediates), avant)
+
     def test_file_pleine_signalee_par_la_liaison(self):
         faux = SerieSimulee(capacite=2)
         li = _liaison_simulee(faux)
@@ -689,7 +735,13 @@ class TestPont(unittest.TestCase):
             self.assertEqual(len(faux.file), attendu,
                              "controleur %s : %d commandes recues sur %d"
                              % (cas, len(faux.file), attendu))
-            self.assertLessEqual(faux.occupation_max, PontReel.MARGE_FILE,
+            # La propriete qui compte n'est pas « on remplit peu », c'est
+            # « on ne deborde jamais ». Quand le firmware annonce sa place
+            # restante, le pont l'utilise et remplit donc plus franchement
+            # que la marge : c'est voulu, et sans danger tant que la garde
+            # est respectee.
+            self.assertLessEqual(faux.occupation_max,
+                                 PontReel.CAPACITE_FILE - PontReel.GARDE_FILE,
                                  "controleur %s : la file a ete remplie a %d"
                                  % (cas, faux.occupation_max))
             self.assertEqual(pont._incident, "")

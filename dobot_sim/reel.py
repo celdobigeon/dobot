@@ -96,12 +96,18 @@ class PontReel:
         pont.demarrer()                   # LA, le robot bouge
     """
 
-    #: Profondeur de la file du controleur, en commandes. Le protocole ne
-    #: la publie pas et a RETIRE GetQueuedCmdLeftSpace en V1.1.5 : cette
-    #: valeur est deduite d'une panne observee en TP -- un programme de
-    #: 150 commandes s'arretait a 32, soit les 21 % annonces par la barre
-    #: de progression.
+    #: Profondeur de la file du controleur, en commandes. MESUREE sur la
+    #: machine du labo (firmware 4.0.3) : GetQueuedCmdLeftSpace repond 32
+    #: file vide et 0 file pleine, et la 33e commande est jetee. C'est
+    #: aussi le rang ou s'arretait le programme de 150 commandes qui a
+    #: revele la panne -- les 21 % de la barre de progression.
     CAPACITE_FILE = 32
+
+    #: Places qu'on laisse toujours libres quand le controleur annonce sa
+    #: place restante. Entre la reponse et l'envoi suivant, la file a pu
+    #: se remplir d'une commande partie d'ailleurs (pilotage manuel,
+    #: effecteur force a la main) : cette garde l'absorbe.
+    GARDE_FILE = 2
 
     #: Ce qu'on s'autorise a laisser en vol. En dessous de la capacite,
     #: parce qu'un index lu est toujours un peu en retard sur la realite :
@@ -574,11 +580,21 @@ class PontReel:
         """
         Combien de commandes la file peut encore recevoir sans deborder.
 
-        Le protocole V1.1.5 a SUPPRIME GetQueuedCmdLeftSpace (voir son
-        historique, page 3) : il n'y a plus aucun moyen de demander la
-        place libre. On la deduit donc des index, seule grandeur que le
-        controleur publie encore.
+        Deux sources, dans cet ordre :
+
+        1. le controleur lui-meme. GetQueuedCmdLeftSpace a ete RETIRE du
+           protocole V1.1.5 (son historique, page 3), mais les firmwares
+           le servent encore -- releve sur 4.0.3, qui repond 32 file vide
+           et 0 file pleine. Quand il repond, on le croit : c'est la seule
+           grandeur qui ne soit pas une deduction.
+        2. sinon, l'ecart des index, borne par la marge.
+
+        On garde la marge comme plafond dans les deux cas : elle protege
+        du firmware qui repondrait une place optimiste.
         """
+        place = li.place_restante()
+        if place is not None:
+            return max(0, min(int(place) - self.GARDE_FILE, self.marge))
         en_vol = li.dernier_index - li.index_courant()
         return max(0, self.marge - int(en_vol))
 

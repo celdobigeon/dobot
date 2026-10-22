@@ -1622,11 +1622,14 @@ pas d'un coup : le pont en dépose une partie, garde le reste, et l'écoule
 pendant l'exécution, au rythme où la file se vide. Une boucle de dix cycles
 passe donc sans que rien n'ait à être découpé à la main.
 
-> **Pourquoi on compte au lieu de demander.** Le protocole V1.1.5 a
-> **supprimé** `GetQueuedCmdLeftSpace` — c'est écrit dans son historique,
-> page 3. Il n'existe plus aucun moyen d'interroger la place libre. Le pont
-> la déduit donc des index : `dernier_index − index_courant` est le nombre
-> de commandes en vol, et il ne le laisse pas dépasser **24**.
+> **Comment la place libre est connue.** Le protocole V1.1.5 a **supprimé**
+> `GetQueuedCmdLeftSpace` de sa documentation — c'est écrit dans son
+> historique, page 3. Le **firmware la sert pourtant toujours** : relevé sur
+> 4.0.3, il répond **32** file vidée et **0** file pleine. Le pont
+> l'interroge donc, et ne se rabat sur l'arithmétique des index —
+> `dernier_index − index_courant`, plafonnée à 24 — que si le firmware reste
+> muet. Deux places restent gardées libres : entre la réponse et l'envoi
+> suivant, une commande partie d'ailleurs a pu s'intercaler.
 
 > **La panne qui a conduit à ce réglage.** Une boucle de dix cycles —
 > 130 instructions, 150 commandes — s'arrêtait à **21 %**, soit
@@ -1635,7 +1638,12 @@ passe donc sans que rien n'ait à être découpé à la main.
 > Empty »*). La machine, pleine, répond en fait un **index valide et jette
 > la commande** : le pont croyait avoir tout envoyé, ne gardait rien à
 > renvoyer, et le robot s'arrêtait au bout de ce que la file contenait
-> vraiment.
+> vraiment. Mesuré au banc sur firmware 4.0.3 : la 33ᵉ commande renvoie
+> huit octets d'allure normale, et **le même index que la 32ᵉ**.
+>
+> C'est cet **index figé** qui sert désormais de signal : une commande en
+> file dont l'index ne progresse pas est tenue pour refusée, et renvoyée
+> plus tard. Vérifié sur la machine — `FilePleine` se lève à la 33ᵉ, pile.
 >
 > Le contrôleur simulé des tests, lui, refusait franchement — il avait été
 > écrit d'après cette hypothèse. Les 31 tests du protocole passaient donc
@@ -1644,10 +1652,9 @@ passe donc sans que rien n'ait à être découpé à la main.
 > vide avec le temps, index de la commande **en cours**, et les deux
 > comportements possibles quand elle est pleine.
 
-Si un firmware a une file plus courte et qu'il **refuse** franchement, le
-pont le voit et réduit sa marge de lui-même, en le signalant dans le
-journal. S'il jette en silence, rien ne peut le détecter : c'est pourquoi
-la marge se tient sous la profondeur relevée.
+Si un firmware a une file plus courte, le pont s'en aperçoit — refus franc
+ou index figé, les deux sont détectés — et réduit sa marge de lui-même, en
+le signalant dans le journal.
 
 ```python
 from dobot_sim.reel import PontReel
