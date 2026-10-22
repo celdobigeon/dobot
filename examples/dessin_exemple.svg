@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="100mm"
+     viewBox="0 0 200 100">
+  <title>Essai : chemins, formes, groupes, transformations</title>
+  <defs>
+    <rect id="jamais-tracee" x="0" y="0" width="999" height="999"/>
+  </defs>
+
+  <!-- un carre de 40, en chemin absolu referme -->
+  <path d="M 10 10 H 50 V 50 H 10 Z" fill="none" stroke="black"/>
+
+  <!-- le meme, en relatif -->
+  <path d="m 60 10 h 40 v 40 h -40 z"/>
+
+  <!-- cubique, cubique lisse, quadratique, quadratique lisse -->
+  <path d="M 110 50 C 120 10, 140 10, 150 50 S 180 90, 190 50
+           Q 195 20, 170 15 T 120 20"/>
+
+  <!-- un arc : demi-cercle de rayon 15 -->
+  <path d="M 10 80 A 15 15 0 0 1 40 80"/>
+
+  <!-- formes de base -->
+  <circle cx="60" cy="80" r="12"/>
+  <ellipse cx="100" cy="80" rx="16" ry="8"/>
+  <rect x="125" y="68" width="30" height="24" rx="6" ry="6"/>
+  <line x1="165" y1="68" x2="195" y2="92"/>
+  <polyline points="165,92 175,80 185,92"/>
+  <polygon points="188,70 196,70 192,78"/>
+
+  <!-- groupe imbrique avec transformations -->
+  <g transform="translate(0,0)">
+    <g transform="translate(20,55) scale(0.5) rotate(45)">
+      <rect x="0" y="0" width="20" height="20"/>
+    </g>
+  </g>
+
+  <!-- ignores : texte et image -->
+  <text x="100" y="30">ceci n'est pas trace</text>
+</svg>
