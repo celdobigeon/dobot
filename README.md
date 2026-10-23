@@ -1258,30 +1258,6 @@ du contrôleur à celui de la dernière commande envoyée pour suivre l'avancée
 | `OUTIL` | `SetEndEffectorSuctionCup` / `Gripper` / `Laser` selon l'outil monté |
 | vitesse, accélération | `SetPTPJointParams` ou `SetPTPCoordinateParams`, **mises en file** pour prendre effet au bon moment |
 
-### La file ne tient que 32 commandes
-
-Mesuré sur la machine (firmware 3.7.0), file arrêtée, en y empilant des
-attentes de 0 s : le contrôleur accepte **32 commandes**. Au-delà, il
-répond normalement mais **jette la commande** et renvoie le même index —
-aucune erreur. Un programme de 72 instructions (93 commandes, vitesses
-comprises) s'arrêtait ainsi au bout de 32, sans explication.
-
-Le téléversement verse donc le programme **au fil de l'eau** : il prépare
-toutes les commandes, en dépose 30 (deux places de marge), et le panneau
-*Robot réel* recomplète la file cinq fois par seconde à mesure qu'elle se
-vide. Une commande jetée malgré tout se repère à son index qui n'avance
-pas : elle reste en réserve et repart au tour suivant. Le panneau affiche
-le nombre de commandes **en réserve**.
-
-> **Gardez la fenêtre ouverte pendant l'exécution** : c'est elle qui
-> alimente la file. Fermée, le robot s'arrête après ses 30 dernières
-> commandes.
-
-> **Sécurité.** Tout vidage de la file — arrêt d'urgence, pilotage,
-> *Repli*, prise d'origine, *Effacer les défauts*, déconnexion — abandonne
-> aussi la réserve : la suite d'un ancien programme ne repart jamais.
-> *Suspendre* la conserve.
-
 ### Le repère du contrôleur n'est pas celui du modèle
 
 Mesuré sur une machine réelle (firmware 3.7.0), `GetPose` annonce :
@@ -1659,6 +1635,49 @@ geste explicite :
 > quand elle est épuisée : il veut dire « joue ce programme », et on peut
 > l'enchaîner autant de fois qu'on veut. Le bouton *Téléverser* reste là
 > pour qui veut séparer les deux temps.
+
+### La file est courte, et elle ne le dit pas
+
+Elle tient une **trentaine de commandes**. Un programme plus long n'y entre
+pas d'un coup : le pont en dépose une partie, garde le reste, et l'écoule
+pendant l'exécution, au rythme où la file se vide. Une boucle de dix cycles
+passe donc sans que rien n'ait à être découpé à la main.
+
+> **Comment la place libre est connue.** Le protocole V1.1.5 a **supprimé**
+> `GetQueuedCmdLeftSpace` de sa documentation — c'est écrit dans son
+> historique, page 3. Le **firmware la sert pourtant toujours** : relevé sur
+> 4.0.3, il répond **32** file vidée et **0** file pleine. Le pont
+> l'interroge donc, et ne se rabat sur l'arithmétique des index —
+> `dernier_index − index_courant`, plafonnée à 24 — que si le firmware reste
+> muet. Deux places restent gardées libres : entre la réponse et l'envoi
+> suivant, une commande partie d'ailleurs a pu s'intercaler.
+
+> **La panne qui a conduit à ce réglage.** Une boucle de dix cycles —
+> 130 instructions, 150 commandes — s'arrêtait à **21 %**, soit
+> 32 commandes, sans alarme ni message. Le pont détectait une file pleine à
+> une **réponse vide** (tableau 198 du protocole : *« queuedCmdIndex or
+> Empty »*). La machine, pleine, répond en fait un **index valide et jette
+> la commande** : le pont croyait avoir tout envoyé, ne gardait rien à
+> renvoyer, et le robot s'arrêtait au bout de ce que la file contenait
+> vraiment. Mesuré au banc sur firmware 4.0.3 : la 33ᵉ commande renvoie
+> huit octets d'allure normale, et **le même index que la 32ᵉ**. Même
+> comportement, mesuré séparément, sur une seconde machine en firmware
+> 3.7.0 : 32 commandes acceptées, puis l'index reste figé.
+>
+> C'est cet **index figé** qui sert désormais de signal : une commande en
+> file dont l'index ne progresse pas est tenue pour refusée, et renvoyée
+> plus tard. Vérifié sur la machine — `FilePleine` se lève à la 33ᵉ, pile.
+>
+> Le contrôleur simulé des tests, lui, refusait franchement — il avait été
+> écrit d'après cette hypothèse. Les 31 tests du protocole passaient donc
+> au vert pendant que la machine s'arrêtait au quart du programme. Un
+> contrôleur simulé plus fidèle a été ajouté depuis : file bornée qui se
+> vide avec le temps, index de la commande **en cours**, et les deux
+> comportements possibles quand elle est pleine.
+
+Si un firmware a une file plus courte, le pont s'en aperçoit — refus franc
+ou index figé, les deux sont détectés — et réduit sa marge de lui-même, en
+le signalant dans le journal.
 
 ```python
 from dobot_sim.reel import PontReel

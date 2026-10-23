@@ -45,14 +45,15 @@ programme dont le controle signale une butee ou une collision, sauf
 from __future__ import annotations
 
 import struct
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
-from .liaison import (CommandeDobot, FonctionES, LiaisonDobot, PTP,
-                      resume_alarmes)
+from .liaison import (CommandeDobot, ErreurLiaison, FilePleine, FonctionES,
+                      LiaisonDobot, PTP, resume_alarmes)
 from .robot import decomposer_cible
 
 __all__ = ["PontReel", "ErreurPont", "EtatReel"]
@@ -60,40 +61,6 @@ __all__ = ["PontReel", "ErreurPont", "EtatReel"]
 
 class ErreurPont(RuntimeError):
     """Le programme ne peut pas etre transmis en l'etat."""
-
-
-#: capacite de la file du controleur, MESUREE (firmware 3.7.0) : au-dela,
-#: la commande est acceptee en apparence mais jetee, avec le meme index
-CAPACITE_FILE = 32
-#: places laissees libres, par prudence
-MARGE_FILE = 2
-
-
-class _Enregistreur(LiaisonDobot):
-    """
-    Fausse liaison qui ENREGISTRE les trames au lieu de les envoyer.
-
-    Le pont traduit le programme comme d'habitude (memes methodes ptp,
-    arc, ventouse...), mais vers cette liaison : on obtient la liste
-    exacte des commandes, dans l'ordre, prete a etre versee au controleur.
-    """
-
-    def __init__(self):
-        super().__init__(port="(enregistrement)")
-        self.commandes: List[Tuple[int, bytes, bool, bool]] = []
-
-    @property
-    def ouverte(self) -> bool:
-        return True
-
-    def echanger(self, identifiant: int, params: bytes = b"",
-                 ecriture: bool = False, en_file: bool = False,
-                 essais: int = 3) -> bytes:
-        self.commandes.append((int(identifiant), bytes(params),
-                               bool(ecriture), bool(en_file)))
-        if en_file:
-            self._dernier_index += 1
-        return struct.pack("<Q", self._dernier_index)
 
 
 @dataclass
@@ -129,6 +96,33 @@ class PontReel:
         pont.demarrer()                   # LA, le robot bouge
     """
 
+    #: Profondeur de la file du controleur, en commandes. MESUREE sur la
+    #: machine du labo (firmware 4.0.3) : GetQueuedCmdLeftSpace repond 32
+    #: file vide et 0 file pleine, et la 33e commande est jetee. C'est
+    #: aussi le rang ou s'arretait le programme de 150 commandes qui a
+    #: revele la panne -- les 21 % de la barre de progression.
+    CAPACITE_FILE = 32
+
+    #: Places qu'on laisse toujours libres quand le controleur annonce sa
+    #: place restante. Entre la reponse et l'envoi suivant, la file a pu
+    #: se remplir d'une commande partie d'ailleurs (pilotage manuel,
+    #: effecteur force a la main) : cette garde l'absorbe.
+    GARDE_FILE = 2
+
+    #: Ce qu'on s'autorise a laisser en vol. En dessous de la capacite,
+    #: parce qu'un index lu est toujours un peu en retard sur la realite :
+    #: la marge absorbe ce retard.
+    MARGE_FILE = 24
+
+    #: Plancher du repli : en dessous, le dialogue couterait plus que le
+    #: mouvement. Quatre commandes en vol suffisent a ne pas affamer un
+    #: robot dont chaque mouvement dure une seconde.
+    MARGE_MINIMALE = 4
+
+    #: Echecs de liaison consecutifs toleres avant d'abandonner le reste
+    #: du programme. Une trame perdue n'est pas une liaison perdue.
+    ECHECS_AVANT_ABANDON = 20
+
     def __init__(self, robot, journal: Optional[Callable[[str], None]] = None):
         self.robot = robot                    # DobotMagician du simulateur
         self.journal = journal or (lambda _m: None)
@@ -137,9 +131,18 @@ class PontReel:
         self.index_final = 0
         self._index_depart = 0
         self._ports_configures: set = set()
-        # commandes preparees mais pas encore dans la file du controleur
-        self._envois: List[Tuple[int, bytes, bool, bool]] = []
-        self._dernier_envoye = 0
+        # commandes qui n'ont pas tenu dans la file au televersement, et la
+        # generation de file a laquelle elles appartiennent
+        self._reste: List[Callable[[], int]] = []
+        self._generation = -1
+        self._alimentation: Optional[threading.Thread] = None
+        self._cadence: dict = {}           # dernier reglage, par famille
+        # ce que le fil d'alimentation a rencontre : l'IHM le relit, le fil
+        # n'ecrivant pas lui-meme dans le journal
+        self._incident = ""
+        # marge de travail, ramenee a la baisse si le controleur refuse :
+        # la profondeur de sa file n'est pas publiee par le protocole
+        self.marge = self.MARGE_FILE
 
     # -- connexion ----------------------------------------------------------
 
@@ -151,10 +154,6 @@ class PontReel:
         """Ouvre la liaison et releve la configuration. Ne fait RIEN bouger."""
         self.deconnecter()
         self.liaison = LiaisonDobot(port, journal=self.journal).ouvrir()
-        # tout vidage de la file, d'ou qu'il vienne -- arret d'urgence,
-        # pilotage, repli, prise d'origine --, abandonne aussi la reserve :
-        # la suite d'un ancien programme ne doit jamais repartir
-        self.liaison.sur_vidage = self._abandonner_envois
         try:
             version = self.liaison.version()
             self.biais = self.liaison.biais_effecteur()
@@ -181,7 +180,6 @@ class PontReel:
         return version
 
     def deconnecter(self) -> None:
-        self._abandonner_envois()
         if self.liaison is not None:
             try:
                 self.liaison.fermer()
@@ -266,6 +264,7 @@ class PontReel:
         li = self._exiger()
         li.arreter_file()
         li.vider_file()
+        self._reste = []
         li.effacer_alarmes()
         idx = li.prise_origine()
         self._index_depart = idx - 1
@@ -304,12 +303,14 @@ class PontReel:
         return ecart, attendu
 
     def arret_urgence(self) -> None:
+        self._reste = []
         if self.connecte:
             self.liaison.arret_urgence()
 
     def demarrer(self) -> None:
         self._exiger().demarrer_file()
         self.journal("execution reelle lancee")
+        self._lancer_alimentation()
 
     def suspendre(self) -> None:
         self._exiger().arreter_file()
@@ -326,11 +327,17 @@ class PontReel:
                    progression: Optional[Callable[[int, int], None]] = None,
                    outil: str = "") -> int:
         """
-        Vide la file et y depose tout le programme. NE LANCE RIEN.
+        Vide la file et y depose le programme. NE LANCE RIEN.
 
         Retourne l'index de la derniere commande. Un programme dont le
         controle signale une butee ou une collision est REFUSE, sauf
         `forcer=True`.
+
+        La file du controleur ne tient que quelques dizaines de commandes.
+        Ce qui n'y entre pas est garde ici et envoye par `demarrer()` au fur
+        et a mesure que l'execution libere des places : sans cela, un cycle
+        repete dix fois ne s'executerait que deux fois, le reste etant
+        refuse par le controleur.
         """
         li = self._exiger()
 
@@ -354,123 +361,112 @@ class PontReel:
         # et le robot se mettrait a bouger pendant le remplissage.
         li.arreter_file()
         li.vider_file()
+        self._reste = []
+        self._generation = li.generation_file
         self._index_depart = li.index_courant()
-        n = len(programme.instructions)
+        self._cadence = {}
 
-        # La file du controleur ne tient que CAPACITE_FILE commandes, et au-
-        # dela il JETTE sans rien dire (il renvoie le meme index). On
-        # prepare donc tout le programme, puis on le verse au fil de l'eau :
-        # alimenter() recomplete la file a mesure qu'elle se vide.
-        enreg = _Enregistreur()
-        for k, ins in enumerate(programme.instructions):
-            self._emettre(enreg, ins, programme, outil)
+        commandes: List[Callable[[], int]] = []
+        for ins in programme.instructions:
+            commandes.extend(self._traduire(li, ins, programme, outil))
+        n = len(commandes)
+
+        premier = None
+        envoyees = 0
+        for envoyer in commandes:
+            # La file est ARRETEE pendant le televersement : rien ne s'y
+            # consomme, et on ne peut donc pas en mettre plus que la marge.
+            # Ce comptage remplace la detection d'un refus : sur la machine,
+            # une file pleine repond un index valide et JETTE la commande --
+            # on croyait tout avoir envoye, le robot s'arretait au bout de
+            # ce que la file contenait vraiment.
+            if envoyees >= self.marge:
+                break
+            try:
+                idx = envoyer()
+            except FilePleine:
+                self._reduire_marge()       # second filet, si le firmware refuse
+                break
+            if premier is None:
+                premier = idx
+            envoyees += 1
             if progression is not None:
-                progression(k + 1, n)
-        self._envois = list(enreg.commandes)
-        self._dernier_envoye = self._index_depart
-        en_file = sum(1 for c in self._envois if c[3])
-        self.index_final = self._index_depart + en_file
+                progression(envoyees, n)
+        if progression is not None:
+            progression(n, n)
 
-        self.alimenter()
-        reste = len(self._envois)
+        if n and premier is None:
+            raise ErreurPont("le controleur refuse toute commande : file "
+                             "pleine alors qu'elle vient d'etre videe")
+        self._reste = commandes[envoyees:]
+        # Le controleur numerote ses commandes en file une a une : l'index
+        # de la derniere se deduit de celui de la premiere, meme pour celles
+        # qui ne partiront qu'en cours d'execution.
+        self.index_final = (premier + n - 1) if n else self._index_depart
         self.journal("programme televerse : {} instructions, {} commandes, "
-                     "index {} -> {}{}".format(
-                         n, en_file, self._index_depart, self.index_final,
-                         "" if not reste else
-                         " ; {} en reserve, versees pendant l'execution"
-                         .format(reste)))
+                     "index {} -> {}".format(len(programme.instructions), n,
+                                             self._index_depart, self.index_final))
+        if self._reste:
+            self.journal("file du controleur remplie a {} commandes (marge) : "
+                         "les {} suivantes partiront pendant l'execution, au "
+                         "rythme ou la file se vide"
+                         .format(envoyees, len(self._reste)))
         return self.index_final
 
-    # -- versement au fil de l'eau -----------------------------------------
-
-    @property
-    def en_reserve(self) -> int:
-        """Commandes preparees qui n'ont pas encore pu entrer dans la file."""
-        return len(self._envois)
-
-    def _abandonner_envois(self) -> None:
-        if self._envois:
-            self.journal("{} commande(s) en reserve abandonnee(s)"
-                         .format(len(self._envois)))
-        self._envois = []
-
-    def alimenter(self) -> int:
+    def _traduire(self, li: LiaisonDobot, ins, programme,
+                  outil: str) -> List[Callable[[], int]]:
         """
-        Recomplete la file du controleur avec les commandes en reserve.
+        Traduit UNE instruction en commande(s) de file, SANS les envoyer.
 
-        A appeler regulierement pendant l'execution ; sans reserve, ne fait
-        rien. Retourne le nombre de commandes envoyees.
-
-        Deux garde-fous : on ne depasse pas CAPACITE_FILE - MARGE_FILE
-        commandes en attente, et si le controleur renvoie un index qui
-        n'avance pas, c'est qu'il a jete la commande -- elle reste alors en
-        reserve pour le prochain passage.
+        Chaque element est une fonction qui envoie une seule commande et
+        retourne son index : une commande refusee faute de place peut ainsi
+        etre renvoyee telle quelle. Les commandes immediates (multiplexage
+        des ports) partent, elles, tout de suite.
         """
-        if not self._envois or not self.connecte:
-            return 0
-        li = self.liaison
-        courant = li.index_courant()
-        envoyees = 0
-        while self._envois:
-            ident, params, ecriture, en_file = self._envois[0]
-            if en_file and (self._dernier_envoye - courant
-                            >= CAPACITE_FILE - MARGE_FILE):
-                break
-            reponse = li.echanger(ident, params, ecriture=ecriture,
-                                  en_file=en_file)
-            if en_file:
-                idx = (struct.unpack("<Q", reponse[:8])[0]
-                       if len(reponse) >= 8 else None)
-                if idx is None or idx <= self._dernier_envoye:
-                    break                    # jetee : file pleine
-                self._dernier_envoye = idx
-            self._envois.pop(0)
-            envoyees += 1
-        return envoyees
-
-    def _emettre(self, li: LiaisonDobot, ins, programme, outil: str) -> int:
-        """Traduit UNE instruction en commande(s) de file."""
         t = ins.type
 
         if t in ("MOVJ", "MOVL"):
-            self._regler_cadence(li, ins)
+            cadence = self._regler_cadence(li, ins)
             if getattr(ins, "mode", "cartesien") == "articulaire":
                 q = [float(v) for v in ins.q]
                 mode = PTP.MOVJ_ANGLE if t == "MOVJ" else PTP.MOVL_ANGLE
-                return li.ptp(mode, *q)
+                return cadence + [lambda: li.ptp(mode, *q)]
             x, y, z, r = self._cible(ins, programme)
             mode = PTP.MOVJ_XYZ if t == "MOVJ" else PTP.MOVL_XYZ
-            return li.ptp(mode, x, y, z, r)
+            return cadence + [lambda: li.ptp(mode, x, y, z, r)]
 
         if t == "MOVC":
-            self._regler_cadence(li, ins)
+            cadence = self._regler_cadence(li, ins)
             via = self.vers_controleur(*self._pose_de(ins.matrice_via(
                 programme.repere_objet)))
             cible = self._cible(ins, programme)
-            return li.arc(via, cible)
+            return cadence + [lambda: li.arc(via, cible)]
 
         if t == "ATTENTE":
-            return li.attendre(float(ins.duree))
+            duree = float(ins.duree)
+            return [lambda: li.attendre(duree)]
 
         if t == "SORTIE":
             self._assurer_port(li, ins.port, FonctionES.SORTIE)
-            return li.sortie(int(ins.port), bool(ins.etat))
+            port, etat = int(ins.port), bool(ins.etat)
+            return [lambda: li.sortie(port, etat)]
 
         if t == "ENTREE":
             self._assurer_port(li, ins.port, FonctionES.ENTREE)
-            return li.attendre_entree(int(ins.port), bool(ins.etat))
+            port, etat = int(ins.port), bool(ins.etat)
+            return [lambda: li.attendre_entree(port, etat)]
 
         if t == "OUTIL":
             actif = bool(ins.etat)
             if outil == "pince":
-                return li.pince(actif)
+                return [lambda: li.pince(actif)]
             if outil == "laser":
-                return li.laser(actif)
-            return li.ventouse(actif)
+                return [lambda: li.laser(actif)]
+            return [lambda: li.ventouse(actif)]
 
         self.journal("instruction {} ignoree : sans equivalent sur le "
                      "controleur".format(t))
-        return li.dernier_index
+        return []
 
     def _cible(self, ins, programme) -> Tuple[float, float, float, float]:
         T = ins.matrice(self.robot, programme.repere_objet)
@@ -480,13 +476,14 @@ class PontReel:
         """Matrice homogene -> (x, y, z, r) du simulateur."""
         return tuple(float(v) for v in decomposer_cible(T))
 
-    def _regler_cadence(self, li: LiaisonDobot, ins) -> None:
+    def _regler_cadence(self, li: LiaisonDobot, ins) -> List[Callable[[], int]]:
         """
         Pose vitesse et acceleration juste avant le mouvement.
 
         Les commandes de parametres sont elles-memes MISES EN FILE : le
         reglage prend donc effet au bon moment de la sequence, et non a
-        l'instant du televersement.
+        l'instant du televersement. Un reglage identique au precedent n'est
+        pas renvoye : il occuperait une place de file pour rien.
 
         L'unite decide de la famille : un MOVJ s'exprime en deg/s et vise
         les parametres articulaires, un MOVL en mm/s et vise les
@@ -495,15 +492,22 @@ class PontReel:
         v = float(getattr(ins, "vitesse", 0.0) or 0.0)
         a = float(getattr(ins, "acceleration", 0.0) or 0.0)
         if v <= 0.0 or a <= 0.0:
-            return
+            return []
         if getattr(ins, "unite", "mm") == "deg":
-            li.echanger(CommandeDobot.PARAMS_PTP_ARTICULAIRE,
-                        struct.pack("<8f", v, v, v, v, a, a, a, a),
-                        ecriture=True, en_file=True)
+            ident = CommandeDobot.PARAMS_PTP_ARTICULAIRE
+            params = struct.pack("<8f", v, v, v, v, a, a, a, a)
         else:
-            li.echanger(CommandeDobot.PARAMS_PTP_CARTESIEN,
-                        struct.pack("<4f", v, 100.0, a, 100.0),
-                        ecriture=True, en_file=True)
+            ident = CommandeDobot.PARAMS_PTP_CARTESIEN
+            params = struct.pack("<4f", v, 100.0, a, 100.0)
+        # les deux familles sont independantes dans le controleur
+        if self._cadence.get(ident) == params:
+            return []
+        self._cadence[ident] = params
+
+        def envoyer() -> int:
+            li.echanger(ident, params, ecriture=True, en_file=True)
+            return li.dernier_index
+        return [envoyer]
 
     def _assurer_port(self, li: LiaisonDobot, port: int, fonction: int) -> None:
         """Configure le multiplexage d'un port EIO, une seule fois."""
@@ -513,12 +517,136 @@ class PontReel:
         li.configurer_port(int(port), int(fonction))
         self._ports_configures.add(cle)
 
+    # -- alimentation de la file pendant l'execution -------------------------
+
+    def _lancer_alimentation(self) -> None:
+        """Envoie en arriere-plan ce qui n'a pas tenu dans la file."""
+        if not self._reste:
+            return
+        if self._alimentation is not None and self._alimentation.is_alive():
+            return                          # reprise apres suspension
+        self._incident = ""
+        self._alimentation = threading.Thread(
+            target=self._alimenter,
+            args=(self.liaison, self._reste, self._generation, self),
+            name="alimentation-file-dobot", daemon=True)
+        self._alimentation.start()
+
+    @staticmethod
+    def _alimenter(li: LiaisonDobot, reste: List[Callable[[], int]],
+                   generation: int, pont: "PontReel") -> None:
+        """
+        Ecoule les commandes restantes au rythme ou la file se vide.
+
+        On ne demande JAMAIS au controleur s'il a de la place : on compte.
+        Tant que `dernier_index - index_courant` atteint la marge, on
+        attend ; sinon on envoie. C'est ce comptage, et non la detection
+        d'un refus, qui garantit qu'aucune commande ne se perd.
+
+        S'arrete des que la file a ete videe par ailleurs (arret d'urgence,
+        nouveau televersement, pilotage manuel) : ces commandes
+        appartiennent alors a un programme abandonne. Pas de journal depuis
+        ce fil, qui n'est pas celui de l'interface : les incidents sont
+        deposes dans `pont._incident`, que l'IHM relit.
+        """
+        echecs = 0
+        while reste:
+            envoye = 0
+            # verrou tenu entre le controle et l'envoi : un vidage ne peut
+            # pas se glisser entre les deux
+            with li._verrou:
+                if li.generation_file != generation or not li.ouverte:
+                    reste.clear()
+                    return
+                try:
+                    libre = pont._places_libres(li)
+                    while reste and libre > 0:
+                        reste[0]()
+                        reste.pop(0)
+                        libre -= 1
+                        envoye += 1
+                    echecs = 0
+                except FilePleine:
+                    echecs = 0
+                    pont._reduire_marge()   # la marge etait trop large
+                except ErreurLiaison as exc:
+                    # Une trame perdue n'est pas une liaison perdue : on
+                    # reessaie. Abandonner ici laisserait le programme
+                    # s'arreter en silence au milieu du cycle.
+                    echecs += 1
+                    if echecs >= PontReel.ECHECS_AVANT_ABANDON:
+                        pont._incident = (
+                            "alimentation de la file interrompue apres {} "
+                            "echecs ({}) : {} commande(s) non envoyee(s)"
+                            .format(echecs, exc, len(reste)))
+                        reste.clear()
+                        return
+            time.sleep(0.02 if envoye else 0.08)
+
+    def _places_libres(self, li: LiaisonDobot) -> int:
+        """
+        Combien de commandes la file peut encore recevoir sans deborder.
+
+        Deux sources, dans cet ordre :
+
+        1. le controleur lui-meme. GetQueuedCmdLeftSpace a ete RETIRE du
+           protocole V1.1.5 (son historique, page 3), mais les firmwares
+           le servent encore -- releve sur 4.0.3, qui repond 32 file vide
+           et 0 file pleine. Quand il repond, on le croit : c'est la seule
+           grandeur qui ne soit pas une deduction.
+        2. sinon, l'ecart des index, borne par la marge.
+
+        On garde la marge comme plafond dans les deux cas : elle protege
+        du firmware qui repondrait une place optimiste.
+        """
+        place = li.place_restante()
+        if place is not None:
+            return max(0, min(int(place) - self.GARDE_FILE, self.marge))
+        en_vol = li.dernier_index - li.index_courant()
+        return max(0, self.marge - int(en_vol))
+
+    def _reduire_marge(self) -> None:
+        """
+        Un refus prouve que la marge etait trop large : on la reduit.
+
+        La profondeur de file n'est pas publiee par le protocole, et rien
+        ne dit qu'elle soit la meme d'un firmware a l'autre. Quand le
+        controleur refuse franchement, il nous renseigne : on en profite,
+        plutot que de retomber indefiniment sur le meme mur.
+        """
+        nouvelle = max(self.MARGE_MINIMALE, self.marge // 2)
+        if nouvelle < self.marge:
+            self.marge = nouvelle
+            self.journal("file du controleur plus courte que prevu : marge "
+                         "ramenee a {} commandes".format(self.marge))
+
     # -- attente de fin -----------------------------------------------------
+
+    def _reste_valide(self) -> bool:
+        """Reste-t-il des commandes a envoyer pour le programme en file ?"""
+        return bool(self._reste) and self.connecte \
+            and self.liaison.generation_file == self._generation
+
+    def programme_en_file(self) -> bool:
+        """
+        Le programme televerse reste-t-il (en partie) a executer ?
+
+        Faux apres un vidage de la file, quel qu'en soit l'auteur : il
+        faut alors televerser a nouveau pour rejouer le programme.
+        """
+        if not self.connecte or self.index_final <= 0:
+            return False
+        if self.liaison.generation_file != self._generation:
+            return False
+        return self._reste_valide() \
+            or self.liaison.index_courant() < self.index_final
 
     def termine(self) -> bool:
         """Vrai quand le controleur a depasse la derniere commande envoyee."""
         if not self.connecte:
             return True
+        if self._reste_valide():
+            return False
         return self.liaison.index_courant() >= self.index_final
 
     def attendre_fin(self, periode: float = 0.2,
@@ -526,7 +654,6 @@ class PontReel:
         """Bloque jusqu'a la fin du programme. Reserve aux scripts."""
         debut = time.time()
         while time.time() - debut < limite:
-            self.alimenter()
             if self.termine():
                 return True
             time.sleep(periode)

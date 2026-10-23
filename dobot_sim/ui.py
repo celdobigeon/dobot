@@ -25,7 +25,9 @@ from . import meshes as mm
 from . import outils as ou
 from .es import PORTS_RESERVES, EtatES
 from .program import Instruction, Programme, TYPES_INSTRUCTION, programme_demo
-from .robot import DobotMagician, ErreurCinematique, cible, vers_xyzrpy
+from .robot import (DobotMagician, ErreurCinematique, cible, repere_travail,
+                    vers_xyzrpy)
+from .svg import TOLERANCE, ErreurSVG, lire_svg, programme_depuis_svg
 from .liaison import CommandeDobot, FonctionES, PTP
 from .passerelle import Serveur
 from .reel import ErreurPont, PontReel
@@ -584,6 +586,162 @@ class DialogueRepere(QtWidgets.QDialog):
             "X={:.2f}  Y={:.2f}  Z={:.2f} mm &nbsp; Rz={:.2f} deg{}"
             .format(valeurs[0], valeurs[1], valeurs[2], valeurs[3], arrondi))
         self.boutons.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(True)
+
+
+# ===========================================================================
+
+class DialogueSVG(QtWidgets.QDialog):
+    """
+    Pose un dessin SVG sur la table, avant d'en faire un programme.
+
+    Le dessin est deja lu quand ce dialogue s'ouvre : il ne reste qu'a
+    decider ou il se pose et quelle taille il fait. Chaque reglage
+    recalcule aussitot la taille obtenue ET le nombre de points que le
+    bras n'atteint pas -- c'est la seule facon de voir qu'un dessin
+    deborde avant de lancer le trace, plutot qu'au milieu du cycle.
+    """
+
+    #: nombre de points testes pour l'atteignabilite ; au-dela, on
+    #: echantillonne : la reponse doit rester instantanee a la frappe
+    ECHANTILLON = 240
+
+    #: l'outil du trace, pour que le controle d'atteignabilite porte sur
+    #: la POINTE du stylo et non sur la bride : 70 mm d'ecart, c'est la
+    #: difference entre un dessin atteignable et un dessin refuse
+    OUTIL = "stylo"
+
+    def __init__(self, parent, chemin: str, polylignes, robot):
+        super().__init__(parent)
+        self.setWindowTitle("Importer un dessin SVG")
+        self.chemin = chemin
+        # un robot a nous, porte-stylo monte : celui de la fenetre porte
+        # l'outil choisi par l'utilisateur, qui n'est pas forcement celui
+        # avec lequel le programme sera construit
+        self.robot = DobotMagician()
+        self.robot.geo.lt = ou.outil(self.OUTIL).longueur
+
+        pts = [p for poly in polylignes for p in poly]
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        self._boite = (min(xs), min(ys), max(xs), max(ys))
+        pas = max(1, len(pts) // self.ECHANTILLON)
+        self._echantillon = pts[::pas]
+        self._traits = len(polylignes)
+        self._points = len(pts)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setSpacing(10)
+
+        entete = QtWidgets.QLabel(
+            "<b>{}</b><br>{} traits, {} points apres aplatissement."
+            .format(os.path.basename(chemin), self._traits, self._points))
+        entete.setWordWrap(True)
+        lay.addWidget(entete)
+
+        grille = QtWidgets.QGridLayout()
+        grille.setHorizontalSpacing(14)
+        self.champs = {}
+        reglages = (
+            ("largeur", "Largeur du dessin", 5.0, 300.0, 80.0, "mm",
+             "le dessin tient dans cette largeur, sans se deformer"),
+            ("x", "Feuille : x", 100.0, 320.0, 235.0, "mm",
+             "position du centre de la feuille dans le repere du robot"),
+            ("y", "Feuille : y", -250.0, 250.0, 0.0, "mm", ""),
+            ("z", "Feuille : z", -50.0, 150.0, 10.0, "mm",
+             "altitude du papier, epaisseur comprise"),
+            ("levee", "Levee entre deux traits", 1.0, 120.0, 10.0, "mm", ""),
+            ("profondeur", "Appui du stylo", -10.0, 10.0, 0.0, "mm",
+             "zero = au ras du papier ; negatif pour appuyer"),
+            ("vitesse", "Vitesse de trace", 5.0, 300.0, 60.0, "mm/s", ""),
+        )
+        for ligne, (cle, libelle, mini, maxi, defaut, unite, aide) in enumerate(reglages):
+            lab = QtWidgets.QLabel(libelle)
+            if aide:
+                lab.setToolTip(aide)
+            champ = _spin(mini, maxi, 1.0, unite, 1, defaut)
+            champ.valueChanged.connect(self._reviser)
+            grille.addWidget(lab, ligne, 0)
+            grille.addWidget(champ, ligne, 1)
+            self.champs[cle] = champ
+        lay.addLayout(grille)
+
+        self.etat = QtWidgets.QLabel()
+        self.etat.setWordWrap(True)
+        self.etat.setMinimumHeight(58)
+        self.etat.setAlignment(QtCore.Qt.AlignTop)
+        lay.addWidget(self.etat)
+
+        self.boutons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        self.boutons.accepted.connect(self.accept)
+        self.boutons.rejected.connect(self.reject)
+        lay.addWidget(self.boutons)
+
+        self._reviser()
+
+    # -- reglages ----------------------------------------------------------
+
+    def valeurs(self) -> dict:
+        return {c: self.champs[c].value() for c in self.champs}
+
+    def repere(self):
+        v = self.valeurs()
+        return repere_travail(x=v["x"], y=v["y"], z=v["z"])
+
+    def taille(self):
+        """Taille obtenue, en millimetres, a l'echelle courante."""
+        x0, y0, x1, y1 = self._boite
+        dx, dy = max(x1 - x0, 1e-9), max(y1 - y0, 1e-9)
+        echelle = self.valeurs()["largeur"] / dx
+        return dx * echelle, dy * echelle, echelle
+
+    def _hors_portee(self, echelle) -> int:
+        """Combien de points du dessin le bras n'atteint pas."""
+        x0, y0, x1, y1 = self._boite
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        v = self.valeurs()
+        rep = self.repere()
+        perdus = 0
+        for p in self._echantillon:
+            T = cible(x=(p[0] - cx) * echelle, y=-(p[1] - cy) * echelle,
+                      z=v["profondeur"], repere=rep)
+            try:
+                q = self.robot.mgi(T)
+            except ErreurCinematique:
+                perdus += 1
+                continue
+            if self.robot.depassements(q):
+                perdus += 1
+        return perdus
+
+    def _reviser(self) -> None:
+        largeur, hauteur, echelle = self.taille()
+        perdus = self._hors_portee(echelle)
+        if perdus == 0:
+            self.etat.setText(
+                "<span style='color:#5aa469'>le dessin tient dans l'espace "
+                "de travail</span><br>{:.0f} &times; {:.0f} mm &nbsp;&middot;&nbsp; "
+                "echelle {:.3f} mm par unite du fichier"
+                .format(largeur, hauteur, echelle))
+            self.boutons.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(True)
+        else:
+            part = 100.0 * perdus / max(1, len(self._echantillon))
+            self.etat.setText(
+                "<b style='color:#e06c5a'>hors d'atteinte</b><br>"
+                "{:.0f} &times; {:.0f} mm, mais environ {:.0f} % du trace sort "
+                "de l'espace de travail. Rapprochez la feuille, ou reduisez "
+                "la largeur.".format(largeur, hauteur, part))
+            self.boutons.button(QtWidgets.QDialogButtonBox.Ok).setEnabled(False)
+
+    # -- resultat ----------------------------------------------------------
+
+    def construire(self):
+        """Le Pilote correspondant aux reglages valides."""
+        v = self.valeurs()
+        return programme_depuis_svg(
+            self.chemin, repere=self.repere(), largeur=v["largeur"],
+            levee=v["levee"], profondeur=v["profondeur"],
+            vitesse_trace=v["vitesse"], tolerance=TOLERANCE)
 
 
 # ===========================================================================
@@ -1945,12 +2103,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
 
         La file du controleur se CONSOMME : chaque commande executee
         disparait. Apres une execution, il n'y reste rien -- relancer sans
-        televerser ne ferait donc rien du tout.
+        televerser ne ferait donc rien du tout. Idem apres un vidage
+        (arret d'urgence, pilotage manuel).
         """
-        if self.pont.index_final <= 0:
-            return True
         try:
-            return self.pont.liaison.index_courant() >= self.pont.index_final
+            return not self.pont.programme_en_file()
         except Exception:
             return True
 
@@ -2143,9 +2300,6 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
     def _reel_rafraichir(self) -> None:
         """Interroge la machine et, si le miroir est actif, anime le modele."""
         try:
-            # la file du controleur ne tient que 32 commandes : on la
-            # recomplete a chaque tour (5 Hz) avec la suite du programme
-            self.pont.alimenter()
             etat = self.pont.etat()
         except Exception as exc:
             self.minuteur_reel.stop()
@@ -2173,12 +2327,20 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.lab_reel_pose.setText(
             "controleur  x={:7.1f} y={:7.1f} z={:7.1f} r={:6.1f}\n"
             "simulateur  x={:7.1f} y={:7.1f} z={:7.1f} r={:6.1f}\n"
-            "file : index {} / {}{}"
+            "file : index {} / {}"
             .format(x, y, z, r, xs, ys, zs, rs,
-                    etat.index_courant, etat.index_final,
-                    "  ({} en reserve)".format(self.pont.en_reserve)
-                    if self.pont.en_reserve else ""))
+                    etat.index_courant, etat.index_final))
         self.barre_reel.setValue(int(round(100 * etat.progression)))
+
+        # Le fil qui alimente la file n'ecrit pas dans le journal : il
+        # depose ce qu'il a rencontre, et c'est ici qu'on le relit. Sans
+        # cela, un programme abandonne en cours de route s'arreterait sans
+        # que rien ne le dise -- et on chercherait du cote du programme.
+        incident = getattr(self.pont, "_incident", "")
+        if incident:
+            self.pont._incident = ""
+            self.journal("ROBOT REEL : " + incident)
+            self._alerter([incident])
 
         # Un defaut du controleur FIGE la file : la barre s'arrete en cours
         # de route. Le dire haut et fort, sans quoi on cherche longtemps.
@@ -2650,6 +2812,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._action(fichier, "Nouveau programme", self._nouveau, "Ctrl+N")
         self._action(fichier, "Ouvrir...", self._ouvrir, "Ctrl+O")
         self._action(fichier, "Enregistrer sous...", self._enregistrer, "Ctrl+S")
+        fichier.addSeparator()
+        self._action(fichier, "Importer un dessin SVG...", self._importer_svg,
+                     "Ctrl+I")
         fichier.addSeparator()
         self._action(fichier, "Executer un script Python...", self._executer_script,
                      "Ctrl+R")
@@ -3753,6 +3918,50 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.journal("programme charge : " + chemin)
         self._rafraichir_liste(0)
         self._recompiler()
+
+    def _importer_svg(self) -> None:
+        """
+        Fabrique un programme de trace a partir d'un dessin SVG.
+
+        Le fichier est lu d'abord, le dialogue ensuite : on ne demande ou
+        poser la feuille qu'une fois sur qu'il y a quelque chose a tracer,
+        et le message d'erreur arrive alors sans reglages inutiles.
+        """
+        chemin, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Importer un dessin SVG", "", "Dessin SVG (*.svg)")
+        if not chemin:
+            return
+        try:
+            polylignes = lire_svg(chemin)
+        except ErreurSVG as exc:
+            QtWidgets.QMessageBox.warning(self, "Importer un dessin SVG",
+                                          str(exc))
+            self.journal("import SVG refuse : " + str(exc))
+            return
+
+        dlg = DialogueSVG(self, chemin, polylignes, self.robot)
+        if dlg.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        try:
+            pilote = dlg.construire()
+        except Exception:
+            self.journal(traceback.format_exc())
+            QtWidgets.QMessageBox.warning(
+                self, "Importer un dessin SVG",
+                "Le programme n'a pas pu etre construit.\n\n"
+                "Le detail est dans l'onglet Journal.")
+            return
+
+        largeur, hauteur, echelle = dlg.taille()
+        self.charger_programme(pilote.programme, pilote.q_depart)
+        self.journal("dessin importe : {} -- {} instructions, {:.0f} x {:.0f} mm"
+                     .format(os.path.basename(chemin),
+                             len(pilote.programme.instructions),
+                             largeur, hauteur))
+        avertissements = pilote.controler()
+        if avertissements:
+            self._alerter(avertissements)
+            self.journal("  " + "\n  ".join(avertissements))
 
     def _enregistrer(self) -> None:
         chemin, _ = QtWidgets.QFileDialog.getSaveFileName(
