@@ -10,9 +10,11 @@ Organisation :
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import struct
 import sys
+import time
 import traceback
 from typing import List, Optional, Sequence
 
@@ -28,7 +30,7 @@ from .program import Instruction, Programme, TYPES_INSTRUCTION, programme_demo
 from .robot import (DobotMagician, ErreurCinematique, cible, repere_travail,
                     vers_xyzrpy)
 from .svg import TOLERANCE, ErreurSVG, lire_svg, programme_depuis_svg
-from .liaison import CommandeDobot, FonctionES, PTP
+from .liaison import CommandeDobot, FonctionES, PTP, resume_alarmes
 from .passerelle import Serveur
 from .reel import ErreurPont, PontReel
 from .trajectory import PROFILS, Trajectoire
@@ -589,6 +591,463 @@ class DialogueRepere(QtWidgets.QDialog):
 
 
 # ===========================================================================
+
+def _dessin_posture(j2: float, j3: float, repere: str = "",
+                    largeur: int = 220, hauteur: int = 175) -> QtGui.QPixmap:
+    """
+    Silhouette du bras, VUE DE PROFIL, a la posture (J2, J3) en degres.
+
+    Calculee avec la convention du controleur, verifiee sur machine :
+    bras arriere = l1.(sin J2, cos J2), avant-bras = l2.(cos J3, -sin J3),
+    puis le deport l3 horizontal et l'outil vertical. Le dessin suit donc
+    les angles : changer une posture de reference change son image.
+
+    `repere` : "equerre" ajoute la verticale et l'horizontale en pointille,
+    "butees" hachure les deux appuis.
+    """
+    palette = QtWidgets.QApplication.palette()
+    encre = palette.color(QtGui.QPalette.WindowText)
+    discret = QtGui.QColor(encre)
+    discret.setAlphaF(0.45)
+    accent = QtGui.QColor("#e0a030")
+
+    l1, l2, l3, d1, outil = 135.0, 147.0, 59.7, 139.0, 62.0
+    a2, a3 = np.radians(j2), np.radians(j3)
+    epaule = np.array([0.0, d1])
+    coude = epaule + l1 * np.array([np.sin(a2), np.cos(a2)])
+    poignet = coude + l2 * np.array([np.cos(a3), -np.sin(a3)])
+    bride = poignet + np.array([l3, 0.0])
+    pointe = bride + np.array([0.0, -outil])
+
+    # cadrage : tous les points, le socle et la table
+    pts = [epaule, coude, poignet, bride, pointe, [-70.0, 0.0], [70.0, 0.0]]
+    if repere == "equerre":                  # les reperes doivent tenir
+        pts += [epaule + [0, l1 + 25], coude + [l2 + 25, 0]]
+    pts = np.array(pts)
+    xmin, ymin = pts.min(axis=0) - 15
+    xmax, ymax = pts.max(axis=0) + 15
+    k = min((largeur - 8) / (xmax - xmin), (hauteur - 8) / (ymax - ymin))
+    ox = (largeur - k * (xmax - xmin)) / 2 - k * xmin
+    oy = (hauteur + k * (ymax - ymin)) / 2 + k * ymin
+
+    def P(v):
+        return QtCore.QPointF(ox + k * v[0], oy - k * v[1])
+
+    pm = QtGui.QPixmap(largeur, hauteur)
+    pm.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+
+    def trait(couleur, epaisseur, style=QtCore.Qt.SolidLine):
+        stylo = QtGui.QPen(couleur, epaisseur, style)
+        stylo.setCapStyle(QtCore.Qt.RoundCap)
+        p.setPen(stylo)
+
+    # table et socle
+    trait(discret, 1.2)
+    p.drawLine(P([xmin + 5, 0]), P([xmax - 5, 0]))
+    p.setBrush(discret)
+    p.drawRect(QtCore.QRectF(P([-55, 45]), P([55, 0])))
+    p.drawRect(QtCore.QRectF(P([-28, d1]), P([28, 45])))
+    p.setBrush(QtCore.Qt.NoBrush)
+
+    # reperes
+    if repere == "equerre":
+        trait(accent, 1.4, QtCore.Qt.DashLine)
+        p.drawLine(P(epaule), P(epaule + [0, l1 + 25]))      # verticale
+        p.drawLine(P(coude), P(coude + [l2 + 25, 0]))        # horizontale
+        e = 14 / k                                            # coin d'equerre
+        trait(accent, 1.4)
+        p.drawPolyline(QtGui.QPolygonF([P(coude + [0, -e]),
+                                        P(coude + [e, -e]),
+                                        P(coude + [e, 0])]))
+    elif repere == "butees":
+        # Une fleche COURBE par articulation, dans le sens ou l'on pousse,
+        # numerotee dans l'ordre : 1 le bras arriere tourne vers l'arriere
+        # autour de l'epaule (J2 decroit : sens trigonometrique a l'ecran),
+        # 2 l'avant-bras tourne vers le bas autour du coude (J3 croit :
+        # sens horaire).
+        police = p.font()
+        police.setBold(True)
+        police.setPointSizeF(max(police.pointSizeF(), 9.0))
+        p.setFont(police)
+        for num, centre, segment, rayon, ouverture in (
+                ("1", epaule, coude - epaule, 0.6 * l1, 42.0),
+                ("2", coude, poignet - coude, 0.6 * l2, -42.0)):
+            t0 = np.degrees(np.arctan2(segment[1], segment[0]))
+            r = k * rayon
+            c = P(centre)
+            trait(accent, 2.2)
+            p.drawArc(QtCore.QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r),
+                      int(16 * (t0 + np.sign(ouverture) * 5)),
+                      int(16 * (ouverture - np.sign(ouverture) * 5)))
+            te = np.radians(t0 + ouverture)
+            bout = centre + rayon * np.array([np.cos(te), np.sin(te)])
+            sens = np.sign(ouverture) * np.array([-np.sin(te), np.cos(te)])
+            normale = np.array([-sens[1], sens[0]])
+            p.save()
+            p.setPen(QtCore.Qt.NoPen)
+            p.setBrush(accent)
+            p.drawPolygon(QtGui.QPolygonF([
+                P(bout + sens * (5 / k)),
+                P(bout - sens * (3 / k) + normale * (4.5 / k)),
+                P(bout - sens * (3 / k) - normale * (4.5 / k))]))
+            p.restore()
+            p.setPen(accent)
+            # le numero, un peu au-dela de la pointe, cote exterieur
+            ext = (bout - centre) / np.linalg.norm(bout - centre)
+            etiquette = P(bout + ext * (11 / k))
+            p.drawText(QtCore.QRectF(etiquette.x() - 8, etiquette.y() - 8,
+                                     16, 16), QtCore.Qt.AlignCenter, num)
+
+    # bras
+    trait(encre, 5.0)
+    p.drawLine(P(epaule), P(coude))
+    trait(encre, 4.0)
+    p.drawLine(P(coude), P(poignet))
+    trait(encre, 2.5)
+    p.drawLine(P(poignet), P(bride))
+    p.drawLine(P(bride), P(pointe))
+    p.setBrush(encre)
+    p.setPen(QtCore.Qt.NoPen)
+    for v, r in ((epaule, 4.0), (coude, 3.5), (poignet, 3.0)):
+        p.drawEllipse(P(v), r, r)
+    p.end()
+    return pm
+
+
+class _HoteMiseEnRoute:
+    """
+    Ce dont DialogueMiseEnRoute a besoin, sans fenetre principale : pour
+    `robot.executer_sur_robot()` lance depuis un script, simulateur ferme.
+    """
+
+    class _Case:
+        def setChecked(self, _v):
+            pass
+
+    def __init__(self, pont, robot):
+        self.pont = pont
+        self.robot = robot
+        self.chk_piloter = self.chk_miroir = self._Case()
+
+    def journal(self, message: str) -> None:
+        print("  [mise en route] " + message)
+
+    def _confirmer_mouvement(self, titre: str, texte: str) -> bool:
+        b = QtWidgets.QMessageBox()
+        b.setIcon(QtWidgets.QMessageBox.Warning)
+        b.setWindowTitle(titre)
+        b.setText(texte)
+        b.setInformativeText("LE ROBOT REEL VA BOUGER.\nDegagez la zone de "
+                             "travail et gardez l'arret d'urgence a portee.")
+        b.setStandardButtons(QtWidgets.QMessageBox.Cancel
+                             | QtWidgets.QMessageBox.Ok)
+        b.setDefaultButton(QtWidgets.QMessageBox.Cancel)
+        b.button(QtWidgets.QMessageBox.Ok).setText("Lancer le mouvement")
+        return b.exec_() == QtWidgets.QMessageBox.Ok
+
+
+def mise_en_route_autonome(pont, robot) -> bool:
+    """
+    Ouvre l'assistant de mise en route hors du simulateur. Rend True si le
+    robot ne signale plus aucun defaut a la fermeture.
+    """
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    DialogueMiseEnRoute(_HoteMiseEnRoute(pont, robot)).exec_()
+    try:
+        return not pont.liaison.alarmes()
+    except Exception:
+        return False
+
+
+class DialogueMiseEnRoute(QtWidgets.QDialog):
+    """
+    Mise en route du robot reel, a faire apres CHAQUE mise sous tension.
+
+    Sur la machine du labo, les capteurs d'angle du bras arriere et de
+    l'avant-bras sont faux a l'allumage : le controleur croit le bras
+    ailleurs, leve des alarmes de butee, et une prise d'origine lancee
+    telle quelle part en butee. La sequence qui marche, verifiee sur
+    firmware 3.7.0, tient en trois etapes, DANS CET ORDRE :
+
+      1. declarer la posture d'equerre (J2 et J3 justes, rien ne bouge) ;
+      2. prise d'origine (J1 juste ; le bras parcourt sa course) ;
+      3. effacer les defauts et comparer le miroir au vrai bras.
+
+    Le dialogue n'active une etape qu'une fois la precedente faite, et
+    affiche en continu ce que le controleur croit.
+
+    Deux postures de reference au choix pour l'etape 1 : l'equerre, ou les
+    butees arriere -- plus reproductibles qu'un placement a l'oeil.
+    """
+
+    #: postures declarables : (J2, J3) en degres, convention du controleur
+    #: (J2 = 0 bras arriere vertical, J3 = 0 avant-bras horizontal)
+    POSTURES = {
+        "equerre": {
+            "nom": "Equerre",
+            "angles": (0.0, 0.0),
+            "geste": "placez a la main le <b>bras arriere VERTICAL</b> et "
+                     "l'<b>avant-bras HORIZONTAL</b>, verifiez a l'equerre "
+                     "ou au niveau",
+        },
+        # Releve le 2026-10-23 sur la machine du labo (firmware 3.7.0), apres
+        # une declaration a l'equerre : les butees mecaniques, elles, ne
+        # dependent pas de la main. Hors de la plage logicielle de J2
+        # ([0 ; 85]) : le controleur leve 0x43 tant qu'on y reste, et
+        # REFUSE la prise d'origine (constate). D'ou "hors_course" : apres
+        # la declaration, on ramene le bras a la main dans sa course -- le
+        # controleur suit, la declaration corrige les capteurs sans figer
+        # la posture -- et l'etape 2 n'ouvre qu'une fois le bras revenu.
+        "butees": {
+            "hors_course": True,
+            "nom": "Butees arriere",
+            "angles": (-11.18, 61.21),
+            "geste": "poussez doucement <b>(1) le bras arriere</b> contre sa "
+                     "butee arriere, PUIS <b>(2) l'avant-bras</b> vers le bas "
+                     "contre sa butee, dans cet ordre (la butee de l'avant-"
+                     "bras depend du bras arriere)",
+        },
+    }
+
+    def __init__(self, fenetre: "FenetrePrincipale"):
+        super().__init__(fenetre if isinstance(fenetre, QtWidgets.QWidget)
+                         else None)
+        self.fen = fenetre
+        self.setWindowTitle("Mise en route du robot")
+        self.setMinimumWidth(460)
+        lay = QtWidgets.QVBoxLayout(self)
+
+        intro = QtWidgets.QLabel(
+            "A faire apres <b>chaque mise sous tension</b> : a l'allumage, "
+            "le controleur se trompe sur la posture du bras.")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+
+        # etat du controleur, rafraichi en continu
+        self.lab_etat = QtWidgets.QLabel()
+        self.lab_etat.setFont(_police_fixe(11))
+        self.lab_etat.setStyleSheet(
+            "QLabel { background:rgba(127,127,127,0.12); padding:6px; }")
+        lay.addWidget(self.lab_etat)
+
+        def etape(titre, texte, bouton):
+            boite = QtWidgets.QGroupBox(titre)
+            v = QtWidgets.QVBoxLayout(boite)
+            t = QtWidgets.QLabel(texte)
+            t.setWordWrap(True)
+            v.addWidget(t)
+            b = QtWidgets.QPushButton(bouton)
+            v.addWidget(b)
+            res = QtWidgets.QLabel("")
+            res.setWordWrap(True)
+            v.addWidget(res)
+            lay.addWidget(boite)
+            return boite, b, res
+
+        self.e1, self.b1, self.r1 = etape(
+            "1. Posture de reference  -  rien ne bouge", "", "")
+        # Choix de la posture : TOUJOURS l'equerre a l'ouverture, sans
+        # memoire d'une seance a l'autre. Sur un poste partage, retrouver
+        # les butees choisies par quelqu'un d'autre serait une surprise.
+        choix = QtWidgets.QHBoxLayout()
+        self.choix_posture = QtWidgets.QButtonGroup(self)
+        for cle, posture in self.POSTURES.items():
+            rb = QtWidgets.QRadioButton("{}  (J2 {:+.2f}, J3 {:+.2f})".format(
+                posture["nom"], *posture["angles"]))
+            rb.setProperty("cle", cle)
+            rb.setChecked(cle == "equerre")
+            self.choix_posture.addButton(rb)
+            choix.addWidget(rb)
+        if self.choix_posture.checkedButton() is None:
+            self.choix_posture.buttons()[0].setChecked(True)
+        self.e1.layout().insertLayout(0, choix)
+        self.texte1 = self.e1.findChildren(QtWidgets.QLabel)[0]
+        # la silhouette de la posture, a gauche de la consigne
+        self.image1 = QtWidgets.QLabel()
+        self.image1.setToolTip("vue de profil, robot face a droite")
+        ligne = QtWidgets.QHBoxLayout()
+        lay1 = self.e1.layout()
+        lay1.removeWidget(self.texte1)
+        ligne.addWidget(self.image1)
+        ligne.addWidget(self.texte1, 1)
+        lay1.insertLayout(1, ligne)
+        self.choix_posture.buttonClicked.connect(lambda _b: self._maj_posture())
+        self._maj_posture()
+        self.e2, self.b2, self.r2 = etape(
+            "2. Prise d'origine  -  LE ROBOT BOUGE",
+            "Degagez la zone. Le bras parcourt sa course pour retrouver "
+            "l'orientation de la base, puis se gare.",
+            "Lancer la prise d'origine")
+        self.e3, self.b3, self.r3 = etape(
+            "3. Verification",
+            "Les defauts sont effaces et le miroir active : le modele 3D "
+            "doit avoir <b>exactement</b> la posture du vrai bras. Sinon, "
+            "recommencez a l'etape 1.",
+            "Effacer les defauts et verifier")
+        self.b1.clicked.connect(self._declarer)
+        self.b2.clicked.connect(self._origine)
+        self.b3.clicked.connect(self._verifier)
+
+        fin = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        fin.button(QtWidgets.QDialogButtonBox.Close).setText("Fermer")
+        fin.rejected.connect(self.reject)
+        lay.addWidget(fin)
+
+        self._en_cours = False                # prise d'origine en route
+        self._attente_course = False          # bras a ramener dans sa course
+        self._activer(1)
+        self.minuteur = QtCore.QTimer(self)
+        self.minuteur.setInterval(300)
+        self.minuteur.timeout.connect(self._rafraichir)
+        self.minuteur.start()
+        self._rafraichir()
+
+    def _posture(self) -> dict:
+        return self.POSTURES[self.choix_posture.checkedButton().property("cle")]
+
+    def _maj_posture(self) -> None:
+        posture = self._posture()
+        self.image1.setPixmap(_dessin_posture(
+            *posture["angles"],
+            repere=self.choix_posture.checkedButton().property("cle")))
+        self.texte1.setText(
+            "Bouton de deverrouillage enfonce (sur l'avant-bras), {}, puis "
+            "relachez le bouton.<br><br><i>La rotation de la base ne compte "
+            "pas ici : la declaration ne porte que sur le bras arriere et "
+            "l'avant-bras, et la prise d'origine (etape 2) retrouve "
+            "l'orientation de la base.</i>".format(posture["geste"]))
+        self.b1.setText("Le bras est en place : declarer J2 = {:+.2f}, "
+                        "J3 = {:+.2f}".format(*posture["angles"]))
+
+    def _activer(self, n: int) -> None:
+        """Seule l'etape n est cliquable ; les precedentes restent visibles."""
+        for k, boite in ((1, self.e1), (2, self.e2), (3, self.e3)):
+            boite.setEnabled(k == n)
+        self._etape = n
+
+    def _rafraichir(self) -> None:
+        pont = self.fen.pont
+        if not pont.connecte:
+            self.lab_etat.setText("robot deconnecte")
+            return
+        try:
+            q = pont.angles_reels()
+            alarmes = resume_alarmes(pont.liaison.alarmes())
+        except Exception as exc:
+            self.lab_etat.setText("lecture impossible : {}".format(exc))
+            return
+        lignes = ["Le controleur croit :",
+                  "  J1 {:+7.2f}   J2 {:+7.2f}   J3 {:+7.2f} deg"
+                  .format(q[0], q[1], q[2])]
+        lignes += (["  " + a for a in alarmes] if alarmes
+                   else ["  aucune alarme"])
+        self.lab_etat.setText("\n".join(lignes))
+        if self._attente_course and self._dans_la_course(q):
+            self._attente_course = False
+            self.r1.setText("<b style='color:#5cb85c'>posture declaree, bras "
+                            "revenu dans sa course</b>")
+            self._activer(2)
+        if (self._en_cours and time.time() - self._debut_origine > 90
+                and not getattr(self, "_lent_signale", False)):
+            # Depuis les butees, J2 est hors de sa plage logicielle : si le
+            # controleur refuse de partir de la, on ne le saurait pas.
+            self._lent_signale = True
+            self.r2.setText("<b style='color:#e0a030'>toujours pas terminee "
+                            "apres 90 s</b> : le bras bouge-t-il ? Sinon, "
+                            "arret d'urgence, puis recommencez avec la "
+                            "posture d'equerre.")
+        if self._en_cours and pont.termine():
+            self._en_cours = False
+            self.r2.setText("<b style='color:#5cb85c'>prise d'origine "
+                            "terminee</b>")
+            self.fen.journal("mise en route : prise d'origine terminee")
+            self._activer(3)
+
+    #: distance aux butees logicielles exigee avant la prise d'origine
+    MARGE_COURSE = 3.0
+
+    def _dans_la_course(self, q) -> bool:
+        """J2 et J3 assez loin de leurs butees pour que le controleur parte."""
+        lim = self.fen.robot.lim
+        return all(lim.q_min[i] + self.MARGE_COURSE <= q[i]
+                   <= lim.q_max[i] - self.MARGE_COURSE for i in (1, 2))
+
+    def _declarer(self) -> None:
+        pont = self.fen.pont
+        posture = self._posture()
+        j2, j3 = posture["angles"]
+        try:
+            pont.liaison.redefinir_pose(j2, j3)
+            q = pont.angles_reels()
+        except Exception as exc:
+            self.r1.setText("<b style='color:#e06c5a'>echec : {}</b>"
+                            .format(exc))
+            return
+        ok = abs(q[1] - j2) < 0.5 and abs(q[2] - j3) < 0.5
+        if not ok:
+            self.r1.setText("<b style='color:#e06c5a'>le controleur n'a pas "
+                            "retenu la posture (J2 {:+.2f}, J3 {:+.2f})</b>"
+                            .format(q[1], q[2]))
+            return
+        self.fen.journal("mise en route : posture declaree ({}, J2 {:+.2f}, "
+                         "J3 {:+.2f})".format(posture["nom"], j2, j3))
+        for b in self.choix_posture.buttons():
+            b.setEnabled(False)
+        if posture.get("hors_course"):
+            # le controleur refuse la prise d'origine depuis les butees
+            self._attente_course = True
+            self._activer(0)
+            self.r1.setText(
+                "<b style='color:#5cb85c'>posture declaree.</b> "
+                "<b style='color:#e0a030'>Ramenez maintenant le bras dans "
+                "sa course</b> : bouton enfonce, bras arriere vers la "
+                "verticale, avant-bras vers l'horizontale. L'etape 2 "
+                "s'ouvrira d'elle-meme.")
+        else:
+            self.r1.setText("<b style='color:#5cb85c'>posture declaree : "
+                            "{}</b>".format(posture["nom"].lower()))
+            self._activer(2)
+        self._rafraichir()
+
+    def _origine(self) -> None:
+        if not self.fen._confirmer_mouvement(
+                "Prise d'origine",
+                "Le robot va parcourir toute sa course pour retrouver ses "
+                "origines."):
+            return
+        try:
+            self.fen.pont.prise_origine()
+        except Exception as exc:
+            self.r2.setText("<b style='color:#e06c5a'>echec : {}</b>"
+                            .format(exc))
+            return
+        self._en_cours = True
+        self._debut_origine = time.time()
+        self.e2.setEnabled(False)
+        self.r2.setText("prise d'origine en cours... (arret d'urgence dans "
+                        "le panneau Robot reel)")
+
+    def _verifier(self) -> None:
+        try:
+            self.fen.pont.liaison.effacer_alarmes()
+        except Exception as exc:
+            self.r3.setText("<b style='color:#e06c5a'>echec : {}</b>"
+                            .format(exc))
+            return
+        self.fen.chk_piloter.setChecked(False)
+        self.fen.chk_miroir.setChecked(True)
+        self._rafraichir()
+        self.r3.setText("<b style='color:#5cb85c'>defauts effaces, miroir "
+                        "actif</b> : comparez le modele au vrai bras. S'ils "
+                        "concordent, le robot est pret.")
+        self.fen.journal("mise en route terminee : defauts effaces")
+
+    def done(self, r) -> None:
+        self.minuteur.stop()
+        super().done(r)
+
 
 class DialogueSVG(QtWidgets.QDialog):
     """
@@ -1700,6 +2159,14 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         v.addWidget(self.sp_reel_ratio, 1)
         ml.addLayout(v)
 
+        self.bt_mise_en_route = QtWidgets.QPushButton("Mise en route...")
+        self.bt_mise_en_route.setStyleSheet("font-weight:bold")
+        self.bt_mise_en_route.setToolTip(
+            "a faire apres chaque mise sous tension :\n"
+            "equerre, prise d'origine, verification -- dans cet ordre")
+        self.bt_mise_en_route.clicked.connect(self._reel_mise_en_route)
+        ml.addWidget(self.bt_mise_en_route)
+
         # Declarer la posture remplace la prise d'origine quand un capteur
         # d'angle est fautif : le controleur garde ce qu'on lui annonce et
         # compte ensuite ses pas moteur. Verifie sur firmware 3.7.0.
@@ -1976,6 +2443,25 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._reel_maj_boutons()
         self._reel_ratio()
         self.minuteur_reel.start()
+
+        # Un robot qui sort d'une mise sous tension leve des alarmes (au
+        # minimum 0x00, reinitialisation) : c'est le moment de la mise en
+        # route, et on la propose d'office plutot que de laisser chercher.
+        try:
+            alarmes = self.pont.liaison.alarmes()
+        except Exception:
+            alarmes = []
+        if alarmes:
+            self.journal("robot en defaut a la connexion : mise en route "
+                         "proposee")
+            QtCore.QTimer.singleShot(0, self._reel_mise_en_route)
+
+    def _reel_mise_en_route(self) -> None:
+        if not self.pont.connecte:
+            QtWidgets.QMessageBox.warning(
+                self, "Robot reel", "Connectez d'abord le robot.")
+            return
+        DialogueMiseEnRoute(self).exec_()
 
     def _confirmer_mouvement(self, titre: str, texte: str) -> bool:
         """Garde-fou commun a toute action qui fait bouger la machine."""
@@ -2355,9 +2841,17 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self.lab_defauts.show()
             self._alerter(["Robot reel en defaut : " + etat.alarmes[0]]
                           + etat.alarmes[1:])
+            self._alerte_reel = True
         else:
             self._reel_alarmes_vues = []
             self.lab_defauts.hide()
+            if getattr(self, "_alerte_reel", False):
+                # Les alarmes ont disparu (acquittees, ou le bras est sorti
+                # de sa zone de butee) : le bandeau ne decrit plus rien. On
+                # rend la place aux avertissements du programme.
+                self._alerte_reel = False
+                self._alerter(getattr(self, "_avert_programme", []))
+                self.journal("robot reel : plus aucun defaut, bandeau efface")
 
         self._maj_badge_reel(etat)
 
@@ -2627,9 +3121,20 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
 
     def _maj_outil(self) -> None:
         """Reconstruit le maillage de l'outil et rafraichit son bandeau."""
-        self.vue.definir_outil(self.outil.pieces(self.outil_actif))
-        self.lab_longueur.setText("{:.0f} mm  (deport lt du modele)"
-                                  .format(self.outil.longueur))
+        # La longueur EN VIGUEUR est celle du modele, pas celle du
+        # catalogue : un programme peut porter une longueur mesuree
+        # (Pilote.regler_longueur_outil), et l'affichage comme le dessin
+        # doivent la suivre.
+        lt = float(self.robot.geo.lt)
+        self.vue.definir_outil(dataclasses.replace(self.outil, longueur=lt)
+                               .pieces(self.outil_actif))
+        if abs(lt - self.outil.longueur) > 0.05:
+            self.lab_longueur.setText(
+                "<b>{:.1f} mm</b>  (mesuree ; catalogue {:.0f} mm)"
+                .format(lt, self.outil.longueur))
+        else:
+            self.lab_longueur.setText("{:.0f} mm  (deport lt du modele)"
+                                      .format(lt))
         # la description du catalogue vit dans l'infobulle : elle change avec
         # l'outil, et n'a pas a occuper trois lignes du panneau en permanence
         bulle = self.outil.description + chr(10) + chr(10) + self._bulle_outil
@@ -3136,6 +3641,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
 
     def _appliquer_q(self, q, source: str = "") -> None:
         q = np.asarray(q, dtype=float)
+        # retenue pour le bloc d'etat : une pose LUE sur la machine ne se
+        # presente pas comme une pose DEMANDEE
+        self._source_q = source
         if source not in self.SOURCES_LIBRES:
             securite = getattr(self, "act_securite", None)
             if securite is not None and securite.isChecked():
@@ -3189,7 +3697,15 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                       "portee horizontale = {:.1f} mm"
                       .format(float(np.hypot(p[0], p[1]))),
                       "manipulabilite = {:.3g}".format(w)]
-            if depass:
+            reel = getattr(self, "_source_q", "") == "reel"
+            if depass and reel:
+                # Le miroir montre la machine telle qu'elle EST : ce n'est
+                # pas un mouvement refuse, c'est une remarque sur la posture
+                # reelle -- d'ou l'ambre et un libelle qui le dit.
+                lignes.append("<b style='color:#e0a030'>posture du robot "
+                              "reel hors des butees du modele</b><br>"
+                              + "<br>".join(depass))
+            elif depass:
                 lignes.append("<b style='color:#e06c5a'>butees depassees</b><br>"
                               + "<br>".join(depass))
             if choc:
@@ -3199,7 +3715,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 lignes.append("<span style='color:#5aa469'>"
                               "configuration admissible</span>")
         self.etat_config.setText("<br>".join(lignes))
-        self._encadrer_etat(bool(mgi or depass or choc))
+        # seule la posture reelle hors butees ne merite pas le cadre rouge
+        self._encadrer_etat(bool(mgi or choc or (depass and not (
+            getattr(self, "_source_q", "") == "reel"))))
 
     def _encadrer_etat(self, fautif: bool) -> None:
         """Cadre rouge quand le bloc annonce un refus, neutre sinon."""
@@ -3677,6 +4195,19 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         Elle garde ainsi sa liaison serie, ses reglages et sa place a
         l'ecran.
         """
+        if charge.get("etat_reel"):
+            return self._etat_execution_script()
+        if charge.get("arret_urgence"):
+            self._exec_script = {"etat": "refuse",
+                                 "raison": "arret d'urgence demande par le script"}
+            self._reel_urgence_sans_dialogue()
+            return {}
+        reel = charge.get("executer_reel")
+        if reel is not None and not self.pont.connecte:
+            # Refuser AVANT de charger : le script, voyant le refus, se
+            # connecte lui-meme -- le port est libre puisque la fenetre ne
+            # le tient pas.
+            raise RuntimeError("simulateur ouvert mais robot non connecte")
         prog = Programme.depuis_dict(charge["programme"])
         depart = charge.get("q_depart")
         if charge.get("script"):
@@ -3691,8 +4222,103 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                             | QtCore.Qt.WindowActive)
         self.raise_()
         self.activateWindow()
+        if reel is not None:
+            # Repondre d'abord au script (il attend l'accuse), demander la
+            # confirmation ensuite : un dialogue modal ici ferait expirer
+            # la passerelle.
+            v = float(reel.get("vitesse", 30.0))
+            self._exec_script = {"etat": "preparation"}
+            QtCore.QTimer.singleShot(0, lambda: self._reel_executer_script(v))
+            return
         if charge.get("lancer"):
             self.demarrer_lecture()
+
+    def _reel_executer_script(self, vitesse: float) -> None:
+        """
+        `robot.executer_sur_robot(vitesse=...)` appele depuis un script, la
+        fenetre tenant la liaison. SANS confirmation : le script est
+        l'ordre, et il peut en enchainer plusieurs. Le programme vient
+        d'arriver : on le televerse TOUJOURS, la file pouvant contenir le
+        reste d'un autre.
+
+        Le script suit l'avancement par `_etat_execution_script`.
+        """
+        def refuser(raison):
+            self._exec_script = {"etat": "refuse", "raison": raison}
+            self.journal("execution demandee par le script refusee : " + raison)
+
+        if not self.pont.connecte:
+            refuser("robot deconnecte")
+            return
+        try:
+            alarmes = self.pont.liaison.alarmes()
+        except Exception as exc:
+            refuser("lecture des alarmes impossible : {}".format(exc))
+            return
+        if alarmes:
+            # typiquement juste apres la mise sous tension : on ouvre la
+            # mise en route, et on ne part que si elle a tout remis en ordre
+            self._exec_script = {"etat": "mise_en_route"}
+            DialogueMiseEnRoute(self).exec_()
+            try:
+                alarmes = self.pont.liaison.alarmes()
+            except Exception:
+                alarmes = [-1]
+            if alarmes:
+                refuser("robot toujours en defaut apres la mise en route")
+                return
+        if abs(self.sp_reel_ratio.value() - vitesse) < 1e-9:
+            self._reel_ratio()               # meme valeur : pas de signal
+        else:
+            self.sp_reel_ratio.setValue(vitesse)  # le signal regle le robot
+        self.chk_piloter.setChecked(False)
+        self.chk_miroir.setChecked(True)
+        if not self._reel_televerser(silencieux=True):
+            refuser("televersement impossible (detail dans le journal)")
+            return
+        try:
+            self.pont.demarrer()
+        except Exception as exc:
+            refuser(str(exc))
+            return
+        self._exec_script = {"etat": "en_cours"}
+        self.journal("execution reelle lancee depuis le script, a {:.0f} %"
+                     .format(vitesse))
+
+    def _etat_execution_script(self) -> dict:
+        """Reponse a un script qui suit son execution : il attend la fin."""
+        etat = dict(getattr(self, "_exec_script", {"etat": "aucune"}))
+        if etat["etat"] != "en_cours":
+            return etat
+        try:
+            alarmes = resume_alarmes(self.pont.liaison.alarmes())
+            fini = self.pont.termine()
+            e = self.pont.etat()
+            etat["progression"] = float(e.progression)
+        except Exception as exc:
+            self._exec_script = {"etat": "refuse",
+                                 "raison": "liaison perdue : {}".format(exc)}
+            return dict(self._exec_script)
+        incident = getattr(self.pont, "_incident", "")
+        if alarmes:
+            self._exec_script = {"etat": "refuse", "raison": "robot en defaut",
+                                 "alarmes": alarmes}
+        elif incident:
+            self._exec_script = {"etat": "refuse", "raison": incident}
+        elif fini:
+            self._exec_script = {"etat": "termine", "progression": 1.0}
+        else:
+            return etat
+        return dict(self._exec_script)
+
+    def _reel_urgence_sans_dialogue(self) -> None:
+        try:
+            if self.pont.connecte:
+                self.pont.arret_urgence()
+        except Exception as exc:
+            self.journal("arret d'urgence impossible : {}".format(exc))
+            return
+        self.journal("ARRET D'URGENCE demande par le script")
 
     def demarrer_lecture(self) -> None:
         """Lance l'animation si elle ne tourne pas deja."""

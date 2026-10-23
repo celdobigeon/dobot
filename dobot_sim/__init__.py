@@ -41,7 +41,7 @@ if _sys.platform.startswith("linux") and _os.environ.get("DISPLAY"):
 from .homogeneous import (composer, formater, identite, interpoler, inverse,
                           position_de, rot_x, rot_y, rot_z, rotation_de,
                           translation)
-from .pilote import Pilote
+from .pilote import ErreurExecution, Pilote
 from .program import Instruction, Programme
 from .robot import (DobotMagician, Encombrement, ErreurCinematique, Geometrie,
                     Limites, cible, decomposer_cible, depuis_xyzrpy,
@@ -55,7 +55,7 @@ from .trajectory import (ProfilPolynomial5, ProfilTrapeze, SegmentArticulaire,
 __version__ = "1.0.0"
 
 __all__ = [
-    "Pilote", "cible", "repere_travail", "decomposer_cible",
+    "Pilote", "ErreurExecution", "cible", "repere_travail", "decomposer_cible",
     "vers_xyzrpy", "depuis_xyzrpy",
     "verifier_repere_outil", "verifier_repere_objet",
     "DobotMagician", "Geometrie", "Limites", "Encombrement",

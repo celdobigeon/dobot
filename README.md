@@ -1212,8 +1212,61 @@ print(traj.controler())               # avertissements éventuels
 
 ## 10. Le robot réel
 
-Deux voies : **exporter un script**, ou **piloter directement** depuis le
-simulateur.
+Trois voies : **exécuter depuis son script**, **exporter un script**, ou
+**piloter directement** depuis le simulateur.
+
+### Exécuter depuis son script : `executer_sur_robot`
+
+À la place de `robot.simuler()`, ou en plus :
+
+```python
+robot.executer_sur_robot(vitesse=50)     # en % de la vitesse nominale
+```
+
+Le robot part **tout de suite**, et l'appel rend la main **à la fin du
+mouvement** : un script peut donc enchaîner plusieurs programmes, et
+décider entre deux. `vider_programme()` repart d'un programme vide — même
+outil, même repère, départ à la posture où le précédent a laissé le bras :
+
+```python
+robot.movj(PRISE @ HAUT)
+robot.movl(PRISE)
+robot.executer_sur_robot(vitesse=50)
+
+robot.vider_programme()                  # sans cela, tout serait rejoué
+robot.ventouse(True)
+robot.movl(PRISE @ HAUT)
+robot.executer_sur_robot(vitesse=80)
+```
+
+Le chemin se choisit tout seul :
+
+- **simulateur ouvert et connecté au robot** — il tient le port série :
+  le programme lui est confié par la passerelle et il l'exécute **sans
+  confirmation**, miroir actif ; le script suit l'avancement ;
+- **sinon** — le script se connecte lui-même et **garde la liaison
+  ouverte** d'un appel à l'autre ; elle se ferme à la fin du script.
+
+Garde-fous : chaque programme est **contrôlé avant tout envoi** (butées,
+collisions) ; un robot **en défaut** — c'est le cas après chaque mise sous
+tension — ouvre l'**assistant de mise en route**, et rien ne part tant
+qu'un défaut subsiste ; **Ctrl+C** déclenche un **arrêt d'urgence**.
+
+En cas d'échec — butée, collision, robot en défaut, liaison perdue — une
+**alerte rouge encadrée** s'affiche dans le terminal, et l'exception
+`ErreurExecution` **arrête le script** : un programme suivant partirait
+d'une posture qui n'est pas celle prévue. Pour gérer l'échec soi-même :
+
+```python
+from dobot_sim import ErreurExecution
+try:
+    robot.executer_sur_robot(vitesse=50)
+except ErreurExecution:
+    ...                                  # le robot est arrêté, à vous
+```
+
+Les avertissements non bloquants (survitesse…) s'affichent en jaune avant
+le départ, sans empêcher l'exécution.
 
 ### Exporter un script DobotStudio
 
@@ -1555,6 +1608,11 @@ bouton de la fourche enfoncé — puis déclarez. Rien ne bouge.
 >    **aboutit**, alors qu'elle partait en butée sans elle.
 > 3. Contrôler au **miroir** que le modèle colle au bras, puis *Effacer les
 >    défauts*.
+>
+> Le bouton **Mise en route…** du panneau *Robot réel* enchaîne ces trois
+> étapes dans l'ordre, en n'ouvrant chacune qu'une fois la précédente
+> faite. Il s'ouvre de lui-même quand le robot est en défaut à la
+> connexion — ce qui est le cas après chaque mise sous tension.
 
 Le Magician retrouve ses repères par une **prise d'origine** : le bras
 parcourt toute sa course, remet ses compteurs à zéro, puis se parque sur le

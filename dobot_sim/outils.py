@@ -103,9 +103,13 @@ def _ventouse(o: Outil, actif: bool):
     """Electrovanne, tige, puis la ventouse proprement dite."""
     corps = fusion(boite(28, 22, 26, (0, 0, -13)),          # bloc electrovanne
                    cylindre(5.0, 8, 2, 16, (0, 0, -30)))    # raccord
-    tige = cylindre(3.5, 24, 2, 16, (0, 0, -42))
     # la ventouse s'ecrase legerement quand elle aspire
     h = 10.0 if not actif else 7.0
+    # la tige relie le raccord (z = -30) a la cuvette, quelle que soit la
+    # longueur : une longueur MESUREE, plus grande que le catalogue, ne
+    # doit pas laisser la cuvette flotter sous le bras
+    bas = max(o.longueur - h, 36.0)
+    tige = cylindre(3.5, bas - 30.0 + 2.0, 2, 16, (0, 0, -(30.0 + bas) / 2.0))
     cuvette = tronc_cone(11.0, 5.0, h, 24, (0, 0, -o.longueur + h / 2.0))
     return [(*corps, NOIR), (*tige, ALU),
             (*cuvette, ROUGE if actif else NOIR)]

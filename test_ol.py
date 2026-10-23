@@ -20,7 +20,7 @@ robot = Pilote(nom="cycle", outil="ventouse",
 # a l'autre.
 #
 # A appeler APRES le constructeur : monter_outil remet la valeur nominale.
-robot.regler_longueur_outil(62)
+robot.regler_longueur_outil(79.3)
 # robot.regler_longueur_outil(62)
 # Une matrice homogene 4x4 EST une cible : on la donne telle quelle a
 # movj / movl. Inutile de la passer a cible(), qui sert au contraire a en
@@ -92,4 +92,6 @@ robot.repli()
 #robot.repli()
 
 print(robot.resume())     # durées, avertissements, butées
-robot.simuler()           # ouvre la fenêtre et lance l'animation
+
+# robot.simuler()           # ouvre la fenêtre et lance l'animation
+robot.executer_sur_robot(vitesse=100)

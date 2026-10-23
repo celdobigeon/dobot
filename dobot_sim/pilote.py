@@ -47,7 +47,100 @@ from .program import Instruction, Programme
 from .robot import DobotMagician, decomposer_cible
 from .trajectory import PROFILS, Trajectoire
 
-__all__ = ["Pilote"]
+__all__ = ["Pilote", "ErreurExecution"]
+
+
+class ErreurExecution(RuntimeError):
+    """
+    Le programme n'a pas pu etre execute jusqu'au bout sur le robot reel.
+
+    Levee par `Pilote.executer_sur_robot()` apres une alerte dans le
+    terminal. Elle arrete le script : un programme suivant partirait d'une
+    posture qui n'est pas celle prevue.
+    """
+
+
+def _couleur(code: str, texte: str) -> str:
+    """Couleur ANSI si la sortie est un terminal (VS Code l'est)."""
+    import sys
+    return ("\033[{}m{}\033[0m".format(code, texte)
+            if getattr(sys.stdout, "isatty", lambda: False)() else texte)
+
+
+def _signaler(titre: str, lignes=()) -> None:
+    """Avertissement : on continue, mais il faut l'avoir vu (jaune)."""
+    print(_couleur("1;33", "/!\\ " + titre))
+    for ligne in lignes:
+        print(_couleur("33", "      " + ligne))
+
+
+def _alerter(titre: str, lignes=()) -> None:
+    """Alerte encadree, en rouge : impossible de la manquer."""
+    barre = "!" * 72
+    print(_couleur("1;31", barre))
+    print(_couleur("1;31", "!!! " + titre))
+    for ligne in lignes:
+        print(_couleur("31", "!!!     " + ligne))
+    print(_couleur("1;31", barre))
+
+
+def _echouer(titre: str, lignes=()):
+    """Alerte, puis ErreurExecution : le script s'arrete la."""
+    _alerter(titre, lignes)
+    raise ErreurExecution(titre)
+
+
+def _signaler_urgence() -> None:
+    _alerter("ARRET D'URGENCE : mouvement coupe, file du controleur videe",
+             ["le robot est arrete la ou il etait ; verifiez sa posture "
+              "avant de relancer"])
+
+
+#: liaison directe gardee ouverte entre deux executer_sur_robot()
+_PONT_DIRECT = {}
+
+
+def _liaison_directe(robot, port: Optional[str]):
+    """
+    La liaison du script avec le robot, ouverte au premier besoin et
+    REUTILISEE ensuite : rouvrir le port a chaque partie couterait pres
+    d'une seconde, et ferait perdre le fil d'un cycle. Fermee a la sortie
+    du script.
+    """
+    import atexit
+
+    from .liaison import ports_disponibles
+    from .reel import PontReel
+
+    pont = _PONT_DIRECT.get("pont")
+    if pont is not None and pont.connecte and (port is None
+                                               or pont.liaison.port == port):
+        pont.robot = robot
+        return pont
+    if port is None:
+        ports = ports_disponibles()
+        if not ports:
+            raise RuntimeError("aucun port serie : branchez et allumez le "
+                               "Dobot")
+        port = ports[0][0]
+    pont = PontReel(robot, journal=lambda m: print("  [robot] " + m))
+    try:
+        pont.connecter(port)
+    except Exception as exc:
+        raise RuntimeError(str(exc)) from exc
+    if not _PONT_DIRECT:
+        atexit.register(_fermer_liaison_directe)
+    _PONT_DIRECT["pont"] = pont
+    return pont
+
+
+def _fermer_liaison_directe() -> None:
+    pont = _PONT_DIRECT.pop("pont", None)
+    if pont is not None:
+        try:
+            pont.deconnecter()
+        except Exception:
+            pass
 
 
 def _script_appelant() -> str:
@@ -132,6 +225,30 @@ class Pilote:
                 raise ValueError("loi horaire inconnue : {} (choix : {})"
                                  .format(profil, ", ".join(sorted(PROFILS))))
             self.profil_defaut = profil
+        return self
+
+    def vider_programme(self) -> "Pilote":
+        """
+        Repart d'un programme VIDE, sans changer de robot ni de reglages.
+
+        Garde l'outil et sa longueur, le repere objet, les vitesses et le
+        lissage par defaut. Le nouveau programme part de la posture ou
+        l'ancien a laisse le bras : le controle des butees, la simulation
+        et une prochaine `executer_sur_robot()` partent du bon endroit.
+
+            robot.executer_sur_robot(vitesse=50)
+            robot.vider_programme()
+            robot.movl(...)                  # la suite, depuis la fin
+            robot.executer_sur_robot(vitesse=50)
+        """
+        p = self.programme
+        if p.instructions:
+            traj = p.construire(self.robot, self.q_depart)
+            self.q_depart = np.asarray(traj.q(traj.duree), dtype=float)
+            self._pose = list(self.robot.pose(self.q_depart))
+        self.programme = Programme([], p.nom, p.outil,
+                                   repere_objet=p.repere_objet,
+                                   longueur_outil=p.longueur_outil)
         return self
 
     # -- construction interne ----------------------------------------------
@@ -416,6 +533,178 @@ class Pilote:
         return self
 
     # -- simulation ---------------------------------------------------------
+
+    def executer_sur_robot(self, vitesse: float = 30.0,
+                           port: Optional[str] = None) -> bool:
+        """
+        Execute le programme courant sur le Dobot REEL. LE ROBOT BOUGE, tout
+        de suite.
+
+            robot.movj(PRISE @ HAUT)
+            robot.movl(PRISE)
+            robot.executer_sur_robot(vitesse=50)     # 50 % de la nominale
+
+            robot.vider_programme()                  # on repart a vide...
+            robot.movl(PRISE @ HAUT)
+            robot.executer_sur_robot(vitesse=80)     # ...pour la suite
+
+        L'appel attend la fin du mouvement avant de rendre la main : un
+        script peut ainsi enchainer plusieurs programmes, et decider entre
+        deux. Sans `vider_programme()`, un second appel REJOUERAIT tout le
+        programme depuis le debut.
+
+        En cas d'echec -- butee, collision, robot en defaut, liaison
+        perdue... -- une ALERTE s'affiche dans le terminal et
+        `ErreurExecution` arrete le script : la suite ne doit pas partir
+        d'une posture qui n'est pas celle prevue. Pour gerer l'echec soi-
+        meme : `try: ... except ErreurExecution: ...`. Ctrl+C arrete le
+        robot puis le script.
+
+        Deux chemins, choisis tout seuls :
+
+        1. un simulateur est OUVERT ET CONNECTE au robot : il tient le port
+           serie, on lui confie donc la partie par la passerelle, et il
+           l'execute sans confirmation ; le script suit l'avancement ;
+        2. sinon, le script se connecte lui-meme, et GARDE la liaison
+           ouverte d'un appel a l'autre (fermee a la fin du script).
+
+        Garde-fous : chaque partie est controlee avant tout envoi (butees,
+        collisions) ; un robot en defaut -- c'est le cas juste apres la
+        mise sous tension -- ouvre l'assistant de mise en route, et rien ne
+        part tant qu'un defaut reste ; Ctrl+C declenche un ARRET D'URGENCE.
+        """
+        import signal
+        import time as _time
+
+        from .passerelle import demander
+        from .reel import BLOQUANTS_TELEVERSEMENT
+
+        vitesse = float(min(max(vitesse, 1.0), 100.0))
+
+        if not self.programme.instructions:
+            print("executer_sur_robot : le programme est vide")
+            return True
+        partie = self.programme
+        q0 = np.asarray(self.q_depart, dtype=float)
+
+        avertissements = partie.construire(self.robot, q0).controler(0.05)
+        defauts = [a for a in avertissements
+                   if any(m in a for m in BLOQUANTS_TELEVERSEMENT)]
+        if defauts:
+            _echouer("EXECUTION REFUSEE : {} defaut(s) sur la trajectoire, "
+                     "rien n'a ete envoye au robot".format(len(defauts)),
+                     defauts[:8] + (["... et {} autre(s)".format(
+                         len(defauts) - 8)] if len(defauts) > 8 else [])
+                     + ["robot.simuler() montre ou le programme coince."])
+        reserves = [a for a in avertissements if a not in defauts]
+        if reserves:
+            _signaler("attention : le programme s'execute, mais avec "
+                      "{} reserve(s)".format(len(reserves)), reserves[:5])
+
+        # Le bouton stop de VS Code envoie SIGTERM : on le traite comme
+        # Ctrl+C, pour que l'arret d'urgence parte AVANT la fin du processus.
+        def _interrompre(*_a):
+            raise KeyboardInterrupt
+        ancien = None
+        if hasattr(signal, "SIGTERM"):
+            try:
+                ancien = signal.signal(signal.SIGTERM, _interrompre)
+            except ValueError:               # pas dans le fil principal
+                ancien = None
+        try:
+            # 1. un simulateur ouvert et connecte prend la main
+            if demander({"programme": partie.vers_dict(),
+                         "q_depart": [float(v) for v in q0],
+                         "script": _script_appelant(),
+                         "executer_reel": {"vitesse": vitesse}}) is not None:
+                self._suivre_dans_simulateur(len(partie), vitesse)
+            else:
+                # 2. execution directe depuis le script
+                self._executer_directement(partie, q0, vitesse, port)
+        finally:
+            if ancien is not None:
+                signal.signal(signal.SIGTERM, ancien)
+        return True
+
+    @staticmethod
+    def _suivre_dans_simulateur(n: int, vitesse: float) -> None:
+        """Attend la fin d'un programme confie au simulateur ouvert."""
+        import time as _time
+
+        from .passerelle import demander
+
+        print("{} instruction(s) confiee(s) au simulateur, a {:.0f} %"
+              .format(n, vitesse))
+        mise_en_route_signalee = False
+        try:
+            while True:
+                etat = demander({"etat_reel": True})
+                if etat is None:
+                    _echouer("LE SIMULATEUR NE REPOND PLUS : l'execution a pu "
+                             "s'interrompre", ["fenetre fermee pendant le "
+                                               "mouvement ?"])
+                quoi = etat.get("etat")
+                if quoi == "mise_en_route" and not mise_en_route_signalee:
+                    print("  robot en defaut : terminez la MISE EN ROUTE "
+                          "dans la fenetre du simulateur")
+                    mise_en_route_signalee = True
+                elif quoi == "termine":
+                    return
+                elif quoi == "refuse":
+                    _echouer("EXECUTION INTERROMPUE : {}".format(
+                        etat.get("raison", "?")), etat.get("alarmes", []))
+                _time.sleep(0.2)
+        except KeyboardInterrupt:
+            demander({"arret_urgence": True})
+            _signaler_urgence()
+            raise
+
+    def _executer_directement(self, partie: Programme, q0, vitesse: float,
+                              port: Optional[str]) -> None:
+        """Simulateur ferme : le script tient lui-meme la liaison."""
+        import time as _time
+
+        from .liaison import resume_alarmes
+
+        try:
+            pont = _liaison_directe(self.robot, port)
+        except RuntimeError as exc:
+            _echouer("CONNEXION AU ROBOT IMPOSSIBLE", [str(exc)])
+        bouge = False
+        try:
+            if pont.liaison.alarmes():
+                _signaler("robot en defaut : ouverture de l'assistant de mise "
+                          "en route", resume_alarmes(pont.liaison.alarmes()))
+                from .ui import mise_en_route_autonome
+                if not mise_en_route_autonome(pont, self.robot):
+                    _echouer("EXECUTION REFUSEE : le robot est toujours en "
+                             "defaut apres la mise en route",
+                             resume_alarmes(pont.liaison.alarmes()))
+            pont.definir_ratio(vitesse)
+            pont.televerser(partie, q0, outil=partie.outil)
+            pont.demarrer()
+            bouge = True
+            while True:
+                etat = pont.etat()
+                pct = int(100 * etat.progression)
+                if etat.alarmes:
+                    _echouer("ROBOT EN DEFAUT : execution arretee a {} %"
+                             .format(pct), etat.alarmes)
+                incident = getattr(pont, "_incident", "")
+                if incident:
+                    _echouer("ALIMENTATION DE LA FILE INTERROMPUE", [incident])
+                if pont.termine():
+                    return
+                _time.sleep(0.2)
+        except KeyboardInterrupt:
+            if bouge:
+                pont.arret_urgence()
+                _signaler_urgence()
+            raise
+        except ErreurExecution:
+            raise
+        except Exception as exc:
+            _echouer("EXECUTION IMPOSSIBLE", [str(exc)])
 
     def simuler(self, lancer: bool = True, bloquant: bool = True) -> int:
         """

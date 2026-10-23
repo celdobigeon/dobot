@@ -59,6 +59,12 @@ from .robot import decomposer_cible
 __all__ = ["PontReel", "ErreurPont", "EtatReel"]
 
 
+#: avertissements de controler() qui interdisent le televersement : le
+#: robot irait en butee, hors d'atteinte ou dans son propre volume
+BLOQUANTS_TELEVERSEMENT = ("hors de [", "hors d'atteinte", "plan de pose",
+                           "embase :", "colonne :")
+
+
 class ErreurPont(RuntimeError):
     """Le programme ne peut pas etre transmis en l'etat."""
 
@@ -343,9 +349,7 @@ class PontReel:
 
         traj = programme.construire(self.robot, q_depart)
         defauts = [a for a in traj.controler(0.05)
-                   if any(m in a for m in ("hors de [", "hors d'atteinte",
-                                           "plan de pose", "embase :",
-                                           "colonne :"))]
+                   if any(m in a for m in BLOQUANTS_TELEVERSEMENT)]
         if defauts and not forcer:
             raise ErreurPont(
                 "programme refuse : {} defaut(s) sur la trajectoire.\n  {}"

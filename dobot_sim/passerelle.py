@@ -89,31 +89,46 @@ def _cadrer(charge: Dict[str, Any]) -> bytes:
     return struct.pack(">I", len(donnees)) + donnees
 
 
-def envoyer(charge: Dict[str, Any], attente: int = ATTENTE) -> bool:
+def demander(charge: Dict[str, Any], attente: int = ATTENTE) -> Optional[Any]:
     """
-    Transmet un programme au simulateur en cours. Faux s'il n'y en a pas.
+    Transmet une demande au simulateur en cours et rend sa reponse.
 
-    Ne leve jamais : l'absence de simulateur est le cas NORMAL, celui du
-    premier lancement. L'appelant ouvre alors une fenetre.
+    None s'il n'y a pas de simulateur, ou s'il a refuse ; sinon ce que la
+    fenetre a repondu ({} pour un simple accuse). Ne leve jamais :
+    l'absence de simulateur est le cas NORMAL, celui du premier lancement.
     """
     QtNetwork = reseau()
     if QtNetwork is None:                    # pragma: no cover
-        return False
+        return None
 
     socket = QtNetwork.QLocalSocket()
     socket.connectToServer(nom_service())
     if not socket.waitForConnected(attente):
-        return False
+        return None
     try:
         socket.write(_cadrer(charge))
         if not socket.waitForBytesWritten(attente):
-            return False
+            return None
         # on attend l'accuse : sans lui on ne saurait pas si la fenetre a
         # vraiment pris le programme, et on ouvrirait peut-etre un doublon
         socket.waitForReadyRead(attente)
-        return bytes(socket.readAll()) .startswith(b"ok")
+        reponse = bytes(socket.readAll())
+        while socket.waitForReadyRead(50):   # une reponse longue arrive
+            reponse += bytes(socket.readAll())   # parfois en plusieurs fois
+        if not reponse.startswith(b"ok"):
+            return None
+        corps = reponse[2:].strip()
+        try:
+            return json.loads(corps.decode("utf-8")) if corps else {}
+        except ValueError:
+            return {}
     finally:
         socket.disconnectFromServer()
+
+
+def envoyer(charge: Dict[str, Any], attente: int = ATTENTE) -> bool:
+    """Transmet un programme au simulateur en cours. Faux s'il n'y en a pas."""
+    return demander(charge, attente) is not None
 
 
 class Serveur:
@@ -195,8 +210,11 @@ class Serveur:
             socket.flush()
             return
         try:
-            self.rappel(charge)
-            socket.write(b"ok")
+            reponse = self.rappel(charge)
+            # un rappel peut rendre une valeur (etat d'une execution...),
+            # transmise en JSON derriere l'accuse
+            socket.write(b"ok" if reponse is None else
+                         b"ok " + json.dumps(reponse).encode("utf-8"))
         except Exception as exc:             # pragma: no cover
             self.journal("programme recu mais refuse : {}".format(exc))
             socket.write(b"erreur: " + str(exc).encode("utf-8", "replace"))
