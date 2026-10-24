@@ -46,6 +46,10 @@ PILOTE_OPENGL = ""
 
 QAction = getattr(QtGui, "QAction", None) or QtWidgets.QAction
 
+#: s : apres une ouverture de pince commandee depuis la fenetre, la pompe
+#: est coupee au bout de ce delai (le temps que la pince s'ouvre)
+DELAI_COUPURE_POMPE_FENETRE = 1.0
+
 TITRE = "Simulateur Dobot Magician - pilotage articulaire et cartesien"
 
 
@@ -3323,6 +3327,12 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         ident = identifiants.get(self.outil.nom)
         if ident is None:
             return
+        # toute nouvelle action annule une coupure de pompe en attente :
+        # couper la pompe d'une pince qu'on vient de refermer lacherait la
+        # piece
+        minuterie = getattr(self, "_coupure_pompe", None)
+        if minuterie is not None:
+            minuterie.stop()
         try:
             self.pont.liaison.echanger(
                 ident, struct.pack("<2B", 1, 1 if etat else 0), ecriture=True)
@@ -3331,6 +3341,26 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return
         self.journal("outil reel : {} {}".format(
             self.outil.libelle, self.outil.etat_texte(etat)))
+        if not etat and self.outil.nom in ("pince", "ventouse"):
+            # Ouvrir la pince ou relacher la ventouse fait SOUFFLER la
+            # pompe, qui ne s'arrete plus : on la coupe une seconde apres,
+            # le temps que la pince s'ouvre.
+            if minuterie is None:
+                minuterie = QtCore.QTimer(self)
+                minuterie.setSingleShot(True)
+                minuterie.timeout.connect(self._reel_couper_pompe_differee)
+                self._coupure_pompe = minuterie
+            minuterie.start(int(1000 * DELAI_COUPURE_POMPE_FENETRE))
+
+    def _reel_couper_pompe_differee(self) -> None:
+        if not getattr(self, "pont", None) or not self.pont.connecte:
+            return
+        try:
+            self.pont.liaison.couper_pompe()
+        except Exception as exc:
+            self.journal("coupure de la pompe impossible : {}".format(exc))
+            return
+        self.journal("pompe a air coupee (1 s apres l'ouverture)")
 
     def _definir_etat_outil(self, etat: bool) -> None:
         if etat == self.outil_actif:
