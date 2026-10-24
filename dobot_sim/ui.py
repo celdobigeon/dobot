@@ -2563,6 +2563,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         le pilotage, donc sans conversion de coordonnees.
         """
         q = [float(v) for v in self.robot.q_home]
+        # avant la confirmation : annoncer que le robot va bouger alors
+        # qu'aucun n'est au bout du fil n'a pas de sens, et l'echec qui
+        # suivrait serait un AttributeError incomprehensible
+        if not self.pont.connecte:
+            QtWidgets.QMessageBox.warning(
+                self, "Robot reel", "Aucun robot reel connecte.")
+            return
         if not self._confirmer_mouvement(
                 "Repli",
                 "Le robot va rejoindre sa position de repos J = ({:.0f}, "
@@ -2570,7 +2577,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 "nominale.".format(*q, self.sp_reel_ratio.value())):
             return
         try:
-            li = self.pont.liaison
+            li = self.pont._exiger()
             # comme le pilotage : couper et vider, pour que le repli ne
             # s'empile pas derriere un reste de programme
             li.arreter_file()
@@ -4620,10 +4627,14 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         sys.path.insert(0, dossier)
         # Python garde en memoire les modules deja importes : un module
         # d'aide voisin du script, modifie entre deux rechargements, ne
-        # serait pas relu. On les oublie -- sauf le simulateur lui-meme.
+        # serait pas relu. On les oublie -- sauf le simulateur lui-meme, et
+        # sauf __main__ : quand le script est range a cote de main.py, ce
+        # qui est le cas courant, c'est le module principal du simulateur
+        # qu'on effacerait de sys.modules.
         for nom, module in list(sys.modules.items()):
             fichier = getattr(module, "__file__", None) or ""
-            if (fichier and not nom.startswith("dobot_sim")
+            if (fichier and nom != "__main__"
+                    and not nom.startswith("dobot_sim")
                     and os.path.dirname(os.path.abspath(fichier)) == dossier):
                 del sys.modules[nom]
         try:
