@@ -682,6 +682,16 @@ class TestDirect(_DirectMixin, unittest.TestCase):
             robot.fermer()
         self.assertEqual(self._coupures(), 1)
 
+    def test_fin_de_script_sans_fermer_coupe_la_pompe(self):
+        # pas de with, pas de fermer() : c'est atexit qui doit s'en charger
+        with mock.patch("dobot_sim.commande.atexit.register") as enregistrer:
+            robot = self.ouvrir(outil="pince")
+        enregistrer.assert_called_with(robot.fermer)
+        with mock.patch("dobot_sim.commande.DELAI_COUPURE_POMPE", 0.2):
+            robot.pince(False)
+            robot.fermer()               # ce qu'atexit appellera
+        self.assertEqual(self._coupures(), 1)
+
     def test_ouvrir_sans_couper_laisse_la_pompe(self):
         robot = self.ouvrir(outil="pince")
         with mock.patch("dobot_sim.commande.DELAI_COUPURE_POMPE", 0.05):

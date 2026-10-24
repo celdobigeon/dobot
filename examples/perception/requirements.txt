@@ -1,0 +1,26 @@
+# Dependances de la perception (examples/perception/)
+# Installation, depuis la racine du depot, dans l'environnement du projet :
+#     .venv/bin/pip install -r examples/perception/requirements.txt
+# Verification (sans camera) :
+#     .venv/bin/python examples/perception/verifier_installation.py --telecharger
+#
+# Versions testees : Python 3.11, macOS 15 (Apple Silicon, GPU via MPS),
+# numpy 2.4.6, opencv-python 5.0.0.93, ultralytics 8.4.187, torch 2.14.1.
+
+numpy>=2.0,<3
+# Une seule distribution OpenCV dans l'environnement : ne pas installer en plus
+# opencv-python-headless ou opencv-contrib-python (elles se marchent dessus).
+opencv-python>=4.10
+
+# Apprentissage : YOLO11 (segmentation) et SAM 2.1. Amene PyTorch et torchvision ;
+# sous macOS Apple Silicon, PyTorch utilise le GPU par MPS sans rien ajouter.
+# Sous Linux sans GPU NVIDIA, la roue CUDA de PyTorch est lourde (plusieurs Go) ;
+# on peut installer d'abord la version CPU :
+#     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+ultralytics>=8.4.187
+
+# Camera Intel RealSense (pyrealsense2), volontairement absente de ce fichier :
+#   - Linux : pip install pyrealsense2
+#   - macOS : le module pip "pyrealsense2-macosx" plante sous macOS 15 ;
+#     compiler avec examples/perception/installer_realsense_macos.sh
+#     (bibliotheque RealSense de Homebrew requise)

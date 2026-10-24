@@ -15,3 +15,17 @@ desktop.ini
 
 # Cache de maillages, regenere au premier lancement
 .cache_maillages/
+
+# Compilation du module RealSense (examples/perception/installer_realsense_macos.sh)
+.build-realsense/
+
+# Captures de la camera : volumineuses, propres a chaque scene
+examples/perception/captures/
+
+# Poids des modeles d'apprentissage (YOLO, SAM), telecharges par verifier_installation.py
+examples/perception/modeles/
+
+# Apprentissage de la perception : images collectees, annotations, exports
+# et entrainements (examples/perception/apprentissage/)
+examples/perception/apprentissage/dataset/
+examples/perception/apprentissage/runs/

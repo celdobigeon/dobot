@@ -80,7 +80,7 @@ robot.attendre(0.5)
 robot.movj(PRISE @ HAUT, vitesse=100, profil="trapeze")
 robot.attendre(0.5)
 # robot.ventouse(False)
-robot.pince(False)
+robot.pince(False, couper=True)
 
 robot.repli()
 

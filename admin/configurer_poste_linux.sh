@@ -13,6 +13,7 @@
 # 2. port serie du robot accessible a TOUS les comptes (regle udev), sans
 #    avoir a ajouter chaque etudiant au groupe dialout
 # 3. ModemManager et brltty empeches de capturer le port du robot
+# 4. camera RealSense accessible a tous les comptes (regle udev)
 #
 # Peut etre relance sans risque.
 
@@ -55,6 +56,22 @@ REGLES
 udevadm control --reload-rules
 udevadm trigger --subsystem-match=tty || true
 echo "installee : $REGLE"
+
+# Camera RealSense (Intel, 8086) : sans cette regle, seul root peut
+# l'ouvrir. Trois chemins d'acces selon ce que lit la bibliotheque : le
+# peripherique USB lui-meme, les flux video du noyau (/dev/video*), et la
+# centrale inertielle des modeles "i" (hidraw).
+info "Regle udev pour la camera RealSense"
+CAMERA=/etc/udev/rules.d/99-realsense.rules
+cat > "$CAMERA" <<'REGLES'
+# Camera Intel RealSense (installe par admin/configurer_poste_linux.sh)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="8086", ATTRS{product}=="*RealSense*", MODE="0666"
+KERNEL=="video*", SUBSYSTEM=="video4linux", ATTRS{idVendor}=="8086", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="8086", MODE="0666"
+REGLES
+udevadm control --reload-rules
+udevadm trigger || true
+echo "installee : $CAMERA (rebrancher la camera si elle l'etait)"
 
 # brltty (afficheurs braille) s'empare des CH340 : le port /dev/ttyUSB0
 # apparait puis disparait aussitot. Sans afficheur braille, il ne sert a rien.

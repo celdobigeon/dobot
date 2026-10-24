@@ -79,6 +79,7 @@ import re
 import signal
 import subprocess
 import sys
+import atexit
 import threading
 import time
 from contextlib import contextmanager
@@ -749,6 +750,13 @@ class Commande:
             self._connecter_direct(port)
         # derniere cible connue : point de depart des composantes omises
         self._pose = list(self.pose())
+        # Fin du script sans `with` ni fermer() : la minuterie qui doit
+        # couper la pompe est un fil "daemon", tue avec le processus -- la
+        # pompe tournerait alors jusqu'a l'extinction du robot. fermer() a
+        # la sortie envoie la coupure encore attendue. Enregistre APRES la
+        # connexion : atexit joue a l'envers, donc AVANT que la liaison
+        # directe ne se ferme.
+        atexit.register(self.fermer)
 
     # -- cycle de vie ---------------------------------------------------------
 
