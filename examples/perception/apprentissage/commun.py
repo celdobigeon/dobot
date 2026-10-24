@@ -20,7 +20,7 @@ Le jeu de donnees (dossier ignore par git) :
 Une annotation (JSON, lisible et corrigeable a la main) :
 
     {"image": "NNNN.png", "source": "couleur_brute", "taille": [W, H],
-     "statut": "a_revoir" | "valide",
+     "statut": "a_revoir" | "valide" | "rejetee",
      "plan": [nx, ny, nz, d],      plan de la table dans le repere de l'image
      "K": 3x3,                     intrinseques de l'image (pour le plan)
      "instances": [{"classe": "fine", "polygones": [[[x, y], ...]],

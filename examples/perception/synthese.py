@@ -22,6 +22,14 @@ image comme le fait une RealSense :
     distance), en partie correle dans l'espace comme le vrai ;
   - quelques trous aleatoires, et eventuellement un reflet sature.
 
+Les pieces peuvent etre EMPILEES (placer(..., empilees=k), poser_sur) :
+une piece posee a plat sur la face superieure d'une autre, en travers,
+dans le meme sens, decalee de cote, ou en tas de trois. Elle reste
+horizontale (son centre est au-dessus de sa porteuse : elle ne bascule
+pas) ; une piece qui s'appuie d'un bout sur la table et de l'autre sur une
+piece, donc inclinee, n'est pas simulee. La verite dit, pour chaque piece,
+la hauteur de sa base et l'indice de sa porteuse (None : la table).
+
 Les images infrarouge et couleur sont grossieres (des aplats ombres) : elles
 servent a exercer le code, pas a juger un indice de couleur fin.
 """
@@ -68,6 +76,13 @@ class PieceVraie:
     lacet: float            # degres, direction du grand cote
     dims: Tuple[float, float, float] = (0.0, 0.0, 0.0)   # long, large, haut
     contact: bool = False   # touche une autre piece
+    z: float = 0.0          # mm, hauteur de la face d'appui (0 : sur la table)
+    support: Optional[int] = None   # indice de la piece porteuse, None : la table
+
+    @property
+    def sommet(self) -> float:
+        """Hauteur de la face superieure au-dessus de la table (mm)."""
+        return self.z + self.dims[2]
 
     def coins(self) -> np.ndarray:
         """Les 4 coins de l'empreinte (mm, repere monde)."""
@@ -86,6 +101,11 @@ class Verite:
     axes_camera: np.ndarray         # N x 3 : direction du grand cote
     R_cw: np.ndarray                # monde -> camera : p_c = R (p_w - C)
     C: np.ndarray                   # position de la camera, monde (m)
+    objet: Optional[np.ndarray] = None   # H x W : indice de la piece vue par chaque pixel (< 0 : table, sol)
+
+    def dessus(self, i: int) -> List[int]:
+        """Indices des pieces posees directement sur la piece i."""
+        return [k for k, p in enumerate(self.pieces) if p.support == i]
 
 
 @dataclass
@@ -152,8 +172,9 @@ def rendre(K: np.ndarray, taille: Tuple[int, int], R_cw: np.ndarray,
         Rb = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])   # boite -> monde
         o = Rb.T @ (C - [pc.x / 1000.0, pc.y / 1000.0, 0.0])
         d = d_w @ Rb                                          # Rb^T d
-        bas = np.array([-L / 2, -l / 2, 0.0])
-        haut = np.array([L / 2, l / 2, h])
+        z0 = pc.z / 1000.0
+        bas = np.array([-L / 2, -l / 2, z0])
+        haut = np.array([L / 2, l / 2, z0 + h])
         with np.errstate(divide="ignore", invalid="ignore"):
             t1 = (bas - o) / d
             t2 = (haut - o) / d
@@ -284,15 +305,24 @@ def images(objet: np.ndarray, normale: np.ndarray, R_cw: np.ndarray,
     return ir, img
 
 
+#: facons d'empiler (voir empiler)
+MODES_PILE = ("travers", "meme sens", "decalee", "tas")
+
+
 def placer(rng: np.random.Generator, n: int, types: Dict[str, Sequence[float]],
            zone: Tuple[float, float, float, float] = (-110, 110, -80, 80),
            touchantes: int = 0, faces: Sequence[str] = ("a plat", "sur la tranche"),
-           essais: int = 400) -> List[PieceVraie]:
+           essais: int = 400, empilees: int = 0,
+           modes: Sequence[str] = MODES_PILE) -> List[PieceVraie]:
     """
     `n` pieces au hasard dans `zone` (mm, repere monde), sans chevauchement ;
     `touchantes` d'entre elles sont posees CONTRE une piece deja placee (cote
-    a cote, bout a bout, ou en T), sans jeu.
+    a cote, bout a bout, ou en T), sans jeu. `empilees` d'entre elles sont
+    posees SUR une autre (voir empiler) : les n - empilees premieres sont
+    tirees exactement comme sans empilement, une scene sans empilement ne
+    change donc pas.
     """
+    n_table = n - empilees
     noms = sorted(types)
     pieces: List[PieceVraie] = []
     occupe = np.zeros((int(zone[3] - zone[2]) + 80, int(zone[1] - zone[0]) + 80),
@@ -313,7 +343,7 @@ def placer(rng: np.random.Generator, n: int, types: Dict[str, Sequence[float]],
 
     a_toucher = touchantes
     for _ in range(essais):
-        if len(pieces) >= n:
+        if len(pieces) >= n_table:
             break
         t = noms[int(rng.integers(len(noms)))]
         f = faces[int(rng.integers(len(faces)))]
@@ -355,7 +385,106 @@ def placer(rng: np.random.Generator, n: int, types: Dict[str, Sequence[float]],
             a.contact = True
         occupe |= masque(p, 0.0)
         pieces.append(p)
+    if empilees > 0:
+        empiler(rng, pieces, empilees, types, zone, modes, faces, essais)
     return pieces
+
+
+def _se_coupent(a: PieceVraie, b: PieceVraie, marge: float = 0.5) -> bool:
+    """Les empreintes (rectangles, vue de dessus) de a et b se recouvrent-elles
+    de plus de `marge` mm^2 ?"""
+    pa = a.coins().astype(np.float32)
+    pb = b.coins().astype(np.float32)
+    aire, _ = cv2.intersectConvexConvex(pa, pb)
+    return aire > marge
+
+
+def poser_sur(pieces: Sequence[PieceVraie], i: int, type_: str, face: str,
+              types: Dict[str, Sequence[float]], dx: float = 0.0, dy: float = 0.0,
+              lacet: Optional[float] = None) -> PieceVraie:
+    """Une piece posee sur la piece d'indice i : centre decale de (dx, dy) mm
+    (repere monde), lacet en degres (par defaut celui de la porteuse + 90,
+    en travers). Sa base est le sommet de la porteuse."""
+    a = pieces[i]
+    lac = a.lacet + 90.0 if lacet is None else lacet
+    return PieceVraie(type_, face, a.x + dx, a.y + dy, lac, forme(types[type_], face),
+                      z=a.sommet, support=i)
+
+
+def empiler(rng: np.random.Generator, pieces: List[PieceVraie], nombre: int,
+            types: Dict[str, Sequence[float]],
+            zone: Tuple[float, float, float, float] = (-110, 110, -80, 80),
+            modes: Sequence[str] = MODES_PILE,
+            faces: Sequence[str] = ("a plat", "sur la tranche"),
+            essais: int = 400) -> int:
+    """
+    Pose `nombre` pieces SUR des pieces deja placees (ajoutees a `pieces`),
+    horizontales, le centre au-dessus de la porteuse pour qu'elles ne
+    basculent pas. Modes :
+      travers   : a peu pres perpendiculaire, n'importe ou le long de la
+                  porteuse ;
+      meme sens : dans l'axe, glissee le long de la porteuse (elle en cache
+                  une grande partie) ;
+      decalee   : dans l'axe, glissee de COTE (la porteuse depasse d'un cote) ;
+      tas       : en travers sur une piece qui est deja elle-meme sur une
+                  autre (tas de trois).
+    Une porteuse ne porte qu'une piece ; une piece debout ne porte rien. Pas
+    d'interpenetration : deux pieces dont les empreintes se coupent ont des
+    tranches de hauteur disjointes. Rend le nombre de pieces posees.
+    """
+    noms = sorted(types)
+    pose = 0
+    for _ in range(essais):
+        if pose >= nombre:
+            break
+        mode = modes[int(rng.integers(len(modes)))]
+        portees = {p.support for p in pieces if p.support is not None}
+        libres = [k for k, p in enumerate(pieces) if k not in portees
+                  and p.face != "debout"
+                  and ((p.support is not None) == (mode == "tas"))
+                  and (p.support is None or pieces[p.support].support is None)]
+        if not libres:
+            continue
+        i = libres[int(rng.integers(len(libres)))]
+        a = pieces[i]
+        t = noms[int(rng.integers(len(noms)))]
+        f = faces[int(rng.integers(len(faces)))]
+        dims = forme(types[t], f)
+        ca, sa = np.cos(np.radians(a.lacet)), np.sin(np.radians(a.lacet))
+        ax, no = np.array([ca, sa]), np.array([-sa, ca])
+        signe = 1 if rng.random() < 0.5 else -1
+        if mode in ("travers", "tas"):
+            lac = a.lacet + 90.0 + rng.uniform(-25, 25)
+            cl, sl = np.cos(np.radians(lac)), np.sin(np.radians(lac))
+            # le long de la porteuse, et le long de la piece posee : son
+            # centre reste au-dessus de la porteuse
+            d = ax * rng.uniform(-18, 18) + np.array([cl, sl]) * rng.uniform(-6, 6)
+        elif mode == "meme sens":
+            lac = a.lacet + rng.uniform(-8, 8)
+            d = ax * signe * rng.uniform(5, 22) + no * rng.uniform(-2, 2)
+        else:                                              # decalee
+            lac = a.lacet + rng.uniform(-10, 10)
+            d = (no * signe * rng.uniform(0.45, 0.85) * a.dims[1] / 2
+                 + ax * rng.uniform(-12, 12))
+        p = PieceVraie(t, f, float(a.x + d[0]), float(a.y + d[1]), float(lac), dims,
+                       z=a.sommet, support=i)
+        c = p.coins()
+        if not ((c[:, 0] >= zone[0]).all() and (c[:, 0] <= zone[1]).all()
+                and (c[:, 1] >= zone[2]).all() and (c[:, 1] <= zone[3]).all()):
+            continue
+        collision = False
+        for k, q in enumerate(pieces):
+            if k == i:
+                continue
+            # tranches de hauteur qui se recouvrent, et empreintes aussi
+            if q.z < p.sommet - 0.5 and q.sommet > p.z + 0.5 and _se_coupent(p, q, 0.5):
+                collision = True
+                break
+        if collision:
+            continue
+        pieces.append(p)
+        pose += 1
+    return pose
 
 
 def scene(pieces: Sequence[PieceVraie], cam: Optional[Camera] = None,
@@ -381,14 +510,14 @@ def scene(pieces: Sequence[PieceVraie], cam: Optional[Camera] = None,
         ir[tache > 0] = 255
     centres, axes = [], []
     for p in pieces:
-        pw = np.array([p.x / 1000.0, p.y / 1000.0, p.dims[2] / 1000.0])
+        pw = np.array([p.x / 1000.0, p.y / 1000.0, p.sommet / 1000.0])
         centres.append(R_cw @ (pw - C))
         a = np.radians(p.lacet)
         axes.append(R_cw @ np.array([np.cos(a), np.sin(a), 0.0]))
     sc = vision.Scene(profondeur=Z.astype(np.float64), K=cam.K.copy(),
                       infrarouge=ir, couleur=img)
     return sc, Verite(list(pieces), np.array(centres).reshape(-1, 3),
-                      np.array(axes).reshape(-1, 3), R_cw, C)
+                      np.array(axes).reshape(-1, 3), R_cw, C, objet)
 
 
 # ---------------------------------------------------------------------------
@@ -409,6 +538,19 @@ class Bilan:
     trouves_fines: int = 0
     vrais_contact: int = 0      # pieces qui en touchent une autre
     trouves_contact: int = 0
+    # empilements (voir comparer)
+    vrais_empilees: int = 0     # pieces posees sur une autre
+    trouves_empilees: int = 0
+    vrais_porteuses: int = 0    # pieces qui en portent une autre
+    trouves_porteuses: int = 0
+    bon_support: int = 0        # appariees dont le support annonce est le bon
+    bon_support_empilees: int = 0
+    bon_type_face_empilees: int = 0
+    err_pos_empilees: List[float] = field(default_factory=list)
+    err_pos_porteuses: List[float] = field(default_factory=list)
+    scenes: int = 0
+    ordre_ok: int = 0           # scenes ou l'ordre de prise respecte les piles
+    premiere_libre: int = 0     # scenes ou la premiere piece a prendre est libre
 
     def ajouter(self, b: "Bilan") -> None:
         self.vrais += b.vrais
@@ -423,6 +565,12 @@ class Bilan:
         self.err_ang += b.err_ang
         self.bon_type += b.bon_type
         self.bonne_face += b.bonne_face
+        for nom in ("vrais_empilees", "trouves_empilees", "vrais_porteuses",
+                    "trouves_porteuses", "bon_support", "bon_support_empilees",
+                    "bon_type_face_empilees", "scenes", "ordre_ok", "premiere_libre"):
+            setattr(self, nom, getattr(self, nom) + getattr(b, nom))
+        self.err_pos_empilees += b.err_pos_empilees
+        self.err_pos_porteuses += b.err_pos_porteuses
 
     def resume(self) -> Dict[str, float]:
         t = max(self.trouves, 1)
@@ -435,7 +583,18 @@ class Bilan:
                 "z_med": float(np.median(self.err_z)) if self.err_z else np.nan,
                 "type": self.bon_type / t, "face": self.bonne_face / t,
                 "rappel_fines": self.trouves_fines / max(self.vrais_fines, 1),
-                "rappel_contact": self.trouves_contact / max(self.vrais_contact, 1)}
+                "rappel_contact": self.trouves_contact / max(self.vrais_contact, 1),
+                "rappel_empilees": self.trouves_empilees / max(self.vrais_empilees, 1),
+                "rappel_porteuses": self.trouves_porteuses / max(self.vrais_porteuses, 1),
+                "support": self.bon_support / t,
+                "support_empilees": self.bon_support_empilees / max(self.trouves_empilees, 1),
+                "type_face_empilees": self.bon_type_face_empilees / max(self.trouves_empilees, 1),
+                "pos_med_empilees": (float(np.median(self.err_pos_empilees))
+                                     if self.err_pos_empilees else np.nan),
+                "pos_med_porteuses": (float(np.median(self.err_pos_porteuses))
+                                      if self.err_pos_porteuses else np.nan),
+                "ordre_ok": self.ordre_ok / max(self.scenes, 1),
+                "premiere_libre": self.premiere_libre / max(self.scenes, 1)}
 
 
 def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
@@ -447,21 +606,27 @@ def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
     separee en une erreur DANS le plan de la table (ce qui compte pour
     saisir la piece) et une erreur de hauteur.
     """
-    b = Bilan(vrais=len(verite.pieces))
+    b = Bilan(vrais=len(verite.pieces), scenes=1)
     etroite = [min(p.dims[1], p.dims[2]) < 10 for p in verite.pieces]
     b.vrais_fines = sum(etroite)
     b.vrais_contact = sum(p.contact for p in verite.pieces)
+    porteuses = {p.support for p in verite.pieces if p.support is not None}
+    b.vrais_empilees = sum(p.support is not None for p in verite.pieces)
+    b.vrais_porteuses = len(porteuses)
     if not pieces:
+        b.ordre_ok = b.premiere_libre = int(not verite.pieces)
         return b
     det = np.array([p.T_camera[:3, 3] for p in pieces])
     axe_det = np.array([p.T_camera[:3, 0] for p in pieces])
     if len(verite.pieces) == 0:
         b.faux = len(pieces)
+        b.ordre_ok = 1
         return b
     dist = np.linalg.norm(det[:, None, :] - verite.centres_camera[None], axis=2) * 1000
     paires = sorted((dist[i, j], i, j) for i in range(len(det))
                     for j in range(len(verite.pieces)))
     pris_d, pris_v = set(), set()
+    apparie: Dict[int, int] = {}
     for dd, i, j in paires:
         if dd > distance_max or i in pris_d or j in pris_v:
             continue
@@ -479,5 +644,50 @@ def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
         pv = verite.pieces[j]
         b.bon_type += int(pieces[i].type == pv.type)
         b.bonne_face += int(pieces[i].face == pv.face)
+        if pv.support is not None:
+            b.trouves_empilees += 1
+            b.err_pos_empilees.append(b.err_pos[-1])
+            b.bon_type_face_empilees += int(pieces[i].type == pv.type
+                                            and pieces[i].face == pv.face)
+        if j in porteuses:
+            b.trouves_porteuses += 1
+            b.err_pos_porteuses.append(b.err_pos[-1])
+        apparie[i] = j
     b.faux = len(det) - len(pris_d)
+
+    # SUPPORT : celui annonce (numero de la piece porteuse, None : la table)
+    # doit etre la detection appariee a la vraie porteuse
+    par_numero = {getattr(p, "numero", k + 1): k for k, p in enumerate(pieces)}
+    for i, j in apparie.items():
+        pv = verite.pieces[j]
+        s_det = getattr(pieces[i], "support", None)
+        if pv.support is None:
+            juste = s_det is None and getattr(pieces[i], "hauteur_base", 0.0) < 4.0
+        else:
+            k = par_numero.get(s_det)
+            juste = k is not None and apparie.get(k) == pv.support
+        b.bon_support += int(juste)
+        if pv.support is not None:
+            b.bon_support_empilees += int(juste)
+
+    # ORDRE DE PRISE : chaque vraie piece portee doit etre prise avant sa
+    # porteuse ; une porteuse prise alors que la piece qu'elle porte n'a pas
+    # ete vue est une faute (on tirerait une piece coincee)
+    ordre = vision.ordre_de_prise(list(pieces))
+    rang = {}
+    for r, p in enumerate(ordre):
+        i = next(k for k, q in enumerate(pieces) if q is p)
+        if i in apparie:
+            rang[apparie[i]] = r
+    ok = True
+    for j, pv in enumerate(verite.pieces):
+        if pv.support is None or pv.support not in rang:
+            continue
+        if j not in rang or rang[j] > rang[pv.support]:
+            ok = False
+    b.ordre_ok = int(ok)
+    if ordre:
+        i0 = next(k for k, q in enumerate(pieces) if q is ordre[0])
+        j0 = apparie.get(i0)
+        b.premiere_libre = int(j0 is not None and j0 not in porteuses)
     return b

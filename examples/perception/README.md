@@ -47,6 +47,44 @@ Dans un **second terminal**, autant de fois qu'on veut, **sans sudo** :
 Chaque détection affiche les pièces reconnues et écrit
 `captures/derniere_detection.png` (ou `<nom>_detection.png`).
 
+## Pièces empilées
+
+Une pièce posée **sur une autre** a sa face supérieure à la hauteur de sa
+porteuse **plus** sa propre épaisseur : une épaisse à plat sur une épaisse
+à plat est vue à 34 mm, une fine à plat sur une épaisse sur la tranche à
+27 mm. La détection (`vision_modele.py`, et l'ajustement des masques du
+réseau dans `perception.py`) essaie donc chaque pièce posée sur la table
+**ou** sur le sommet d'une pile (8, 17, 19, 16, 25, 27, 34… mm) : c'est
+l'**épaisseur** (sommet − base) qui dit le type et la face. Une pile doit
+se prouver : la porteuse est détectée sous la pièce, ou elle dépasse
+autour d'elle ; sinon la pièce est reposée sur la table (pas de pile
+fantôme). Une porteuse en grande partie cachée est quand même cherchée et
+rendue, avec une confiance plus faible (`cachee` : part de sa face cachée).
+
+Chaque pièce porte en plus :
+
+| Champ | Sens |
+|---|---|
+| `support` | numéro de la pièce porteuse ; `None` : sur la table (ou, si `hauteur_base > 0`, sur un objet non identifié) |
+| `hauteur_base` | hauteur de sa face d'appui au-dessus de la table, en mm |
+| `dessus` | numéros des pièces posées sur elle (`piece.libre` : rien dessus) |
+
+```python
+from perception import Perception, ordre_de_prise
+p = Perception()
+for piece in ordre_de_prise(p.detecter()):     # les libres d'abord, du haut vers le bas
+    print(piece.numero, piece.type, piece.face, piece.support, piece.dessus)
+```
+
+**Limites.** Seules les pièces **horizontales** sont décrites : une pièce
+qui s'appuie d'un bout sur la table et de l'autre sur une pièce (inclinée,
+cas fréquent dans un tas) est mal lue. Deux fines sur la tranche accolées
+et une fine à plat sur une fine à plat se ressemblent beaucoup vu de
+dessus. En vue rasante, la pièce du dessus cache sa porteuse et projette
+une grande ombre : les piles y sont souvent manquées. Chiffres et
+méthode : `evaluer_detection.py --empilement` et l'en-tête de
+`vision_modele.py`.
+
 ## Installation
 
 **macOS (Apple Silicon)** — le module de PyPI plante sous macOS 15 :

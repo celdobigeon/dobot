@@ -74,6 +74,19 @@ class Piece:
     contour: np.ndarray             # pixels du rectangle, pour l'affichage
     pixels: int
     type: str = ""                  # nom du type de piece reconnu
+    # EMPILEMENT (rempli par vision_modele et perception ; ici toujours sur
+    # la table). support : numero de la piece porteuse, None si la piece est
+    # sur la table -- ou, avec hauteur_base > 0, sur un objet non identifie.
+    # hauteur_base : hauteur de sa face d'appui au-dessus de la table (mm).
+    # dessus : numeros des pieces posees sur elle.
+    support: Optional[int] = None
+    hauteur_base: float = 0.0
+    dessus: List[int] = field(default_factory=list)
+
+    @property
+    def libre(self) -> bool:
+        """Rien n'est pose dessus : on peut la saisir."""
+        return not self.dessus
 
     @property
     def position_table(self) -> np.ndarray:
@@ -96,6 +109,46 @@ class Resultat:
     hauteur: np.ndarray                   # H x W, metres au-dessus du plan
     trous: List[Tuple[int, int, int, int]] = field(default_factory=list)
     autres: List[str] = field(default_factory=list)   # objets ecartes
+
+
+def ordre_de_prise(pieces: Sequence[Piece]) -> List[Piece]:
+    """
+    L'ordre dans lequel saisir les pieces : d'abord les pieces LIBRES (rien
+    n'est pose dessus), de la plus haute a la plus basse, puis celles que
+    ces prises ont liberees, et ainsi de suite. Tirer une piece qui en porte
+    une autre ferait tomber celle du dessus (ou la pince la coincerait).
+    Les relations viennent de `dessus` et de `support` (numeros) ; a hauteur
+    egale, la plus sure (confiance, score) d'abord. Une relation circulaire
+    (impossible, mais on ne sait jamais) n'empeche pas de tout rendre.
+    """
+    restantes = list(pieces)
+    par_numero = {p.numero: p for p in restantes}
+    porte: Dict[int, set] = {id(p): set() for p in restantes}
+    for p in restantes:
+        for n in getattr(p, "dessus", None) or []:
+            if n in par_numero and par_numero[n] is not p:
+                porte[id(p)].add(id(par_numero[n]))
+        s = getattr(p, "support", None)
+        if s is not None and s in par_numero and par_numero[s] is not p:
+            porte[id(par_numero[s])].add(id(p))
+
+    def cle(p):
+        sur = getattr(p, "confiance", None)
+        if sur is None:
+            sur = getattr(p, "score", 0.0)
+        return (-float(p.T_table[2, 3]), -float(sur))
+
+    ordre: List[Piece] = []
+    prises: set = set()
+    while restantes:
+        libres = [p for p in restantes if not (porte[id(p)] - prises)]
+        if not libres:                         # cycle : on rend le reste
+            libres = list(restantes)
+        libres.sort(key=cle)
+        ordre += libres
+        prises |= {id(p) for p in libres}
+        restantes = [p for p in restantes if id(p) not in prises]
+    return ordre
 
 
 # ---------------------------------------------------------------------------

@@ -123,6 +123,7 @@ Les images « à revoir » défilent. Pour chacune : si tout est juste,
 | Tab / x / z | pièce suivante / supprimer / annuler |
 | n / p | image suivante / précédente |
 | v / s / h / q | statut / enregistrer / masquer les masques / quitter |
+| **r** | **rejeter** l'image (annotation impossible ou fausse) : exclue de l'entraînement et des revues ; `r` à nouveau pour la reprendre |
 
 **Règles d'annotation** (à tenir pour toutes les images) : le masque couvre
 **toute la partie visible** de la pièce (dessus *et* côtés visibles), pas

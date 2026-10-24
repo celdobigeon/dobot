@@ -42,6 +42,36 @@ cherche ou les placer pour EXPLIQUER au mieux les mesures.
   5. SORTIE : la meme que vision.detecter (Piece avec T_camera, T_table,
      type, face, dimensions mesurees, ecart), plus un score de confiance
      entre 0 et 1.
+  6. PIECES EMPILEES. Une piece peut reposer sur une autre : sa face
+     superieure est alors a (base + epaisseur), ou la base est le sommet
+     de sa porteuse. Les bases possibles sont DISCRETES (bases_de_pile :
+     0, puis 8, 17, 19, puis 16, 25, 27, 34, 36, 38 mm pour les types par
+     defaut) : chaque modele couche existe aussi "pose sur" chacune, et
+     c'est l'EPAISSEUR (sommet - base) qui dit le type et la face. Le
+     noteur tient compte de la hauteur : une piece retenue n'est en
+     CONFLIT qu'avec une hypothese de la meme tranche de hauteur ; posee
+     au-dessus, elle CACHE la partie qu'elle recouvre (ni pour ni contre :
+     comme l'inconnu) ; au-dessous, a la hauteur de la base, c'est la
+     PORTEUSE. La selection gloutonne prend donc d'ordinaire la piece du
+     dessus (entiere) puis celle du dessous (cachee en partie, renotee),
+     ou l'inverse, la porteuse servant alors de preuve d'appui. Une piece
+     empilee doit montrer cette preuve (porteuse retenue sous elle, ou
+     porteuse qui depasse autour d'elle, a la hauteur de la base, hors des
+     rampes du lissage) et paie un petit prix par piece cachee dessous
+     (rasoir d'Occam). Pour la piece du dessus, les cases de RAMPE (grand
+     saut de hauteur dans 5 x 5 mm : le lissage y met des points a
+     mi-hauteur, jusqu'a l'interieur de la face d'une piece haute) ne
+     comptent pas. Apres la selection, PAS DE FANTOME (coherence_piles) :
+     une piece empilee sans porteuse retenue, ou dont la porteuse ne
+     depasse pas vraiment (aire_degagee), est re-examinee : on cherche sa
+     porteuse sous elle (porteuse_visible : en grande partie cachee, elle
+     etait sous le seuil), sinon on la repose sur la table. Seule une face
+     a une hauteur qu'aucune piece seule n'atteint (34 mm) garde sa pile
+     sans porteuse vue : la porteuse, entierement cachee, est alors
+     DEDUITE sous elle, avec une confiance faible (cachee = 1). Chaque
+     piece porte `support` (numero de la porteuse, None : la table),
+     `hauteur_base`, `dessus` et `cachee` ; ordre_de_prise (vision.py) rend
+     les pieces libres d'abord, du haut vers le bas.
 
 Mesures (evaluer_detection.py, 10 scenes synthetiques de 8 pieces par
 configuration, dont 3 en contact) : en vue de dessus, rappel 0.97-0.99,
@@ -49,7 +79,19 @@ aucun faux positif, erreur de position mediane 0.4-0.6 mm, contre un rappel
 de 0.35-0.44 pour vision.detecter qui ne separe pas les pieces en contact ;
 en vue rasante, rappel 0.80 (contre 0.07). Sur les captures reelles
 annotees a l'oeil : 38 pieces justes sur 44 et 1 fausse, contre 32 et 0.
-Plus lent : 2.5 a 5 s par image contre 0.3 s.
+Plus lent : 2.5 a 5 s par image contre 0.3 s (4 a 6 s avec la recherche
+d'empilements).
+
+Empilements (evaluer_detection.py --empilement : 10 scenes de 8 pieces
+dont 3 posees sur une autre, par configuration). Vue de dessus : rappel
+0.91 (0.51 sans l'etape 6), pieces empilees trouvees 0.90 (0.20), type et
+face justes 0.96 pour elles, support juste 0.90, ordre de prise sans
+faute dans 7 scenes sur 10 (3) ; vue reculee : 0.85 (0.45), 0.90 (0.10),
+ordre 8 sur 10 (0). Les scenes sans pile ne changent pas. Vue rasante :
+rappel 0.53 (0.40), piles 0.37 (0.17) : la piece du dessus y cache sa
+porteuse et projette une grande ombre. Non modelise : une piece INCLINEE
+(un bout sur la table, l'autre sur une piece), cas frequent dans un tas
+reel.
 """
 
 from __future__ import annotations
@@ -66,8 +108,8 @@ except ImportError as exc:                        # pragma: no cover
     raise ImportError("OpenCV manque : .venv/bin/pip install opencv-python") from exc
 
 import vision
-from vision import (PROFONDEUR_MAX, Resultat, Scene, corriger_courbure,
-                    nuage, plan_table, repere_table)
+from vision import (PROFONDEUR_MAX, Resultat, Scene, corriger_courbure,  # noqa: F401
+                    nuage, ordre_de_prise, plan_table, repere_table)
 
 #: nombre de classes d'orientation des contours (sur 180 deg)
 N_ORIENT = 8
@@ -79,12 +121,24 @@ N_ORIENT = 8
 
 @dataclass
 class Modele:
-    """Un type de piece pose sur une face : rectangle L x l a la hauteur h (mm)."""
+    """Un type de piece pose sur une face : rectangle L x l, epaisseur h (mm)
+    sous la face superieure, posee a la hauteur `base` (0 : sur la table ;
+    sinon sur la face superieure d'une autre piece). Sa face superieure est
+    a `haut` = base + h."""
     type: str
     face: str
     L: float
     l: float
     h: float
+    base: float = 0.0
+
+    @property
+    def haut(self) -> float:
+        return self.base + self.h
+
+    def sur(self, base: float) -> "Modele":
+        """Le meme, pose a la hauteur `base`."""
+        return Modele(self.type, self.face, self.L, self.l, self.h, float(base))
 
 
 def modeles(types: Dict[str, Sequence[float]], debout: bool = True) -> List[Modele]:
@@ -100,10 +154,68 @@ def modeles(types: Dict[str, Sequence[float]], debout: bool = True) -> List[Mode
     return sortie
 
 
+def bases_de_pile(mods: Sequence[Modele], etages: int = 2) -> List[float]:
+    """
+    Hauteurs ou une piece peut etre POSEE : la table (0), et le sommet d'une
+    pile de 1 a `etages` pieces couchees (a plat ou sur la tranche ; une
+    piece debout ne porte rien). Ces hauteurs sont discretes : 8, 17, 19,
+    puis 16, 25, 27, 34, 36, 38 mm pour les types par defaut. C'est ce qui
+    rend l'empilement mesurable : la hauteur de la face superieure d'une
+    piece posee sur une autre vaut l'une de ces bases PLUS l'epaisseur d'une
+    piece, et la base se verifie (la porteuse depasse, ou elle est vue).
+    """
+    hs = sorted({round(m.h, 1) for m in mods if m.face != "debout" and m.base == 0})
+    niveaux = {0.0}
+    courant = {0.0}
+    for _ in range(etages):
+        courant = {round(b + h, 1) for b in courant for h in hs}
+        niveaux |= courant
+    return sorted(niveaux)
+
+
+def tolerance_hauteur(h, base=0.0):
+    """
+    Ecart tolere (mm) entre la hauteur mesuree et la face superieure
+    attendue d'une piece d'epaisseur h. Sur la table : 5 mm ou 35 % (la
+    camera lisse les faces etroites). Empilee : 3.5 mm ou 25 %, car les
+    hauteurs possibles sont serrees (une fine a plat sur 16 mm donne 24 mm,
+    une epaisse sur la tranche 19 mm) et une pile fantome au-dessus d'une
+    piece serait sinon acceptee.
+    """
+    h = np.asarray(h, float)
+    if np.ndim(base) == 0 and base <= 0:
+        return np.maximum(5.0, 0.35 * h)
+    return np.where(np.asarray(base) > 0, np.maximum(3.5, 0.25 * h),
+                    np.maximum(5.0, 0.35 * h))
+
+
+def etages_sous(mods: Sequence[Modele], etages: int = 2) -> Dict[float, int]:
+    """Pour chaque base de pile (bases_de_pile), le plus petit nombre de
+    pieces couchees qui l'atteint (16 mm : deux fines a plat)."""
+    hs = sorted({round(m.h, 1) for m in mods if m.face != "debout" and m.base == 0})
+    sortie = {0.0: 0}
+    courant = {0.0}
+    for n in range(1, etages + 1):
+        courant = {round(b + h, 1) for b in courant for h in hs}
+        for b in courant:
+            sortie.setdefault(b, n)
+    return sortie
+
+
+def modeles_empiles(mods: Sequence[Modele], bases: Sequence[float],
+                    hauteur_max: float = 100.0) -> List[Modele]:
+    """Les modeles couches (pas debout) poses sur chaque base non nulle."""
+    return [m.sur(b) for b in bases if b > 0 for m in mods
+            if m.base == 0 and m.face != "debout" and b + m.h < hauteur_max]
+
+
 @dataclass
 class PieceModele(vision.Piece):
-    """Une piece, avec le score de confiance de la detection (0 a 1)."""
+    """Une piece, avec le score de confiance de la detection (0 a 1) et la
+    part de sa face superieure cachee par les pieces posees dessus (0 a 1 ;
+    1 : piece entierement cachee, deduite de la hauteur de celle du dessus)."""
     score: float = 0.0
+    cachee: float = 0.0
 
 
 @dataclass
@@ -475,6 +587,7 @@ class Indices:
     couleur_utile: bool = False
     textures: Optional[Textures] = None
     hors_table: Optional[np.ndarray] = None   # 1 : case hors de la table
+    rampe: Optional[np.ndarray] = None        # 1 : case sur un saut de hauteur
 
 
 def indices(vue: VueDessus, seuil_h: float, sigma_h: float,
@@ -610,9 +723,20 @@ def indices(vue: VueDessus, seuil_h: float, sigma_h: float,
     Jyy = cv2.GaussianBlur(gy * gy, (0, 0), sig)
     Jxy = cv2.GaussianBlur(gx * gy, (0, 0), sig)
     orient = 0.5 * np.arctan2(2 * Jxy, Jxx - Jyy) + np.pi / 2
+    # RAMPES : cases dont le voisinage (5 x 5 mm) couvre un grand saut de
+    # hauteur. Le lissage de la camera y place des points a mi-hauteur,
+    # jusqu'a l'INTERIEUR de l'empreinte d'une piece haute (cote camera) :
+    # pour une piece empilee (34 mm), cette rampe mord la moitie d'une face
+    # de 19 mm et la ferait prendre pour une piece etroite. Seules les
+    # pieces empilees les ignorent (voir Noteur.noter)
+    H_haut = np.where(connu, H, -1e3).astype(np.float32)
+    H_bas = np.where(connu, H, 1e3).astype(np.float32)
+    noyau = np.ones((5, 5), np.uint8)
+    etendue = cv2.dilate(H_haut, noyau) - cv2.erode(H_bas, noyau)
+    rampe = (connu & (etendue > max(6.0, 4.0 * sigma_h)) & (etendue < 500)).astype(np.float32)
     return Indices(p, H, connu.astype(np.float32), dt, aretes, segments,
                    orient.astype(np.float32), seuil_h, sigma_h, d_inconnu,
-                   couleur_utile)
+                   couleur_utile, rampe=rampe)
 
 
 def _vers_image(tab: Table, vue: VueDessus, K: np.ndarray, h: float):
@@ -823,6 +947,10 @@ class Noteur:
       O : DEBORDEMENT. Part de l'anneau exterieur (3 mm autour), cote par
           cote, a une hauteur proche de celle de la face : la meme surface
           continue au-dela du rectangle, il est trop petit ou mal place.
+    Pour une hypothese EMPILEE (base > 0), les cases recouvertes par une
+    piece retenue posee au-dessus sont cachees (neutres), celles de sa
+    porteuse ne sont pas un chevauchement, et le score est multiplie par
+    la preuve d'appui (voir l'en-tete, etape 6).
     S = 0.35 E + 0.20 F + 0.25 Hf + 0.20 (1 - O), puis des penalites :
       X : CHEVAUCHEMENT avec les pieces deja retenues (au-dela de 20 %,
           rejet) ; hors de la table ; PENTE de la hauteur a travers la
@@ -835,7 +963,8 @@ class Noteur:
 
     def __init__(self, vue: VueDessus, ind: Indices, poids=(0.35, 0.20, 0.25, 0.20),
                  sigma_e: float = 1.5, decal_anneau: float = 3.0,
-                 poids_texture: float = 0.8, poids_pente: float = 0.2):
+                 poids_texture: float = 0.8, poids_pente: float = 0.2,
+                 tol_pile: float = 0.6):
         self.poids_texture = poids_texture
         self.poids_pente = poids_pente
         self.vue = vue
@@ -843,27 +972,104 @@ class Noteur:
         self.poids = poids
         self.sigma_e = sigma_e
         self.decal = decal_anneau
+        self.tol_pile = tol_pile
         self._explique = np.zeros(ind.H.shape, np.float32)
-        self._pile = None
+        # pieces retenues : (x, y, th, L, l, base, haut, trace) ; `trace`
+        # n'est fourni que pour une explication donnee en bloc (setter)
+        self._couches: List[tuple] = []
+        self._piles: Dict[tuple, np.ndarray] = {}
         self.tol_h = max(2.5, 2.0 * ind.sigma_h)
         self._gab: Dict[Tuple[float, float, float], Gabarit] = {}
+        #: nombre de pieces sous chaque base (etages_sous) ; rempli par detecter
+        self.etages: Dict[float, int] = {}
 
+    # -- explication : quelles cases sont deja expliquees, et par quoi ------
     @property
     def explique(self) -> np.ndarray:
+        """Union des empreintes des pieces retenues (0 a 1)."""
         return self._explique
 
     @explique.setter
     def explique(self, valeur: np.ndarray) -> None:
+        # explication donnee en bloc : on ne sait pas a quelle hauteur sont
+        # les pieces, elle entre en conflit avec toute hypothese
         self._explique = valeur
-        self._pile = None
+        self._couches = ([(0, 0, 0, 0, 0, -np.inf, np.inf, valeur.astype(np.float32))]
+                         if np.any(valeur) else [])
+        self._piles = {}
 
-    def pile(self) -> np.ndarray:
-        """Les quatre cartes lues a chaque point, empilees pour cv2.remap."""
-        if self._pile is None:
+    def sauver(self):
+        return self._explique.copy(), list(self._couches)
+
+    def restaurer(self, etat) -> None:
+        self._explique, self._couches = etat[0].copy(), list(etat[1])
+        self._piles = {}
+
+    def classe(self, couche, base: float, haut: float) -> int:
+        """
+        Relation entre une piece retenue (`couche`) et une hypothese posee a
+        `base`, de face superieure a `haut` (mm), la ou leurs empreintes se
+        recouvrent :
+          0 CONFLIT : leurs tranches de hauteur se coupent, deux pieces ne
+            peuvent pas occuper le meme volume ;
+          1 DESSUS : la piece retenue est posee au-dessus de l'hypothese ; la
+            ou elle la recouvre, la face de l'hypothese est CACHEE (ni pour,
+            ni contre) ;
+          2 SUPPORT : la piece retenue est sous l'hypothese, son sommet a la
+            hauteur de la base : c'est la porteuse ;
+          3 DESSOUS : plus bas, sans contact : sans effet.
+        Les hauteurs comparees sont NOMINALES (celles des modeles), d'ou la
+        petite tolerance `tol_pile` : une piece de 24 mm de haut ne repose
+        pas sur une piece de 19 mm. Avec des pieces toutes sur la table,
+        tout recouvrement est un conflit, comme avant l'empilement.
+        """
+        t = self.tol_pile
+        b_k, h_k = couche[5], couche[6]
+        if b_k >= haut - t:
+            return 1
+        if h_k <= base + t:
+            return 2 if (base > 0 and abs(h_k - base) <= t) else 3
+        return 0
+
+    def _trace(self, couche) -> np.ndarray:
+        if couche[7] is not None:
+            return couche[7]
+        m = np.zeros_like(self._explique)
+        self._dessiner(m, *couche[:5])
+        return m
+
+    def pile(self, base: float = 0.0, haut: Optional[float] = None) -> np.ndarray:
+        """
+        Les cartes lues a chaque point, empilees pour cv2.remap : premier
+        plan, mesure connue (et non cachee), hauteur, conflit, cache, support.
+        Elles dependent de la hauteur de l'hypothese (ce qui est conflit pour
+        l'une est support pour l'autre) : une pile par configuration.
+        """
+        classes = tuple(self.classe(c, base, np.inf if haut is None else haut)
+                        for c in self._couches)
+        cle = classes
+        if cle not in self._piles:
             ind = self.ind
-            self._pile = np.dstack([ind.p, ind.connu, ind.H,
-                                    self._explique]).astype(np.float32)
-        return self._pile
+            zero = np.zeros_like(self._explique)
+            if all(k == 0 for k in classes):
+                conflit, cache, support = self._explique, zero, zero
+            else:
+                conflit, cache, support = zero.copy(), zero.copy(), zero.copy()
+                for c, k in zip(self._couches, classes):
+                    if k == 0:
+                        if c[7] is None:
+                            self._dessiner(conflit, *c[:5])
+                        else:
+                            conflit = np.maximum(conflit, c[7])
+                    elif k == 1:
+                        cache = np.maximum(cache, self._trace(c))
+                    elif k == 2:
+                        support = np.maximum(support, self._trace(c))
+            connu = ind.connu * (1.0 - cache)
+            rampe = ind.rampe if ind.rampe is not None else zero
+            self._piles[cle] = np.dstack([ind.p, connu, ind.H, conflit, cache,
+                                          support, rampe]).astype(np.float32)
+        return self._piles[cle]
 
     def gab(self, L, l, pas) -> Gabarit:
         cle = (round(L, 1), round(l, 1), pas)
@@ -871,18 +1077,31 @@ class Noteur:
             self._gab[cle] = gabarit(L, l, pas)
         return self._gab[cle]
 
+    def noter_m(self, x, y, th, m: Modele, **kw):
+        """noter pour un modele (dimensions, hauteur et base)."""
+        return self.noter(x, y, th, m.L, m.l, m.haut, base=m.base, h_piece=m.h, **kw)
+
     def noter(self, x, y, th, L, l, h, pas: float = 1.5, fin: bool = True,
-              detail: bool = False):
-        """x, y (mm, repere table), th (rad), L, l, h (mm) : tableaux (N,)."""
+              detail: bool = False, base: float = 0.0, h_piece: Optional[float] = None,
+              appui_min: float = 0.0):
+        """
+        x, y (mm, repere table), th (rad), L, l (mm) : tableaux (N,) ; h :
+        hauteur de la face superieure (mm), la meme pour tout le paquet.
+        `base` : hauteur de la face d'appui (0 : la table), `h_piece` :
+        epaisseur de la piece (h - base par defaut). `appui_min` : preuve
+        d'appui accordee d'office a une piece empilee (voir detecter).
+        """
         x, y, th = (np.asarray(v, np.float64) for v in (x, y, th))
         N = len(x)
         L = np.broadcast_to(np.asarray(L, np.float64), (N,))
         l = np.broadcast_to(np.asarray(l, np.float64), (N,))
         h = np.broadcast_to(np.asarray(h, np.float64), (N,))
+        hp = h - base if h_piece is None else np.broadcast_to(
+            np.asarray(h_piece, np.float64), (N,))
         g = self.gab(float(L.max()), float(l.max()), pas)
         c, s = np.cos(th)[:, None], np.sin(th)[:, None]
-        res = self.vue.res
         ind = self.ind
+        pile = self.pile(base, float(h[0]) if N else 0.0)
 
         def placer(loc):                       # loc : (N, n, 2) repere piece
             X = x[:, None] + c * loc[..., 0] - s * loc[..., 1]
@@ -893,10 +1112,14 @@ class Noteur:
         # interieur, retreci de 1.5 mm : les bords sont lisses
         marge = np.minimum(1.5, 0.2 * np.stack([L, l], axis=1))[:, None, :]
         ci, li = placer(g.interieur[None] * (LL - 2 * marge))
-        v_in = _echantillonner(self.pile(), ci, li, fin)
-        p_in, k_in, h_in, x_in = (v_in[..., k] for k in range(4))
+        v_in = _echantillonner(pile, ci, li, fin)
+        p_in, k_in, h_in, x_in, occ_in, sup_in, r_in = (v_in[..., k] for k in range(7))
         F = (p_in * (1 - x_in)).mean(axis=1)
         X = x_in.mean(axis=1)
+        if base > 0:
+            # piece empilee : les rampes du lissage ne disent rien de sa
+            # face superieure (voir indices)
+            k_in = k_in * (1.0 - r_in)
         accord = np.exp(-0.5 * ((h_in - h[:, None]) / self.tol_h) ** 2) * k_in
         # PLANEITE : une face superieure est plate ; la face laterale lissee
         # d'une piece voisine forme une rampe. Pente a travers la largeur
@@ -927,27 +1150,35 @@ class Noteur:
         d = np.where(hors, 99.0, d)
         e = np.exp(-0.5 * (d / self.sigma_e) ** 2)
         tx = ind.textures
-        if tx is not None and self.poids_texture > 0:
+        if tx is not None and self.poids_texture > 0 and N:
             # contours de texture redresses au plan de la face (la hauteur
-            # du modele) : un peu moins surs que les sauts de hauteur
+            # du modele) : un peu moins surs que les sauts de hauteur. Pas
+            # de niveau assez proche (piece empilee, niveau pas encore
+            # calcule) : pas de texture
             k = int(np.argmin(np.abs(tx.niveaux - h[0])))
-            d_t = np.minimum(tx.dt[k][classe, lbi, cbi],
-                             tx.dt[k][voisine, lbi, cbi]).astype(np.float32) / 4.0
-            d_t = np.where(hors, 99.0, d_t)
-            e = np.maximum(e, self.poids_texture * np.exp(-0.5 * (d_t / self.sigma_e) ** 2))
-        # bord dans l'inconnu : ni appui, ni absence d'appui
+            if abs(tx.niveaux[k] - h[0]) <= 1.5:
+                d_t = np.minimum(tx.dt[k][classe, lbi, cbi],
+                                 tx.dt[k][voisine, lbi, cbi]).astype(np.float32) / 4.0
+                d_t = np.where(hors, 99.0, d_t)
+                e = np.maximum(e, self.poids_texture * np.exp(-0.5 * (d_t / self.sigma_e) ** 2))
+        # bord dans l'inconnu, ou cache par une piece posee dessus : ni
+        # appui, ni absence d'appui
         d_inc = ind.d_inconnu[lbi, cbi]
         e = np.where(d_inc < 2.0, np.maximum(e, 0.5), e)
+        if self._couches:
+            occ_b = pile[lbi, cbi, 4]
+            e = np.where(occ_b > 0.5, np.maximum(e, 0.5), e)
         # grands cotes et bouts comptent pour moitie chacun : les grands
         # cotes, plus longs, ne doivent pas masquer des bouts sans appui
         lg = g.bord_long
         E = 0.5 * e[:, lg].mean(axis=1) + 0.5 * e[:, ~lg].mean(axis=1)
 
-        # anneau : la meme surface continue-t-elle au-dela ?
+        # anneau : la meme surface continue-t-elle au-dela ? (au-dessus de
+        # la mi-hauteur de la piece elle-meme, comptee depuis sa base)
         ca_, la_ = placer(g.anneau[None] * LL + g.anneau_dir[None] * self.decal)
-        v_a = _echantillonner(self.pile(), ca_, la_, fin)
+        v_a = _echantillonner(pile, ca_, la_, fin)
         k_a, h_a, x_a = v_a[..., 1], v_a[..., 2], v_a[..., 3]
-        meme = 1.0 / (1.0 + np.exp(-(h_a - 0.6 * h[:, None]) / 1.0))
+        meme = 1.0 / (1.0 + np.exp(-(h_a - (h - 0.4 * hp)[:, None]) / 1.0))
         o = meme * k_a * (1 - x_a)
         # moyenne par COTE : une crete plus longue que la piece deborde par
         # ses deux bouts, peu de points de l'anneau mais deux cotes sur quatre
@@ -968,32 +1199,68 @@ class Noteur:
         # quart de sa face superieure, mesuree a peu pres a la bonne
         # hauteur : sinon un rectangle pose dans un trou de mesure, ou a cote
         # d'une piece dont la face laterale est bien visible en infrarouge,
-        # obtiendrait un score moyen sans aucune preuve
-        bonne_h = np.abs(h_in - h[:, None]) < np.maximum(5.0, 0.35 * h[:, None])
+        # obtiendrait un score moyen sans aucune preuve. Une piece CACHEE en
+        # partie par une piece posee dessus montre le quart de sa partie
+        # visible (et au moins 6 % de sa face)
+        bonne_h = np.abs(h_in - h[:, None]) < tolerance_hauteur(hp, base)[:, None]
         vu = (k_in * (p_in > 0.5) * bonne_h).mean(axis=1)
+        cachee = occ_in.mean(axis=1)
+        vu = vu / np.maximum(1.0 - cachee, 0.25)
         S = S * np.clip(vu / 0.25, 0.0, 1.0)
+        appui = np.ones(N)
+        if base > 0:
+            # APPUI : une piece empilee doit reposer sur quelque chose de
+            # visible a la hauteur de sa base : une piece deja retenue sous
+            # elle (support), ou la porteuse qui depasse autour d'elle (un
+            # second anneau, a 6 mm, a la hauteur de la base). Sans cela,
+            # une piece couchee sur la table, un peu plus haute ou plus
+            # basse que prevu, s'expliquerait aussi par une pile fantome.
+            # Et un leger prix (rasoir d'Occam) : a egalite, la table.
+            ca2, la2 = placer(g.anneau[None] * LL + g.anneau_dir[None] * 6.0)
+            v2 = _echantillonner(pile, ca2, la2, fin)
+            k2, h2, x2, r2 = v2[..., 1], v2[..., 2], v2[..., 3], v2[..., 6]
+            # (pas sur une rampe : le bord lisse de toute piece passe par
+            # la hauteur de la base)
+            pres = (np.abs(h2 - base) < max(2.5, 0.15 * base)) * k2 * (1 - x2) * (1 - r2)
+            dessous = np.abs(sup_in).mean(axis=1)
+            appui = np.clip(np.maximum(pres.mean(axis=1) / 0.08, dessous / 0.10), 0.0, 1.0)
+            appui = np.maximum(appui, appui_min)
+            # et 0.02 par piece cachee dessous : a preuve egale, la pile la
+            # plus simple (une epaisse a plat sur une epaisse, 17 + 17,
+            # plutot qu'une epaisse sur la tranche sur deux fines, 8 + 8 + 19)
+            S = S * (0.4 + 0.6 * appui) - 0.02 * self.etages.get(round(base, 1), 1)
         if detail:
             h_med = np.array([np.median(hi[ki > 0.5]) if (ki > 0.5).any() else np.nan
                               for hi, ki in zip(h_in, k_in)])
-            return S, dict(E=E, F=F, H=Hf, O=O, X=X, pente=pente, h_mes=h_med)
+            # surface (mm^2) vue PLATE a la bonne hauteur (hors rampes)
+            aire = (L - 2 * marge[:, 0, 0]) * (l - 2 * marge[:, 0, 1])
+            plat = (k_in * (1 - r_in) * (p_in > 0.5) * bonne_h).mean(axis=1) * aire
+            return S, dict(E=E, F=F, H=Hf, O=O, X=X, pente=pente, h_mes=h_med,
+                           cachee=cachee, appui=appui, plat=plat)
         return S
 
+    def affiner_m(self, x, y, th, m: Modele, **kw):
+        """affiner pour un modele (dimensions, hauteur et base)."""
+        return self.affiner(x, y, th, m.L, m.l, m.haut, base=m.base, h_piece=m.h, **kw)
+
     def affiner(self, x, y, th, L, l, h, iterations: int = 14,
-                pas=(1.0, 1.0, np.radians(3.0)), taille: bool = False):
+                pas=(1.0, 1.0, np.radians(3.0)), taille: bool = False,
+                **kw):
         """
         Recherche locale (motifs de Hooke et Jeeves) sur le score : on
         essaie +/- un pas sur chaque parametre, on garde le meilleur, on
         divise les pas par deux quand plus rien ne progresse. Le score est
         lu en bilineaire : il varie continument, la pose trouvee est a une
         fraction de case pres. Avec `taille`, L et l sont libres aussi (la
-        MESURE des dimensions, pour l'ecart affiche).
+        MESURE des dimensions, pour l'ecart affiche). `kw` : passe a noter
+        (base, h_piece, appui_min).
         """
         etat = np.stack([x, y, th, np.broadcast_to(L, len(x)).astype(float),
                          np.broadcast_to(l, len(x)).astype(float)], axis=1).astype(float)
         h = np.broadcast_to(np.asarray(h, float), (len(x),))
         pas_ = np.tile(np.array(list(pas) + [1.0, 1.0]), (len(x), 1))
         nparam = 5 if taille else 3
-        score = self.noter(*etat.T[:5], h)
+        score = self.noter(*etat.T[:5], h, **kw)
         for _ in range(iterations):
             essais = [etat]
             for k in range(nparam):
@@ -1002,7 +1269,7 @@ class Noteur:
                     e[:, k] += sg * pas_[:, k]
                     essais.append(e)
             tout = np.concatenate(essais)
-            sc = self.noter(*tout.T[:5], np.tile(h, len(essais))).reshape(len(essais), -1)
+            sc = self.noter(*tout.T[:5], np.tile(h, len(essais)), **kw).reshape(len(essais), -1)
             meilleur = sc.argmax(axis=0)
             ameliore = sc[meilleur, np.arange(len(x))] > score + 1e-6
             idx = np.arange(len(x))
@@ -1014,20 +1281,38 @@ class Noteur:
 
     def reexpliquer(self, choisis) -> None:
         """L'explication refaite a partir d'une liste (score, x, y, th, modele)."""
-        self.explique = np.zeros_like(self._explique)
+        self._explique = np.zeros_like(self._explique)
+        self._couches = []
+        self._piles = {}
         for _, x, y, th, m in choisis:
-            self.expliquer(x, y, th, m.L, m.l)
+            self.expliquer(x, y, th, m.L, m.l, m.base, m.haut)
 
-    def expliquer(self, x, y, th, L, l) -> None:
-        """Marque les cases du rectangle comme expliquees."""
+    @staticmethod
+    def _coins(x, y, th, L, l):
         coins = np.array([[-L, -l], [L, -l], [L, l], [-L, l]]) / 2.0
         c, s = np.cos(th), np.sin(th)
-        X = x + coins[:, 0] * c - coins[:, 1] * s
-        Y = y + coins[:, 0] * s + coins[:, 1] * c
+        return x + coins[:, 0] * c - coins[:, 1] * s, y + coins[:, 0] * s + coins[:, 1] * c
+
+    def _dessiner(self, carte, x, y, th, L, l) -> None:
+        X, Y = self._coins(x, y, th, L, l)
         cc, ll = self.vue.vers_case(X, Y)
         poly = np.round(np.stack([cc, ll], axis=1) * 16).astype(np.int32)
-        cv2.fillPoly(self._explique, [poly], 1.0, lineType=cv2.LINE_AA, shift=4)
-        self._pile = None
+        cv2.fillPoly(carte, [poly], 1.0, lineType=cv2.LINE_AA, shift=4)
+
+    def expliquer(self, x, y, th, L, l, base: float = 0.0,
+                  haut: Optional[float] = None) -> None:
+        """Marque les cases du rectangle comme expliquees, par une piece
+        posee a `base`, de face superieure a `haut` (mm ; None : conflit
+        avec toute autre piece)."""
+        self._dessiner(self._explique, x, y, th, L, l)
+        self._couches.append((x, y, th, L, l, base, np.inf if haut is None else haut, None))
+        self._piles = {}
+
+    def en_conflit(self, m: Modele, couche_m: Modele) -> bool:
+        """Une piece retenue de modele `couche_m` est-elle en conflit (meme
+        tranche de hauteur) avec une hypothese de modele `m` ?"""
+        return self.classe((0, 0, 0, 0, 0, couche_m.base, couche_m.haut, None),
+                           m.base, m.haut) == 0
 
 
 def hypotheses(vue: VueDessus, ind: Indices, mods: List[Modele],
@@ -1038,8 +1323,9 @@ def hypotheses(vue: VueDessus, ind: Indices, mods: List[Modele],
     premier plan, sur une grille de `pas_centre` mm. Angles : ceux des
     segments droits proches (un segment peut etre un grand cote ou un bout,
     donc angle et angle + 90 deg), et l'orientation locale du tenseur de
-    structure. Modeles : ceux dont la hauteur est compatible avec la
-    hauteur mesuree au centre.
+    structure. Modeles : ceux dont la hauteur de face superieure (base
+    comprise, pour une piece empilee) est compatible avec la hauteur mesuree
+    au centre ; la ou rien n'est mesure, seulement les pieces sur la table.
     """
     res = vue.res
     step = max(1, int(round(pas_centre / res)))
@@ -1085,7 +1371,10 @@ def hypotheses(vue: VueDessus, ind: Indices, mods: List[Modele],
         if len(a) > 1 and (a[-1] - a[0]) > np.pi - np.radians(4):
             a = a[:-1]
         for i_m, m in enumerate(mods):
-            if np.isfinite(h_c[k]) and abs(h_c[k] - m.h) > max(5.0, 0.35 * m.h):
+            if np.isfinite(h_c[k]):
+                if abs(h_c[k] - m.haut) > tolerance_hauteur(m.h, m.base):
+                    continue
+            elif m.base > 0:
                 continue
             for aa in a:
                 sortie.append((X[k], Y[k], aa, i_m))
@@ -1114,6 +1403,8 @@ def fusionner(choisis: list, noteur: Noteur, mods: List[Modele],
             for j in range(i + 1, len(choisis)):
                 si, xi, yi, ti, mi = choisis[i]
                 sj, xj, yj, tj, mj = choisis[j]
+                if abs(mi.base - mj.base) > 1.0:
+                    continue
                 dth = abs((ti - tj + np.pi / 2) % np.pi - np.pi / 2)
                 if dth > np.radians(10):
                     continue
@@ -1127,9 +1418,10 @@ def fusionner(choisis: list, noteur: Noteur, mods: List[Modele],
                 xm, ym = (xi + xj) / 2, (yi + yj) / 2
                 meilleur = None
                 for m in mods:
-                    if m.l < max(mi.l, mj.l) + 2:
+                    if m.base != 0 or m.l < max(mi.l, mj.l) + 2:
                         continue
-                    e, sc = noteur.affiner([xm], [ym], [ti], m.L, m.l, m.h)
+                    m = m.sur(mi.base)
+                    e, sc = noteur.affiner_m([xm], [ym], [ti], m)
                     if meilleur is None or sc[0] > meilleur[0]:
                         meilleur = (float(sc[0]), e[0, 0], e[0, 1], e[0, 2], m)
                 if meilleur is not None and meilleur[0] > max(si, sj) - marge:
@@ -1141,6 +1433,319 @@ def fusionner(choisis: list, noteur: Noteur, mods: List[Modele],
                 break
     noteur.reexpliquer(choisis)
     return choisis
+
+
+def ajouter_niveaux(scene: Scene, tab: Table, vue: VueDessus, ind: Indices,
+                    hauteurs: Sequence[float], tol: float = 1.5) -> None:
+    """Complete les contours de texture redresses (textures_redressees) aux
+    hauteurs demandees qui n'ont pas encore de niveau a `tol` mm pres : ceux
+    des faces superieures de pieces EMPILEES, calcules seulement s'il y a
+    des candidates (chaque niveau coute une reprojection des images)."""
+    tx = ind.textures
+    if tx is None or not len(hauteurs):
+        return
+    manquants = sorted({round(float(h), 1) for h in hauteurs
+                        if np.min(np.abs(tx.niveaux - h)) > tol})
+    niveaux: List[float] = []
+    for h in manquants:
+        if not niveaux or h - niveaux[-1] > tol:
+            niveaux.append(h)
+    if not niveaux:
+        return
+    nouv = textures_redressees(scene, tab, vue, niveaux)
+    if nouv is None:
+        return
+    tx.niveaux = np.concatenate([tx.niveaux, nouv.niveaux])
+    tx.dt = np.concatenate([tx.dt, nouv.dt])
+
+
+def _rectangle_mm(x, y, th, m: Modele) -> np.ndarray:
+    coins = np.array([[-m.L, -m.l], [m.L, -m.l], [m.L, m.l], [-m.L, m.l]]) / 2.0
+    c, s = np.cos(th), np.sin(th)
+    return (coins @ np.array([[c, s], [-s, c]]) + [x, y]).astype(np.float32)
+
+
+def aire_commune(P: np.ndarray, Q: np.ndarray) -> float:
+    """
+    Aire de l'intersection de deux polygones CONVEXES (sommets dans le sens
+    trigonometrique), par decoupage de Sutherland-Hodgman : P est coupe
+    successivement par le demi-plan interieur de chaque cote de Q.
+    (cv2.intersectConvexConvex rend 0 pour deux rectangles dont des cotes
+    sont confondus, cas courant ici : une porteuse deduite a la pose de la
+    piece du dessus.)
+    """
+    poly = [tuple(p) for p in np.asarray(P, float)]
+    Q = np.asarray(Q, float)
+    for k in range(len(Q)):
+        a, b = Q[k], Q[(k + 1) % len(Q)]
+        if not poly:
+            break
+
+        def cote(p):
+            return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+
+        sortie = []
+        for i in range(len(poly)):
+            p, q = np.array(poly[i]), np.array(poly[(i + 1) % len(poly)])
+            cp, cq = cote(p), cote(q)
+            if cp >= 0:
+                sortie.append(tuple(p))
+            if (cp >= 0) != (cq >= 0):
+                t = cp / (cp - cq)
+                sortie.append(tuple(p + t * (q - p)))
+        poly = sortie
+    if len(poly) < 3:
+        return 0.0
+    x, y = np.array(poly).T
+    return float(abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))) / 2.0)
+
+
+def recouvrement(a, b) -> float:
+    """Aire commune (mm^2) des empreintes de deux pieces (x, y, th, modele)."""
+    return aire_commune(_rectangle_mm(*a), _rectangle_mm(*b))
+
+
+def relier_piles(pieces: Sequence[tuple], tol: float = 0.6, part: float = 0.08) -> list:
+    """
+    La porteuse de chaque piece (x, y, th, modele) : None si elle est sur
+    la table ; sinon l'indice de la piece dont le SOMMET est a la hauteur
+    de sa base (hauteurs nominales, a `tol` mm pres) et qui recouvre le plus son empreinte (au
+    moins `part` de sa surface : une piece en travers sur une autre la
+    recouvre d'environ 28 %), a defaut en elargissant les deux empreintes
+    de 5 mm ; -1 si aucune piece vue ne la porte.
+    """
+    sortie = []
+    for i, a in enumerate(pieces):
+        m = a[3]
+        if m.base <= 0:
+            sortie.append(None)
+            continue
+        meilleur = -1
+        # puis, faute de mieux, avec les empreintes elargies de `marge` mm :
+        # la pose d'une porteuse en grande partie cachee est moins sure
+        for marge in (0.0, 5.0):
+            aire_m = part * m.L * m.l
+            a2 = (a[0], a[1], a[2], Modele(m.type, m.face, m.L + 2 * marge,
+                                           m.l + 2 * marge, m.h, m.base))
+            for j, b in enumerate(pieces):
+                if j == i or abs(b[3].haut - m.base) > tol:
+                    continue
+                mb = b[3]
+                b2 = (b[0], b[1], b[2], Modele(mb.type, mb.face, mb.L + 2 * marge,
+                                               mb.l + 2 * marge, mb.h, mb.base))
+                aire = recouvrement(a2, b2)
+                if aire >= aire_m:
+                    meilleur, aire_m = j, aire
+            if meilleur != -1:
+                break
+        sortie.append(meilleur)
+    return sortie
+
+
+def coherence_piles(choisis: list, noteur: Noteur, mods: List[Modele],
+                    seuil: float, departs: Sequence[tuple] = (),
+                    tol: float = 0.6) -> list:
+    """
+    PAS DE PIECE FANTOME. Une piece retenue comme empilee doit avoir une
+    porteuse parmi les pieces retenues (relier_piles). La preuve d'appui du
+    noteur est locale : une piece couchee sur la table et touchant une
+    piece plus basse (une fine a plat de 8 mm) peut l'avoir obtenue. On
+    cherche d'abord la porteuse sous elle (porteuse_visible) : retenue si
+    elle atteint la moitie du seuil (elle est en partie cachee). Une
+    porteuse deja retenue doit DEPASSER (aire_degagee : 80 mm^2 et 15 % de
+    sa face) quand la hauteur de la piece s'explique aussi sans pile (16 mm : fine sur fine, ou une
+    epaisse de 17 mm mesuree un peu bas). Sinon,
+    l'hypothese empilee est remplacee par la meilleure piece
+    au meme endroit, sur la table ou sur le sommet d'une piece retenue qui
+    la recouvre ; ou retiree si aucune n'atteint le seuil. Exception : une
+    face superieure qu'aucune piece seule n'atteint (34 mm) ne s'explique
+    que par une pile, dont la porteuse est alors cachee (voir
+    chercher_porteuses).
+    """
+    h_table = [m.h for m in mods if m.base == 0]
+    for _ in range(len(choisis) + 2):
+        sup = relier_piles([c[1:] for c in choisis], tol)
+        ambigu = [min(abs(c[4].haut - h) for h in h_table) < 4.0 for c in choisis]
+        orph = [i for i, sp in enumerate(sup) if sp == -1 and ambigu[i]]
+        # porteuse retenue, mais qui ne depasse pas vraiment (aire_degagee) :
+        # la pile n'est pas prouvee, quand la hauteur s'explique aussi par
+        # une seule piece sur la table
+        faibles = [i for i, sp in enumerate(sup) if sp is not None and sp != -1
+                   and ambigu[i] and aire_degagee(noteur, choisis[sp][1:], choisis[i][1:])
+                   < max(80.0, 0.15 * choisis[sp][4].L * choisis[sp][4].l)]
+        if not orph and not faibles:
+            break
+        faible = None
+        if orph:
+            i = min(orph, key=lambda k: choisis[k][0])
+        else:
+            i = faibles[0]
+            faible = choisis[sup[i]]
+        s, x, y, th, m = choisis[i]
+        noteur.reexpliquer(choisis)
+        if faible is None:
+            porteuse = porteuse_visible(choisis[i], noteur, mods, departs)
+            if porteuse is not None and porteuse[0] >= 0.5 * seuil:
+                choisis = choisis + [porteuse]
+                continue
+        autres = choisis[:i] + choisis[i + 1:]
+        noteur.reexpliquer(autres)
+        bases = {0.0} | {round(c[4].haut, 1) for c in autres if c is not faible
+                         and recouvrement((x, y, th, m), c[1:]) > 0.08 * m.L * m.l}
+        meilleur = None
+        for b in sorted(bases):
+            for m0 in mods:
+                if m0.base != 0 or (b > 0 and m0.face == "debout"):
+                    continue
+                mm = m0.sur(b) if b > 0 else m0
+                if abs(mm.haut - m.haut) > max(5.0, 0.35 * mm.h):
+                    continue
+                e, sc = noteur.affiner_m([x], [y], [th], mm)
+                if meilleur is None or sc[0] > meilleur[0]:
+                    meilleur = (float(sc[0]), e[0, 0], e[0, 1], e[0, 2], mm)
+        choisis = autres
+        if meilleur is not None and meilleur[0] >= seuil:
+            choisis = autres + [meilleur]
+        if faible is not None:
+            # l'ancienne porteuse, sous la piece qui ne repose plus sur elle :
+            # gardee seulement si elle tient encore (moitie du seuil)
+            reste = [c for c in choisis if c is not faible]
+            noteur.reexpliquer(reste)
+            if noteur.noter_m([faible[1]], [faible[2]], [faible[3]], faible[4])[0] < 0.5 * seuil:
+                choisis = reste
+        noteur.reexpliquer(choisis)
+    return choisis
+
+
+def _candidats_porteuse(mods: List[Modele], m: Modele) -> List[Modele]:
+    """Les modeles couches dont le sommet est a la base de `m`, poses sur une
+    base possible (la table, ou le sommet d'une pile)."""
+    bases = bases_de_pile(mods)
+    return [m0.sur(m.base - m0.h) if m.base - m0.h > 0.5 else m0 for m0 in mods
+            if m0.base == 0 and m0.face != "debout"
+            and min(abs(m.base - m0.h - b) for b in bases) < 1.0]
+
+
+def aire_degagee(noteur: Noteur, porteuse: tuple, dessus: tuple,
+                 marge: float = 4.0, pas: float = 1.0) -> float:
+    """
+    Surface (mm^2) de la face superieure de la `porteuse` (x, y, th, modele)
+    vue PLATE a sa hauteur, a plus de `marge` mm de l'empreinte de la piece
+    du `dessus` : la partie qui depasse vraiment. Un simple lisere le long
+    du flanc de la piece du dessus est ce que donne le lissage du bord
+    (une rampe qui passe par la hauteur de la porteuse) ; une epaisse de
+    17 mm se laisserait sinon decrire comme une fine posee sur une fine.
+    """
+    x, y, th, m = porteuse
+    xd, yd, thd, md = dessus
+    s = np.arange(-m.L / 2 + pas / 2, m.L / 2, pas)
+    t = np.arange(-m.l / 2 + pas / 2, m.l / 2, pas)
+    S, T = np.meshgrid(s, t)
+    c, sn = np.cos(th), np.sin(th)
+    X = x + c * S - sn * T
+    Y = y + sn * S + c * T
+    # coordonnees dans le repere de la piece du dessus
+    cd, sd = np.cos(thd), np.sin(thd)
+    u = (X - xd) * cd + (Y - yd) * sd
+    v = -(X - xd) * sd + (Y - yd) * cd
+    dehors = (np.abs(u) > md.L / 2 + marge) | (np.abs(v) > md.l / 2 + marge)
+    ind = noteur.ind
+    cc, ll = noteur.vue.vers_case(X, Y)
+    pile = np.dstack([ind.connu, ind.H, ind.rampe if ind.rampe is not None
+                      else np.zeros_like(ind.H)]).astype(np.float32)
+    v_ = _echantillonner(pile, cc.astype(np.float32), ll.astype(np.float32), False)
+    k, h, r = v_[..., 0], v_[..., 1], v_[..., 2]
+    # a 2.5 mm pres : la porteuse est une face plate a une hauteur connue,
+    # pas la pente douce qui borde une piece du cote de son ombre
+    bon = dehors & (k > 0.5) & (r < 0.5) & (np.abs(h - m.haut) < 2.5)
+    return float(bon.sum() * pas * pas)
+
+
+def porteuse_visible(dessus: tuple, noteur: Noteur, mods: List[Modele],
+                     departs: Sequence[tuple]) -> Optional[tuple]:
+    """
+    La meilleure porteuse (score, x, y, th, modele) sous la piece `dessus`
+    (score, x, y, th, modele), le reste de la scene etant explique tel
+    quel, dont au moins 80 mm^2 de face superieure sont vus PLATS a la
+    bonne hauteur et DEGAGES de la piece du dessus (aire_degagee) : une
+    "porteuse" faite des seules rampes du lissage autour de la piece du
+    dessus n'en est pas une. Departs : les hypotheses affinees (x, y, th, modele) de chaque
+    modele candidat qui recouvrent la piece du dessus, et une grille de
+    poses autour d'elle (dans son axe ou en travers, glissees jusqu'a
+    30 mm : posee sous la piece du dessus, une porteuse cachee n'offre
+    aucune pente au score, il faut partir pres de sa partie visible).
+    """
+    s, x, y, th, m = dessus
+    grille = []
+    for a in (th, th + np.pi / 2):
+        ax = np.array([np.cos(a), np.sin(a)])
+        no = np.array([-ax[1], ax[0]])
+        for u in (-30, -20, -10, 0, 10, 20, 30):
+            for v in (-8, 0, 8):
+                q = np.array([x, y]) + u * ax + v * no
+                grille.append((q[0], q[1], a))
+    meilleur = None
+    plat_min = 80.0                 # mm^2 de face vue plate : 8 x 10 mm
+    for mc in _candidats_porteuse(mods, m):
+        essais = grille + [d[:3] for d in departs if d[3] == mc
+                           and recouvrement((x, y, th, m), d) > 0.08 * m.L * m.l][:40]
+        e0 = np.array(essais, float)
+        e, sc = noteur.affiner_m(e0[:, 0], e0[:, 1], e0[:, 2], mc)
+        for k in np.argsort(-sc):
+            if recouvrement((x, y, th, m), (e[k, 0], e[k, 1], e[k, 2], mc)) \
+                    < 0.08 * m.L * m.l:
+                continue
+            if meilleur is None or sc[k] > meilleur[0]:
+                if aire_degagee(noteur, (e[k, 0], e[k, 1], e[k, 2], mc),
+                                (x, y, th, m)) >= plat_min:
+                    meilleur = (float(sc[k]), e[k, 0], e[k, 1], e[k, 2], mc)
+            break
+    return meilleur
+
+
+def chercher_porteuses(choisis: list, noteur: Noteur, mods: List[Modele],
+                       departs: Sequence[tuple], seuil: float,
+                       tol: float = 0.6) -> Tuple[list, set]:
+    """
+    Une piece empilee sans porteuse retenue (relier_piles) : sa porteuse
+    existe forcement, mais elle est en grande partie CACHEE (par la piece du
+    dessus, et par l'ombre que celle-ci projette), donc souvent sous le
+    seuil de la selection gloutonne. On la cherche la ou elle doit etre
+    (porteuse_visible), la partie cachee etant neutre. Si la meilleure
+    atteint la moitie du seuil, on la garde (son score dit qu'elle est peu
+    sure) ; sinon la porteuse est entierement cachee (meme sens,
+    exactement dessous) : on la DEDUIT, a la pose de la piece du dessus,
+    avec une confiance faible. Rend la liste completee et l'ensemble des
+    indices des pieces deduites.
+    """
+    deduites: set = set()
+    renonce: set = set()
+    for _ in range(len(choisis)):
+        sup = relier_piles([c[1:] for c in choisis], tol)
+        # (pas de deduction en chaine : une porteuse deduite posee plus haut
+        # que la table reste sur un objet non identifie)
+        orph = [i for i, sp in enumerate(sup) if sp == -1 and i not in renonce
+                and i not in deduites]
+        if not orph:
+            break
+        i = orph[0]
+        s, x, y, th, m = choisis[i]
+        noteur.reexpliquer(choisis)
+        meilleur = porteuse_visible(choisis[i], noteur, mods, departs)
+        if meilleur is not None and meilleur[0] >= 0.5 * seuil:
+            choisis = choisis + [meilleur]
+            continue
+        # entierement cachee : deduite, sous la piece du dessus ; la plus
+        # basse possible, et la plus large qui reste cachee sous elle
+        cands = sorted(_candidats_porteuse(mods, m), key=lambda c: (
+            c.base, c.l > m.l + 2.0, -c.l if c.l <= m.l + 2.0 else c.l))
+        if not cands:
+            renonce.add(i)                     # rien ne convient : on renonce
+            continue
+        choisis = choisis + [(0.3 * s, x, y, th, cands[0])]
+        deduites.add(len(choisis) - 1)
+    noteur.reexpliquer(choisis)
+    return choisis, deduites
 
 
 # ---------------------------------------------------------------------------
@@ -1204,7 +1809,10 @@ def detecter(scene: Scene, dimensions=(16, 30, 68), res: float = 1.0,
              tolerance: float = 10.0, max_pieces: int = 40,
              volants: bool = True, continuite: float = 4.0,
              etirement: float = 1.5, fusion: bool = True,
-             poids_texture: float = 0.8, poids_pente: float = 0.2) -> ResultatModele:
+             poids_texture: float = 0.8, poids_pente: float = 0.2,
+             empilement: bool = True, etages: int = 2,
+             max_hypotheses: int = 250,
+             trace: Optional[dict] = None) -> ResultatModele:
     """
     Pieces de dimensions connues (mm), par modele. Memes arguments
     principaux que vision.detecter (`dimensions` : un type (a, b, c) ou un
@@ -1220,30 +1828,62 @@ def detecter(scene: Scene, dimensions=(16, 30, 68), res: float = 1.0,
     `fusion` : test de parcimonie sur les paires accolees.
     `tolerance` : comme vision.detecter ; ici un rectangle n'est ecarte
     qu'au-dela du double, car ses dimensions sont celles du modele.
+    `empilement` : chercher aussi des pieces posees sur d'autres, en piles
+    de `etages` pieces au plus sous la piece cherchee (voir l'en-tete).
+    `max_hypotheses` : hypotheses gardees apres la notation grossiere.
+
+    Chaque piece porte `support` (numero de sa porteuse, None : la table),
+    `hauteur_base` (mm), `dessus` (numeros des pieces posees sur elle) et
+    `cachee` (part de sa face superieure cachee) ; ordre_de_prise(pieces)
+    dit dans quel ordre les saisir.
     """
     prep = preparer(scene, dimensions, res, hauteur_min, hauteur_max,
                     poids_couleur, poids_ir, debout, volants, continuite,
                     etirement, poids_texture, poids_pente)
     tab, vue, ind, noteur, mods = prep.tab, prep.vue, prep.ind, prep.noteur, prep.mods
 
+    # --- modeles : chaque type sur chaque face, sur la table, et (pieces
+    # couchees) sur le sommet d'une pile de 1 a `etages` pieces
+    mods_tous = list(mods)
+    if empilement:
+        mods_tous += modeles_empiles(mods, bases_de_pile(mods, etages),
+                                     hauteur_max * 1000.0)
+        noteur.etages = etages_sous(mods, etages)
+    # une face superieure a une hauteur qu'aucune piece couchee sur la
+    # table n'atteint (34 mm : deux epaisses a plat) ne s'explique QUE par
+    # une pile : la porteuse peut alors etre entierement cachee, on lui
+    # accorde d'office une bonne part de la preuve d'appui
+    h_table = [m.h for m in mods]
+    appui_min = [0.0 if m.base == 0 or min(abs(m.haut - h) for h in h_table) < 4.0
+                 else 0.75 for m in mods_tous]
+
     # --- hypotheses, notees grossierement (plus proche voisin, pas de 3 mm)
-    hyp = hypotheses(vue, ind, mods)
+    hyp = hypotheses(vue, ind, mods_tous)
     cands = []
-    for i_m, m in enumerate(mods):
+    for i_m, m in enumerate(mods_tous):
         sel = hyp[hyp[:, 3] == i_m]
         if not len(sel):
             continue
-        sc = noteur.noter(sel[:, 0], sel[:, 1], sel[:, 2], m.L, m.l, m.h,
-                          pas=3.0, fin=False)
+        sc = noteur.noter_m(sel[:, 0], sel[:, 1], sel[:, 2], m, pas=3.0, fin=False,
+                            appui_min=appui_min[i_m])
         bon = sc > 0.6 * seuil_score
         for (x, y, a, _), s in zip(sel[bon], sc[bon]):
             cands.append((s, x, y, a, i_m))
     cands.sort(key=lambda t: -t[0])
     # suppression des non-maxima : a moins de 4 mm et 12 deg d'une
     # meilleure hypothese du meme modele, une hypothese est redondante
+    # Deux quotas : pieces sur la table (`max_hypotheses`, comme sans
+    # empilement) et pieces empilees (la moitie en plus) ; sinon les
+    # variantes empilees, nombreuses, chassent les porteuses
     retenus: List[Tuple] = []
+    quota = {False: max_hypotheses, True: max_hypotheses // 2}
     for cnd in cands:
         s, x, y, a, i_m = cnd
+        empilee = mods_tous[i_m].base > 0
+        if quota[empilee] <= 0:
+            if quota[not empilee] <= 0:
+                break
+            continue
         doublon = False
         for r in retenus:
             if r[4] == i_m and np.hypot(r[1] - x, r[2] - y) < 4.0:
@@ -1253,8 +1893,11 @@ def detecter(scene: Scene, dimensions=(16, 30, 68), res: float = 1.0,
                     break
         if not doublon:
             retenus.append(cnd)
-        if len(retenus) >= 250:
-            break
+            quota[empilee] -= 1
+    # contours de texture aux hauteurs des pieces empilees candidates
+    if ind.textures is not None and poids_texture > 0:
+        ajouter_niveaux(scene, tab, vue, ind,
+                        [mods_tous[r[4]].haut for r in retenus if mods_tous[r[4]].base > 0])
 
     # --- affinage de chaque hypothese retenue. On garde la pose de DEPART :
     # une hypothese nee sur une piece peut glisser, en s'affinant, vers sa
@@ -1263,43 +1906,52 @@ def detecter(scene: Scene, dimensions=(16, 30, 68), res: float = 1.0,
     depart = np.array([[r[1], r[2], r[3], r[4]] for r in retenus]).reshape(-1, 4)
     etat = depart[:, :3].copy()
 
+    def noter(ix, i_m):
+        return noteur.noter_m(etat[ix, 0], etat[ix, 1], etat[ix, 2], mods_tous[i_m],
+                              appui_min=appui_min[i_m])
+
     def affiner_tout(idx, **kw):
         for i_m in np.unique(depart[idx, 3]).astype(int):
             sel = idx[depart[idx, 3] == i_m]
-            m = mods[i_m]
-            e, _ = noteur.affiner(depart[sel, 0], depart[sel, 1], depart[sel, 2],
-                                  m.L, m.l, m.h, **kw)
+            e, _ = noteur.affiner_m(depart[sel, 0], depart[sel, 1], depart[sel, 2],
+                                    mods_tous[i_m], appui_min=appui_min[i_m], **kw)
             etat[sel] = e[:, :3]
 
     actifs = np.arange(len(depart))
     affiner_tout(actifs)
 
-    # --- selection gloutonne avec explication
+    # --- selection gloutonne avec explication. Une piece retenue n'exclut
+    # que les hypotheses de MEME tranche de hauteur : celle qu'elle recouvre
+    # (posee plus bas, en partie cachee) ou qui la recouvre (posee dessus)
+    # restent candidates, et sont renotees avec la partie cachee neutre.
+    # L'ordre se regle seul : la piece du dessus, entiere, est en general
+    # retenue la premiere, puis celle du dessous ; si celle du dessous
+    # l'est d'abord, elle devient la preuve d'appui de celle du dessus.
     choisis = []
     while len(actifs) and len(choisis) < max_pieces:
         scores = np.empty(len(actifs))
         for i_m in np.unique(depart[actifs, 3]).astype(int):
             sel = depart[actifs, 3] == i_m
-            m = mods[i_m]
-            ix = actifs[sel]
-            scores[sel] = noteur.noter(etat[ix, 0], etat[ix, 1], etat[ix, 2],
-                                       m.L, m.l, m.h)
+            scores[sel] = noter(actifs[sel], i_m)
         k = int(np.argmax(scores))
         if scores[k] < seuil_score:
             break
         j = actifs[k]
-        m = mods[int(depart[j, 3])]
+        m = mods_tous[int(depart[j, 3])]
         x, y, th = etat[j]
         choisis.append((float(scores[k]), x, y, th, m))
         avant = noteur.explique.copy()
-        noteur.expliquer(x, y, th, m.L, m.l)
-        # les hypotheses NEES dans la piece retenue sont epuisees ; celles
-        # qui y ont seulement glisse repartent de leur depart
+        noteur.expliquer(x, y, th, m.L, m.l, m.base, m.haut)
+        # les hypotheses NEES dans la piece retenue, et de la meme tranche
+        # de hauteur, sont epuisees ; celles qui y ont seulement glisse
+        # repartent de leur depart
         c, s_ = np.cos(th), np.sin(th)
         dx, dy = depart[actifs, 0] - x, depart[actifs, 1] - y
         u = np.abs(dx * c + dy * s_)
         v = np.abs(-dx * s_ + dy * c)
-        nee = (u < m.L / 2 - 2) & (v < m.l / 2 - 1)
+        conflit = np.array([noteur.en_conflit(mods_tous[int(depart[a, 3])], m)
+                            for a in actifs])
+        nee = (u < m.L / 2 - 2) & (v < m.l / 2 - 1) & conflit
         actifs = actifs[~nee & (actifs != j)]
         if not len(actifs):
             break
@@ -1310,49 +1962,83 @@ def detecter(scene: Scene, dimensions=(16, 30, 68), res: float = 1.0,
         if touche.any():
             affiner_tout(actifs[touche])
 
+    if trace is not None:               # pour le diagnostic
+        trace.update(depart=depart, etat=etat, mods=mods_tous, glouton=list(choisis),
+                     noteur=noteur, prep=prep)
     if fusion:
         choisis = fusionner(choisis, noteur, mods)
         choisis.sort(key=lambda c: -c[0])
+    if empilement:
+        departs = [(etat[k, 0], etat[k, 1], etat[k, 2], mods_tous[int(depart[k, 3])])
+                   for k in range(len(depart))]
+        choisis = coherence_piles(choisis, noteur, mods, seuil_score, departs)
+        choisis.sort(key=lambda c: -c[0])
+        choisis, deduites = chercher_porteuses(choisis, noteur, mods, departs,
+                                               seuil_score)
+    else:
+        deduites = set()
 
     # --- sortie
-    pieces: List[PieceModele] = []
-    rects = []
+    gardes = []                     # (score, x, y, th, m, mesures, ecart, cachee)
     autres = []
-    for s, x, y, th, m in choisis:
-        _, det = noteur.noter([x], [y], [th], m.L, m.l, m.h, detail=True)
-        h_mes = float(det["h_mes"][0])
-        # mesure des dimensions : L et l libres, les cases de la piece
-        # elle-meme ne doivent pas compter comme deja expliquees
-        sauve = noteur.explique.copy()
+    for i_c, (s, x, y, th, m) in enumerate(choisis):
+        if i_c in deduites:
+            # porteuse deduite, entierement cachee : rien a mesurer
+            gardes.append((s, x, y, th, m, (m.L, m.l, m.h), 0.0, 1.0))
+            continue
+        # mesures : les cases de la piece elle-meme ne doivent pas compter
+        # comme deja expliquees ; celles des AUTRES pieces si (conflit,
+        # piece posee dessus : la part cachee)
+        sauve = noteur.sauver()
         noteur.reexpliquer([c for c in choisis if (c[1], c[2]) != (x, y)])
-        e, _ = noteur.affiner([x], [y], [th], m.L, m.l, m.h, iterations=10,
-                              pas=(0.5, 0.5, np.radians(1.0)), taille=True)
-        noteur.explique = sauve
+        _, det = noteur.noter_m([x], [y], [th], m, detail=True)
+        h_mes = float(det["h_mes"][0])
+        cachee = float(det["cachee"][0])
+        # mesure des dimensions : L et l libres
+        e, _ = noteur.affiner_m([x], [y], [th], m, iterations=10,
+                                pas=(0.5, 0.5, np.radians(1.0)), taille=True)
+        noteur.restaurer(sauve)
         L_mes, l_mes = float(e[0, 3]), float(e[0, 4])
         if not np.isfinite(h_mes):
-            h_mes = m.h
+            h_mes = m.haut
+        h_mes -= m.base             # epaisseur mesuree de la piece
         ecart = float(np.sqrt((L_mes - m.L) ** 2 + (l_mes - m.l) ** 2 + (h_mes - m.h) ** 2))
         if ecart > 2 * tolerance:
             autres.append("rectangle {:.0f} x {:.0f} mm, {:.0f} mm de haut ecarte "
                           "(score {:.2f}, ecart {:.0f} mm)".format(L_mes, l_mes, h_mes, s, ecart))
             continue
+        # une piece en partie cachee est moins sure : on le dit
+        gardes.append((s * (1.0 - 0.5 * cachee), x, y, th, m,
+                       (L_mes, l_mes, h_mes), ecart, cachee))
+
+    # piles : porteuse de chaque piece (-1 : posee sur un objet non vu)
+    supports = relier_piles([(g[1], g[2], g[3], g[4]) for g in gardes])
+    supports = [None if sp == -1 else sp for sp in supports]
+
+    pieces: List[PieceModele] = []
+    rects = []
+    for i, (s, x, y, th, m, dims_mes, ecart, cachee) in enumerate(gardes):
         th_n = (th + np.pi / 2) % np.pi - np.pi / 2
         T_t = np.eye(4)
         c, s_ = np.cos(th_n), np.sin(th_n)
         T_t[:3, :3] = [[c, -s_, 0], [s_, c, 0], [0, 0, 1]]
         # la hauteur du MODELE : la mesure a servi a le choisir, et elle est
         # biaisee par le lissage sur une piece etroite
-        T_t[:3, 3] = [x / 1000.0, y / 1000.0, m.h / 1000.0]
+        T_t[:3, 3] = [x / 1000.0, y / 1000.0, m.haut / 1000.0]
         T_c = tab.T_ct @ T_t
         coins = np.array([[-m.L, -m.l], [m.L, -m.l], [m.L, m.l], [-m.L, m.l]]) / 2.0
         R2 = np.array([[c, -s_], [s_, c]])
         xy = (coins @ R2.T + [x, y]) / 1000.0
-        coins3 = np.c_[xy, np.full(4, m.h / 1000.0), np.ones(4)]
+        coins3 = np.c_[xy, np.full(4, m.haut / 1000.0), np.ones(4)]
         cc = (tab.T_ct @ coins3.T)[:3]
         uv = (scene.K @ (cc / cc[2]))[:2].T
-        pieces.append(PieceModele(len(pieces) + 1, m.face, (L_mes, l_mes, h_mes),
-                                  ecart, T_c, T_t, uv.astype(np.int32), 0, m.type,
-                                  score=float(np.clip(s, 0, 1))))
+        sup = supports[i]
+        pieces.append(PieceModele(i + 1, m.face, dims_mes, ecart, T_c, T_t,
+                                  uv.astype(np.int32), 0, m.type,
+                                  support=None if sup is None else sup + 1,
+                                  hauteur_base=float(m.base),
+                                  dessus=[k + 1 for k, sk in enumerate(supports) if sk == i],
+                                  score=float(np.clip(s, 0, 1)), cachee=cachee))
         rects.append((x, y, th_n, m.L, m.l))
 
     # zones sans mesure, comme vision.detecter
@@ -1380,7 +2066,12 @@ def dessiner(scene: Scene, res: Resultat) -> np.ndarray:
     for p in res.pieces:
         if hasattr(p, "score"):
             u, v = p.contour.mean(axis=0).astype(int)
-            cv2.putText(img, "score {:.2f}".format(p.score), (u - 40, v + 24),
+            texte = "score {:.2f}".format(p.score)
+            if getattr(p, "support", None) is not None:
+                texte += " sur {}".format(p.support)
+            elif getattr(p, "hauteur_base", 0.0) > 0:
+                texte += " sur ?"
+            cv2.putText(img, texte, (u - 40, v + 24),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 255, 255), 1,
                         cv2.LINE_AA)
     return img

@@ -16,6 +16,17 @@ posees), les faux positifs, l'erreur de position du centre de la face
 superieure dans le plan de la table, l'erreur d'angle, la justesse du type
 et de la face, et le rappel des pieces etroites et des pieces en contact.
 
+Empilements (--empilement) : les memes configurations, des scenes de 8
+pieces dont 3 posees SUR une autre (en travers, dans le meme sens, decalee
+de cote, ou en tas de trois) et 1 contre une autre. On mesure en plus le
+rappel des pieces empilees et des porteuses, la justesse du type et de la
+face des pieces empilees, celle du SUPPORT annonce (table, ou la bonne
+porteuse) et l'ordre de prise : part des scenes ou aucune porteuse n'est
+prise avant la piece qu'elle porte, et ou la premiere piece a prendre est
+vraiment libre. Puis la meme chose pour l'etage geometrique de
+perception.py (ajustement des masques du reseau), le reseau remplace par
+des masques parfaits tires de la verite (OracleMasques).
+
 Reel : pas de verite au millimetre, seulement le nombre de pieces trouvees
 (compare au nombre de pieces posees, compte a l'oeil) et l'ecart moyen des
 dimensions mesurees aux dimensions du modele.
@@ -87,11 +98,15 @@ def apparier_image(pieces, centres, tolerance: float = 18.0):
     return len(pd), len(det) - len(pd)
 
 
-def scenes(config: str, nombre: int, graine: int = 0):
+def scenes(config: str, nombre: int, graine: int = 0, empilees: int = 0):
     c = CONFIGS[config]
     for k in range(nombre):
         rng = np.random.default_rng(1000 * graine + k)
-        pcs = sy.placer(rng, 8, sy.TYPES, zone=c["zone"], touchantes=3)
+        if empilees:
+            pcs = sy.placer(rng, 8, sy.TYPES, zone=c["zone"], touchantes=1,
+                            empilees=empilees)
+        else:
+            pcs = sy.placer(rng, 8, sy.TYPES, zone=c["zone"], touchantes=3)
         bruit = sy.Bruit(reflet=c.get("reflet", False), lissage=c.get("lissage", 5))
         yield sy.scene(pcs, c["cam"], bruit, graine=k, couleur=c["couleur"],
                        motif=c["motif"], table=c["table"])
@@ -129,6 +144,103 @@ def evaluer_synthetique(nombre: int, params: dict, configs, methodes):
     return lignes
 
 
+def evaluer_empilement(nombre: int, params: dict, configs, detecteur=None,
+                       empilees: int = 3):
+    """Scenes avec empilements (voir l'en-tete), methode par modele."""
+    detecteur = detecteur or vision_modele.detecter
+    lignes = []
+    for config in configs:
+        bilan = sy.Bilan()
+        t0 = time.time()
+        for sc, verite in scenes(config, nombre, graine=7, empilees=empilees):
+            res = detecteur(sc, sy.TYPES, **params)
+            bilan.ajouter(sy.comparer(res.pieces, verite))
+        lignes.append((config, bilan.resume(), (time.time() - t0) / nombre, bilan))
+    print("\nSCENES AVEC EMPILEMENTS ({} par configuration, 8 pieces dont {} "
+          "posees sur une autre)".format(nombre, empilees))
+    print("{:8s} {:>6s} {:>4s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} "
+          "{:>6s} {:>6s} {:>6s} {:>5s}".format(
+              "config", "rappel", "faux", "empil", "port", "tf", "tf_emp", "supp",
+              "s_emp", "pos", "p_emp", "p_port", "ordre", "1re", "s"))
+    for config, r, t, _ in lignes:
+        print("{:8s} {:6.2f} {:4d} {:6.2f} {:6.2f} {:6.2f} {:6.2f} {:6.2f} {:6.2f} "
+              "{:6.1f} {:6.1f} {:6.1f} {:6.2f} {:6.2f} {:5.1f}".format(
+                  config, r["rappel"], r["faux"], r["rappel_empilees"],
+                  r["rappel_porteuses"], min(r["type"], r["face"]),
+                  r["type_face_empilees"], r["support"], r["support_empilees"],
+                  r["pos_med"], r["pos_med_empilees"], r["pos_med_porteuses"],
+                  r["ordre_ok"], r["premiere_libre"], t))
+    print("  (empil, port : rappel des pieces empilees, des porteuses ; tf : type "
+          "et face justes ;\n   supp : support juste ; pos : erreur de position "
+          "mediane, mm ; ordre : scenes sans\n   porteuse prise avant sa piece ; "
+          "1re : scenes dont la premiere prise est libre)")
+    return lignes
+
+
+class OracleMasques:
+    """Un faux reseau de segmentation qui rend les masques EXACTS des pieces
+    (partie visible de chacune, d'apres la verite de la scene synthetique) :
+    on mesure ainsi l'etage geometrique de perception.py (ajustement par
+    masque, piles) seul, comme avec un reseau parfait."""
+
+    def __init__(self, verite, types, aire_min: int = 30):
+        self.names = {k: n for k, n in enumerate(sorted(types))}
+        idx = {n: k for k, n in self.names.items()}
+        masques, cls = [], []
+        for i, p in enumerate(verite.pieces):
+            m = verite.objet == i
+            if m.sum() >= aire_min:
+                masques.append(m)
+                cls.append(idx[p.type])
+        self.masques = np.array(masques, bool).reshape(-1, *verite.objet.shape)
+        self.cls = np.array(cls, float)
+
+    def predict(self, image, **kw):
+        import types as _t
+
+        class T:
+            def __init__(self, a):
+                self.a = a
+
+            def cpu(self):
+                return self
+
+            def numpy(self):
+                return self.a
+
+        n = len(self.masques)
+        return [_t.SimpleNamespace(
+            masks=_t.SimpleNamespace(data=T(self.masques.astype(np.float32))) if n else None,
+            boxes=_t.SimpleNamespace(cls=T(self.cls), conf=T(np.full(n, 0.9))))]
+
+
+def evaluer_masques(nombre: int, configs, empilees: int = 3):
+    """Perception (reseau + geometrie) sur les scenes empilees, le reseau
+    remplace par OracleMasques."""
+    import perception
+    print("\nETAGE GEOMETRIQUE DE perception.py, MASQUES PARFAITS ({} scenes, {} "
+          "pieces empilees sur 8)".format(nombre, empilees))
+    print("{:8s} {:>6s} {:>4s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} {:>6s} "
+          "{:>6s}".format("config", "rappel", "faux", "empil", "port", "tf", "tf_emp",
+                          "supp", "s_emp", "pos", "ordre", "1re"))
+    for config in configs:
+        bilan = sy.Bilan()
+        for sc, verite in scenes(config, nombre, graine=7, empilees=empilees):
+            gris = np.full(sc.profondeur.shape + (3,), 128, np.uint8)
+            capture = {"profondeur": sc.profondeur.astype(np.float32), "K": sc.K,
+                       "couleur": gris}
+            p = perception.Perception(types=sy.TYPES, modele=False)
+            p.reseau, p.imgsz = OracleMasques(verite, sy.TYPES), 864
+            bilan.ajouter(sy.comparer(p.detecter(capture), verite))
+        r = bilan.resume()
+        print("{:8s} {:6.2f} {:4d} {:6.2f} {:6.2f} {:6.2f} {:6.2f} {:6.2f} {:6.2f} {:6.1f} "
+              "{:6.2f} {:6.2f}".format(config, r["rappel"], r["faux"], r["rappel_empilees"],
+                                       r["rappel_porteuses"], min(r["type"], r["face"]),
+                                       r["type_face_empilees"], r["support"],
+                                       r["support_empilees"], r["pos_med"], r["ordre_ok"],
+                                       r["premiere_libre"]))
+
+
 def evaluer_reel(params: dict, methodes):
     dossier = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captures")
     print("\nCAPTURES REELLES (pieces posees ; trouvees ; justes et fausses d'apres "
@@ -164,6 +276,8 @@ def main():
                     help="configuration(s) a evaluer (defaut : toutes)")
     ap.add_argument("--methode", action="append", choices=("taches", "modele"),
                     help="methode(s) a evaluer (defaut : les deux)")
+    ap.add_argument("--empilement", action="store_true",
+                    help="evaluer aussi des scenes avec des pieces empilees")
     ap.add_argument("--sans-reel", action="store_true")
     ap.add_argument("--sans-synthese", action="store_true")
     ap.add_argument("--param", action="append", default=[], metavar="NOM=VALEUR",
@@ -176,6 +290,9 @@ def main():
     methodes = args.methode or ["taches", "modele"]
     if not args.sans_synthese:
         evaluer_synthetique(args.scenes, params, args.config or list(CONFIGS), methodes)
+    if args.empilement and "modele" in methodes:
+        evaluer_empilement(args.scenes, params, args.config or list(CONFIGS))
+        evaluer_masques(args.scenes, args.config or list(CONFIGS))
     if not args.sans_reel:
         evaluer_reel(params, methodes)
 

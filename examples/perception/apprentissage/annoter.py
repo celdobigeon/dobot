@@ -26,6 +26,8 @@ CLAVIER
   Tab        piece suivante ;  x : supprimer la selection ;  z : annuler
   Espace     VALIDER l'image, enregistrer, passer a la suivante
   v          basculer le statut valide / a revoir
+  r          REJETER l'image (annotation impossible ou fausse) : exclue de
+             l'entrainement et des revues ; r a nouveau pour la reprendre
   n / p      image suivante / precedente (enregistre si modifiee)
   s          enregistrer ;  h : masquer / montrer les masques
   q, Echap   enregistrer et quitter
@@ -52,7 +54,7 @@ MODES = ("nouvelle", "point +", "point -")
 AIDE = ["clic: choisir/ajouter  glisser: boite  Maj+clic: +  Ctrl/Alt+clic: -  "
         "clic droit: supprimer  m: mode",
         "1-9 classe  Tab suivante  x suppr  z annuler  ESPACE valider+suivante  "
-        "v statut  n/p image  s sauver  h masques  q fin"]
+        "v statut  r rejeter  n/p image  s sauver  h masques  q fin"]
 
 
 class Annotateur:
@@ -257,6 +259,17 @@ class Annotateur:
         elif k == ord("v"):
             self.ann["statut"] = "a_revoir" if self.ann.get("statut") == "valide" else "valide"
             self.enregistrer()
+        elif k == ord("r"):
+            # une image qu'on ne sait pas annoter juste fait plus de tort a
+            # l'entrainement qu'une image absente : on l'ecarte, sans
+            # perdre ses masques (r a nouveau la remet "a revoir")
+            rejetee = self.ann.get("statut") == "rejetee"
+            self.ann["statut"] = "a_revoir" if rejetee else "rejetee"
+            self.enregistrer()
+            self.dire("image reprise (a revoir)" if rejetee
+                      else "image REJETEE : exclue de l'entrainement")
+            if not rejetee:
+                self.aller(self.i + 1)
         elif k == ord(" "):
             self.ann["statut"] = "valide"
             self.enregistrer()
@@ -284,13 +297,16 @@ class Annotateur:
         img = cv2.resize(img, None, fx=self.echelle, fy=self.echelle,
                          interpolation=cv2.INTER_LINEAR)
         valide = self.ann.get("statut") == "valide"
+        rejetee = self.ann.get("statut") == "rejetee"
         haut = "{}  [{}/{}]  {}  |  {} pieces  |  classe: {}  |  mode: {}{}".format(
-            self.nom, self.i + 1, len(self.noms), "VALIDE" if valide else "a revoir",
+            self.nom, self.i + 1, len(self.noms),
+            "VALIDE" if valide else ("REJETEE" if rejetee else "a revoir"),
             len(self.masques), self.classe, MODES[self.mode], "  *" if self.modifie else "")
         lignes = [haut, self.message if time.time() - self.t_message < 3 else ""]
         # bandeaux AU-DESSUS et AU-DESSOUS de l'image : rien n'en est cache
         dessus = _bandeau(img.shape[1], self.H_HAUT, lignes,
-                          (60, 140, 60) if valide else (50, 50, 50))
+                          (60, 140, 60) if valide else
+                          ((40, 40, 170) if rejetee else (50, 50, 50)))
         classes = "  ".join("{}={}".format(k + 1, t) for k, t in enumerate(self.types))
         dessous = _bandeau(img.shape[1], 60, [classes] + AIDE, (50, 50, 50))
         return np.vstack([dessus, img, dessous])
@@ -315,7 +331,8 @@ def main():
     noms = [n for n in commun.noms_captures(a.dataset)
             if commun.lire_annotation(n, a.dataset) is not None]
     if not a.tout:
-        noms = [n for n in noms if commun.lire_annotation(n, a.dataset).get("statut") != "valide"]
+        noms = [n for n in noms if commun.lire_annotation(n, a.dataset).get("statut")
+                not in ("valide", "rejetee")]
     if a.depuis:
         noms = [n for n in noms if n >= a.depuis]
     if not noms:
@@ -334,7 +351,9 @@ def main():
     cv2.destroyAllWindows()
     n_val = sum(1 for n in commun.noms_captures(a.dataset)
                 if (commun.lire_annotation(n, a.dataset) or {}).get("statut") == "valide")
-    print("{} images validees. Ensuite : entrainer.py".format(n_val))
+    n_rej = sum(1 for n in commun.noms_captures(a.dataset)
+                if (commun.lire_annotation(n, a.dataset) or {}).get("statut") == "rejetee")
+    print("{} images validees, {} rejetees. Ensuite : entrainer.py".format(n_val, n_rej))
 
 
 if __name__ == "__main__":

@@ -38,6 +38,17 @@ verifie.
      en partie par une autre n'est pas tiree vers sa partie visible.
   6. CHOIX : IoU x accord de la hauteur mesuree (x 0.8 si le type differe
      de la classe du reseau). IoU trop faible : rejet.
+  7. PILES : une piece peut etre posee sur une autre. Les bases essayees
+     (bases_autour) : la table, les sommets de pile que la profondeur
+     PLATE autour du masque montre (la porteuse depasse), et toutes si la
+     hauteur mesuree n'est celle d'aucune piece sur la table. C'est
+     l'epaisseur (sommet - base) qui dit le type et la face. Puis chaque
+     piece empilee est reliee a sa porteuse (sommet a la hauteur de sa
+     base, empreintes qui se recouvrent) ; sans porteuse, elle est
+     reposee sur le sommet d'une piece vue sous elle, ou cette piece,
+     mal mesuree car cachee, est re-ajustee a la bonne hauteur, ou enfin
+     la piece est reposee sur la table (pas de pile fantome). support,
+     hauteur_base, dessus ; ordre_de_prise(pieces).
 
 Sans modele entraine (ou sans image couleur), repli sur la detection
 geometrique seule (vision_modele si present, sinon vision).
@@ -67,6 +78,9 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 if ICI not in sys.path:
     sys.path.insert(0, ICI)
 import vision  # noqa: E402
+
+#: l'ordre dans lequel saisir les pieces (les libres d'abord, du haut vers le bas)
+ordre_de_prise = vision.ordre_de_prise
 
 #: types de pieces par defaut (mm) ; toujours configurables
 TYPES = {"epaisse": (17.0, 19.0, 68.0), "fine": (8.0, 17.0, 68.0)}
@@ -315,6 +329,7 @@ class Ajustement:
     n_points: int
     score: float
     contour: np.ndarray
+    base: float = 0.0                     # mm, hauteur de la face d'appui
 
 
 class _Noteur:
@@ -336,8 +351,8 @@ class _Noteur:
         self.T = vue.T_cp @ table.T_ct
         self.vue = vue
 
-    def iou(self, x, y, th, L, l, h) -> float:
-        q = coins(pose_table(x, y, th, h), L, l, h)
+    def iou(self, x, y, th, L, l, h, base: float = 0.0) -> float:
+        q = coins(pose_table(x, y, th, base + h), L, l, h)
         q = q @ self.T[:3, :3].T + self.T[:3, 3]
         if np.any(q[:, 2] <= 0):
             return 0.0
@@ -353,21 +368,21 @@ class _Noteur:
         return inter / union if union else 0.0
 
     def chercher(self, x, y, th, L, l, h, pas=(0.006, 0.006, np.radians(10)),
-                 fin=(0.0003, 0.0003, np.radians(0.5))):
+                 fin=(0.0003, 0.0003, np.radians(0.5)), base: float = 0.0):
         """Recherche par motifs (coordonnee par coordonnee, pas divises par
         deux quand rien ne s'ameliore) : sans gradient, robuste aux plateaux
         d'un score en nombre de pixels."""
         p = np.array([x, y, th], float)
         pas = np.array(pas, float)
         fin = np.array(fin, float)
-        meilleur = self.iou(*p, L, l, h)
+        meilleur = self.iou(*p, L, l, h, base)
         for _ in range(200):
             ameliore = False
             for k in range(3):
                 for sgn in (1, -1):
                     q = p.copy()
                     q[k] += sgn * pas[k]
-                    s = self.iou(*q, L, l, h)
+                    s = self.iou(*q, L, l, h, base)
                     if s > meilleur + 1e-6:
                         p, meilleur, ameliore = q, s, True
                         break
@@ -396,15 +411,76 @@ def _rectangle(xy: np.ndarray) -> Tuple[float, float, float]:
     return cx / 1000.0, cy / 1000.0, th
 
 
+def bases_de_pile(types: Dict[str, Sequence[float]], etages: int = 2) -> List[float]:
+    """Hauteurs ou une piece peut etre posee (mm) : la table, et le sommet
+    d'une pile de 1 a `etages` pieces couchees (a plat ou sur la tranche).
+    Voir vision_modele.bases_de_pile."""
+    hs = sorted({round(forme(d, f)[2], 1) for d in types.values()
+                 for f in ("a plat", "sur la tranche")})
+    niveaux, courant = {0.0}, {0.0}
+    for _ in range(etages):
+        courant = {round(b + h, 1) for b in courant for h in hs}
+        niveaux |= courant
+    return sorted(niveaux)
+
+
+def bases_autour(masque: np.ndarray, table: Table, proj, possibles: Sequence[float],
+                 ignorer: Optional[np.ndarray] = None, part: float = 0.10) -> List[float]:
+    """
+    Les bases (mm) que la profondeur AUTOUR du masque rend plausibles : une
+    piece posee sur une autre est entouree, en partie, par la face
+    superieure de sa porteuse, qui depasse. On lit la hauteur des points de
+    profondeur dans un anneau de 4 a 14 pixels autour du masque (les
+    autres masques compris : la porteuse en a souvent un), seulement les
+    points d'une surface plate, et une base est retenue si au moins `part`
+    de ces points sont a sa hauteur, a 2.5 mm pres. La table (0) est
+    toujours possible.
+    """
+    u, v, ok = proj
+    m8 = masque.astype(np.uint8)
+    anneau = (cv2.dilate(m8, np.ones((29, 29), np.uint8)) > 0) & \
+        ~(cv2.dilate(m8, np.ones((9, 9), np.uint8)) > 0)
+    dedans = np.zeros_like(ok)
+    dedans[ok] = anneau[np.round(v[ok]).astype(np.int32), np.round(u[ok]).astype(np.int32)]
+    # seulement des points PLATS (hauteur a 3 mm pres sur 5 x 5 pixels) : le
+    # bord lisse de toute piece passe par toutes les hauteurs
+    H = np.where(table.valides, table.hauteur, np.nan).astype(np.float32)
+    noyau = np.ones((5, 5), np.uint8)
+    etendue = (cv2.dilate(np.nan_to_num(H, nan=-1.0), noyau)
+               - cv2.erode(np.nan_to_num(H, nan=1.0), noyau))
+    dedans &= table.valides & (etendue < 0.003)
+    h = table.hauteur[dedans] * 1000.0
+    sortie = [0.0]
+    if len(h) < 30:
+        return sortie
+    for b in possibles:
+        if b > 0 and np.mean(np.abs(h - b) < 2.5) >= part:
+            sortie.append(float(b))
+    return sortie
+
+
 def ajuster_masque(masque: np.ndarray, table: Table, vue: VueCouleur,
                    proj: Tuple[np.ndarray, np.ndarray, np.ndarray],
                    types: Dict[str, Sequence[float]], classe: Optional[str] = None,
                    ignorer: Optional[np.ndarray] = None,
-                   debout: bool = True) -> Optional[Ajustement]:
+                   debout: bool = True,
+                   bases: Optional[Sequence[float]] = None,
+                   sommet: Optional[float] = None) -> Optional[Ajustement]:
     """
     La piece de taille connue qui explique le mieux un masque de l'image de
     la vue (voir l'en-tete du module). `proj` : projeter_profondeur(...).
     `classe` : le type annonce par le reseau (simple preference).
+
+    `bases` : hauteurs (mm) ou la piece peut etre posee. None : la table,
+    et les sommets de piles que la profondeur autour du masque rend
+    plausibles (bases_autour). La hauteur mesuree de la face superieure
+    vaut base + epaisseur : c'est l'EPAISSEUR qui dit le type et la face.
+    A egalite, la table (une pile coute 3 % du score). Une hauteur mesuree
+    qu'aucune piece posee sur la table n'atteint a 5 mm pres (25, 34 mm)
+    s'explique sans doute par une pile : toutes les bases sont alors essayees,
+    meme si la porteuse ne depasse pas. `sommet` (mm) : n'essayer que les
+    poses dont la face superieure est a cette hauteur (la porteuse d'une
+    piece deja vue, dont on connait la base).
     """
     masque = masque.astype(bool)
     if masque.sum() < 30:
@@ -414,6 +490,12 @@ def ajuster_masque(masque: np.ndarray, table: Table, vue: VueCouleur,
     erode = cv2.erode(masque.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
     if erode.sum() < 20:
         erode = masque
+    if ignorer is not None:
+        # pas les points des autres pieces (une piece posee dessus, ou celle
+        # qui la porte, dont le bord du masque deborde un peu)
+        garde = erode & ~(cv2.dilate(ignorer.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0)
+        if garde.sum() >= 20:
+            erode = garde
     dedans = np.zeros_like(ok)
     dedans[ok] = erode[np.round(v[ok]).astype(np.int32), np.round(u[ok]).astype(np.int32)]
     h_pts = table.hauteur[dedans]
@@ -428,13 +510,31 @@ def ajuster_masque(masque: np.ndarray, table: Table, vue: VueCouleur,
     if n_mesures >= 30 and len(h_pts) < 0.25 * n_mesures:
         return None
 
+    if bases is None:
+        possibles = bases_de_pile(types)
+        bases = bases_autour(masque, table, proj, possibles, ignorer)
+        if np.isfinite(h_mes) and min(abs(forme(d, f)[2] - h_mes) for d in types.values()
+                                      for f in FACES) >= 5.0:
+            bases = sorted(set(bases) | set(possibles))
+    if sommet is not None:
+        bases = bases_de_pile(types)
     modeles = []
-    for nom, dims in types.items():
-        for face in FACES if debout else FACES[:2]:
-            modeles.append((nom, face, forme(dims, face)))
-    if np.isfinite(h_mes):
-        proches = [m for m in modeles if abs(m[2][2] - h_mes) < 8.0]
-        modeles = proches or modeles
+    for b in bases:
+        for nom, dims in types.items():
+            for face in FACES if debout else FACES[:2]:
+                if b > 0 and face == "debout":
+                    continue
+                modeles.append((nom, face, forme(dims, face), float(b)))
+    if sommet is not None:
+        modeles = [m for m in modeles if abs(m[3] + m[2][2] - sommet) < 0.6]
+    elif np.isfinite(h_mes):
+        # la piece sur la table a 8 mm pres (la profondeur lisse les pieces
+        # etroites) ; empilee, a 5 mm pres (les hauteurs sont serrees)
+        proches = [m for m in modeles
+                   if abs(m[3] + m[2][2] - h_mes) < (8.0 if m[3] == 0 else 5.0)]
+        modeles = proches or [m for m in modeles if m[3] == 0]
+    else:
+        modeles = [m for m in modeles if m[3] == 0]
 
     noteur = _Noteur(masque, ignorer, table, vue)
     ys, xs = np.nonzero(masque)
@@ -442,35 +542,37 @@ def ajuster_masque(masque: np.ndarray, table: Table, vue: VueCouleur,
     if len(pix) > 3000:
         pix = pix[np.linspace(0, len(pix) - 1, 3000).astype(int)]
     meilleur: Optional[Ajustement] = None
-    for nom, face, (L, l, h) in modeles:
-        Lm, lm, hm = L / 1000.0, l / 1000.0, h / 1000.0
+    for nom, face, (L, l, h), b in modeles:
+        Lm, lm, hm, bm = L / 1000.0, l / 1000.0, h / 1000.0, b / 1000.0
         departs = []
-        haut = P_t[P_t[:, 2] > 0.5 * hm] if len(P_t) else P_t
+        haut = P_t[P_t[:, 2] > bm + 0.5 * hm] if len(P_t) else P_t
         if len(haut) >= 20:
             departs.append(_rectangle(haut[:, :2]))
-        departs.append(_rectangle(_sur_plan(pix, vue, table, hm / 2)))
+        departs.append(_rectangle(_sur_plan(pix, vue, table, bm + hm / 2)))
         essais = []
         for (x0, y0, t0) in departs:
             # quatre orientations de depart : un depart a 90 degres de la
             # bonne reste coince dans un optimum local (piece debout surtout)
             for dt in (0.0, np.pi / 4, np.pi / 2, 3 * np.pi / 4):
                 essais.append(noteur.chercher(x0, y0, t0 + dt, Lm, lm, hm,
-                                              fin=(0.002, 0.002, np.radians(3))))
+                                              fin=(0.002, 0.002, np.radians(3)), base=bm))
         p, _ = max(essais, key=lambda e: e[1])
-        p, iou = noteur.chercher(*p, Lm, lm, hm, pas=(0.002, 0.002, np.radians(4)))
+        p, iou = noteur.chercher(*p, Lm, lm, hm, pas=(0.002, 0.002, np.radians(4)), base=bm)
         accord = 1.0
         if np.isfinite(h_mes):
             # la profondeur lisse les pieces etroites : tolerance large
-            accord = float(np.exp(-0.5 * ((h_mes - h) / 5.0) ** 2))
+            accord = float(np.exp(-0.5 * ((h_mes - (b + h)) / 5.0) ** 2))
         score = iou * (0.5 + 0.5 * accord)
         if classe and nom != classe:
             score *= 0.8
+        if b > 0:
+            score *= 0.97
         if meilleur is None or score > meilleur.score:
             th = (p[2] + np.pi / 2) % np.pi - np.pi / 2
-            T_t = pose_table(p[0], p[1], th, hm)
+            T_t = pose_table(p[0], p[1], th, bm + hm)
             meilleur = Ajustement(nom, face, (L, l, h), T_t, iou, h_mes,
                                   int(len(h_pts)), score,
-                                  silhouette(T_t, (L, l, h), table, vue))
+                                  silhouette(T_t, (L, l, h), table, vue), base=float(b))
     return meilleur
 
 
@@ -484,7 +586,11 @@ class PieceVue(vision.Piece):
     T_robot (si l'etalonnage T_robot_camera est fourni), IoU masque /
     silhouette. `contour` est ici dans l'image de la VUE (couleur brute ou
     recalee), et `dimensions` sont celles du modele, sauf la hauteur,
-    mesuree par la profondeur quand il y en a."""
+    mesuree par la profondeur quand il y en a (epaisseur : sommet moins
+    base). Empilement (champs de vision.Piece) : `support` (numero de la
+    porteuse, None : la table, ou un objet non identifie si hauteur_base >
+    0), `hauteur_base` (mm), `dessus` (numeros des pieces posees dessus) ;
+    ordre_de_prise(pieces) dit dans quel ordre les saisir."""
     confiance: float = 0.0
     masque: Optional[np.ndarray] = None
     T_robot: Optional[np.ndarray] = None
@@ -604,6 +710,7 @@ class Perception:
         confs = res.boxes.conf.cpu().numpy()
         ordre = np.argsort(-confs)
         pieces: List[PieceVue] = []
+        ajustements = []
         for i in ordre:
             if classes[i] not in self.types:
                 continue
@@ -613,26 +720,128 @@ class Perception:
                                 classe=classes[i], ignorer=autres)
             if aj is None or aj.iou < self.iou_min:
                 continue
-            # doublon : deux masques pour la meme piece
+            # doublon : deux masques pour la meme piece (au meme endroit ET a
+            # la meme hauteur : une piece en travers sur une autre a presque
+            # le meme centre vu de dessus)
             if any(np.linalg.norm(p.T_table[:2, 3] - aj.T_table[:2, 3]) < 0.008
-                   for p in pieces):
+                   and abs(p.T_table[2, 3] - aj.T_table[2, 3]) < 0.005 for p in pieces):
                 continue
             pieces.append(self._piece(len(pieces) + 1, aj, float(confs[i]) * aj.iou,
                                       masques[i], table, "reseau"))
+            ajustements.append((aj, i))
+        pieces = self._piles(pieces, ajustements, masques, classes, confs, table, vue, proj)
         self.durees["ajustement"] = time.perf_counter() - t
+        return pieces
+
+    def _piles(self, pieces, ajustements, masques, classes, confs, table, vue, proj):
+        """
+        PILES. Une piece ajustee sur une base > 0 doit reposer sur une autre
+        piece detectee, dont le sommet nominal est a cette hauteur et dont
+        l'empreinte recouvre la sienne (vision_modele.relier_piles). Sinon :
+        si sa hauteur s'explique aussi par une piece sur la table, elle est
+        re-ajustee sur la table (pas de pile fantome) ; si non (34 mm), elle
+        reste empilee, sur un objet non identifie (support None, hauteur_base
+        > 0 : la porteuse est cachee, ou le reseau ne l'a pas vue). Enfin
+        support et dessus sont remplis (numeros).
+        """
+        import vision_modele as vm
+        h_table = [forme(d, f)[2] for d in self.types.values() for f in FACES]
+
+        def decrire(p):
+            L, l, _ = forme(self.types[p.type], p.face)
+            h = round(p.T_table[2, 3] * 1000.0 - p.hauteur_base, 1)
+            return (p.T_table[0, 3] * 1000, p.T_table[1, 3] * 1000,
+                    np.arctan2(p.T_table[1, 0], p.T_table[0, 0]),
+                    vm.Modele(p.type, p.face, L, l, h, p.hauteur_base))
+
+        for k, p in enumerate(pieces):
+            if p.hauteur_base <= 0:
+                # sur la table, mais nettement plus haute que son modele :
+                # peut-etre posee sur une piece vue sous elle
+                if abs(p.dimensions[2] - forme(self.types[p.type], p.face)[2]) <= 4.0:
+                    continue
+            sup = vm.relier_piles([decrire(q) for q in pieces])[k]
+            if p.hauteur_base <= 0:
+                sup = -1
+            dessous = []
+            if sup == -1:
+                a = decrire(p)
+                for j, q in enumerate(pieces):
+                    if j == k or q.T_table[2, 3] >= p.T_table[2, 3] - 0.004:
+                        continue
+                    b = decrire(q)
+                    large = (b[0], b[1], b[2], vm.Modele(b[3].type, b[3].face, b[3].L + 10,
+                                                         b[3].l + 10, b[3].h, b[3].base))
+                    if vm.recouvrement(a, large) >= 0.08 * a[3].L * a[3].l:
+                        dessous.append(round(q.T_table[2, 3] * 1000.0, 1))
+            if sup == -1 and dessous:
+                # d'abord : la poser sur le sommet d'une piece vue sous elle
+                aj, i = ajustements[k]
+                autres = (masques[np.arange(len(masques)) != i].any(axis=0)
+                          if len(masques) > 1 else None)
+                aj2 = ajuster_masque(masques[i], table, vue, proj, self.types,
+                                     classe=classes[i], ignorer=autres,
+                                     bases=sorted(set(dessous)))
+                if aj2 is not None and aj2.iou >= self.iou_min and (
+                        p.hauteur_base > 0 or aj2.score >= 0.9 * aj.score):
+                    pieces[k] = p = self._piece(p.numero, aj2, float(confs[i]) * aj2.iou,
+                                                masques[i], table, "reseau")
+                    ajustements[k] = (aj2, i)
+                sup = vm.relier_piles([decrire(q) for q in pieces])[k]
+                if p.hauteur_base <= 0:
+                    continue
+            if sup == -1 and p.hauteur_base > 0:
+                # sinon : une piece detectee sous elle, a une autre hauteur,
+                # est la porteuse, en grande partie cachee, mal mesuree ; on
+                # la re-ajuste avec son sommet impose (la base de celle-ci)
+                a = decrire(p)
+                for j, q in enumerate(pieces):
+                    if j == k or q.T_table[2, 3] >= p.T_table[2, 3]:
+                        continue
+                    b = decrire(q)
+                    large = (b[0], b[1], b[2], vm.Modele(b[3].type, b[3].face, b[3].L + 10,
+                                                         b[3].l + 10, b[3].h, b[3].base))
+                    if vm.recouvrement(a, large) < 0.08 * a[3].L * a[3].l:
+                        continue
+                    _, i = ajustements[j]
+                    autres = (masques[np.arange(len(masques)) != i].any(axis=0)
+                              if len(masques) > 1 else None)
+                    aj2 = ajuster_masque(masques[i], table, vue, proj, self.types,
+                                         classe=classes[i], ignorer=autres,
+                                         sommet=p.hauteur_base)
+                    if aj2 is not None and aj2.iou >= 0.8 * self.iou_min:
+                        pieces[j] = self._piece(q.numero, aj2, float(confs[i]) * aj2.iou,
+                                                masques[i], table, "reseau")
+                        break
+                sup = vm.relier_piles([decrire(q) for q in pieces])[k]
+            haut = p.T_table[2, 3] * 1000.0
+            if sup == -1 and p.hauteur_base > 0 and min(abs(haut - h) for h in h_table) < 4.0:
+                aj, i = ajustements[k]
+                autres = (masques[np.arange(len(masques)) != i].any(axis=0)
+                          if len(masques) > 1 else None)
+                aj2 = ajuster_masque(masques[i], table, vue, proj, self.types,
+                                     classe=classes[i], ignorer=autres, bases=(0.0,))
+                if aj2 is not None and aj2.iou >= self.iou_min:
+                    pieces[k] = self._piece(p.numero, aj2, float(confs[i]) * aj2.iou,
+                                            masques[i], table, "reseau")
+        sup = vm.relier_piles([decrire(q) for q in pieces])
+        for k, p in enumerate(pieces):
+            p.support = None if sup[k] in (None, -1) else pieces[sup[k]].numero
+            p.dessus = [pieces[j].numero for j in range(len(pieces)) if sup[j] == k]
         return pieces
 
     def _piece(self, numero, aj: Ajustement, confiance, masque, table: Table,
                origine) -> PieceVue:
         L, l, h = aj.dims
-        h_mes = aj.h_mesure if np.isfinite(aj.h_mesure) else h
+        # epaisseur mesuree : hauteur du sommet moins celle de la base
+        h_mes = aj.h_mesure - aj.base if np.isfinite(aj.h_mesure) else h
         T_c = table.T_ct @ aj.T_table
         return PieceVue(numero, aj.face, (L, l, h_mes), abs(h_mes - h), T_c,
                         aj.T_table, aj.contour, int(masque.sum()), aj.type,
                         confiance=float(np.clip(confiance, 0, 1)), masque=masque,
                         T_robot=(None if self.T_robot_camera is None
                                  else self.T_robot_camera @ T_c),
-                        iou=aj.iou, origine=origine)
+                        iou=aj.iou, origine=origine, hauteur_base=aj.base)
 
     # -- repli geometrique --------------------------------------------------
     def _geometrie(self, capture, vue: Optional[VueCouleur]) -> List[PieceVue]:
@@ -661,7 +870,10 @@ class Perception:
                 conf = max(0.0, 1.0 - p.ecart / 10.0)
             pieces.append(PieceVue(p.numero, p.face, p.dimensions, p.ecart,
                                    p.T_camera, p.T_table, contour, p.pixels,
-                                   p.type, confiance=float(conf), masque=masque,
+                                   p.type, support=getattr(p, "support", None),
+                                   hauteur_base=getattr(p, "hauteur_base", 0.0),
+                                   dessus=list(getattr(p, "dessus", [])),
+                                   confiance=float(conf), masque=masque,
                                    T_robot=(None if self.T_robot_camera is None
                                             else self.T_robot_camera @ p.T_camera),
                                    origine="geometrie"))
@@ -708,6 +920,10 @@ def dessiner(image: np.ndarray, pieces: Sequence[vision.Piece]) -> np.ndarray:
                   "x{:.0f} y{:.0f} z{:.0f} {:.0f}deg".format(x, y, z, p.lacet)]
         if hasattr(p, "confiance"):
             lignes.append("conf {:.2f}".format(p.confiance))
+        if getattr(p, "support", None) is not None:
+            lignes.append("sur {}".format(p.support))
+        elif getattr(p, "hauteur_base", 0.0) > 0:
+            lignes.append("sur ? ({:.0f} mm)".format(p.hauteur_base))
         for k, texte in enumerate(lignes):
             org = (int(u) - 50, int(v) - 14 + 13 * k)
             cv2.putText(img, texte, org, cv2.FONT_HERSHEY_SIMPLEX, 0.37, (0, 0, 0),
