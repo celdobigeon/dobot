@@ -423,22 +423,31 @@ class Pilote:
         """Outil actuellement monte."""
         return catalogue_outil(self.programme.outil)
 
-    def actionner(self, actif: bool = True, commentaire: str = "") -> "Pilote":
+    def actionner(self, actif: bool = True, commentaire: str = "",
+                  couper: bool = True) -> "Pilote":
         """
         Commande l'outil monte : ventouse aspirante, pince fermee, laser
         allume. Sans effet pour un outil passif comme le porte-stylo.
+
+        Sur le robot reel, ouvrir la pince ou relacher la ventouse fait
+        SOUFFLER la pompe ; `couper` (vrai par defaut) l'arrete apres le
+        mouvement suivant (ou 1 s apres, en fin de programme), sans pause
+        ajoutee. `couper=False` la laisse tourner.
         """
         self.programme.ajouter(Instruction(type="OUTIL", etat=bool(actif),
-                                           commentaire=commentaire))
+                                           commentaire=commentaire,
+                                           couper=bool(couper)))
         return self
 
-    def ventouse(self, actif: bool = True, commentaire: str = "") -> "Pilote":
+    def ventouse(self, actif: bool = True, commentaire: str = "",
+                 couper: bool = True) -> "Pilote":
         """Active ou relache la ventouse (alias lisible de `actionner`)."""
-        return self.actionner(actif, commentaire)
+        return self.actionner(actif, commentaire, couper)
 
-    def pince(self, fermee: bool = True, commentaire: str = "") -> "Pilote":
+    def pince(self, fermee: bool = True, commentaire: str = "",
+              couper: bool = True) -> "Pilote":
         """Ferme ou ouvre la pince (alias lisible de `actionner`)."""
-        return self.actionner(fermee, commentaire)
+        return self.actionner(fermee, commentaire, couper)
 
     # -- entrees / sorties tout-ou-rien ------------------------------------
 

@@ -73,6 +73,21 @@ class TestPompePilote(unittest.TestCase):
         t = self.cycle("ventouse")
         self.assertEqual(t[-2:], COUPURE)
 
+    def test_couper_false_laisse_la_pompe(self):
+        p = Pilote(outil="pince")
+        p.repli()
+        p.pince(True)
+        p.pince(False, couper=False)
+        p.repli()
+        self.assertNotIn(COUPURE[1], _envoyer(p, "pince"))
+
+    def test_couper_true_explicite(self):
+        p = Pilote(outil="pince")
+        p.repli()
+        p.pince(False, couper=True)
+        p.repli()
+        self.assertEqual(_envoyer(p, "pince")[-2:], COUPURE)
+
     def test_pas_de_coupure_si_la_pince_reste_fermee(self):
         p = Pilote(outil="pince")
         p.repli()

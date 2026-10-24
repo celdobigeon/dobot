@@ -370,7 +370,7 @@ class PontReel:
             # le mouvement suivant : elle souffle pendant ce mouvement, le
             # temps que la pince s'ouvre, sans pause ajoutee au cycle.
             if ins.type == "OUTIL" and outil in ("pince", "ventouse"):
-                couper = not bool(ins.etat)
+                couper = (not bool(ins.etat)) and bool(getattr(ins, "couper", True))
             elif couper and ins.type in ("MOVJ", "MOVL", "MOVC"):
                 commandes.extend(self._couper_pompe_en_file(li))
                 couper = False

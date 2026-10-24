@@ -83,6 +83,9 @@ class Instruction:
     profil: str = "polynome5"
     etat: bool = False
     commentaire: str = ""
+    # OUTIL : couper la pompe apres une ouverture / un relachement (robot
+    # reel). Faux : la pompe continue de souffler.
+    couper: bool = True
     # champs ajoutes : les programmes enregistres avant leur introduction
     # se rechargent en mode "duree", donc a l'identique
     mode_temps: str = "duree"
