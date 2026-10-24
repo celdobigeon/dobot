@@ -76,6 +76,16 @@ def _liaison_directe(robot, port: Optional[str]):
                                                or pont.liaison.port == port):
         pont.robot = robot
         return pont
+    if pont is not None:
+        # Changement de port, ou liaison tombee : fermer AVANT de remplacer.
+        # Sans cela, un script qui passe d'une machine a l'autre laisserait
+        # le premier port ouvert jusqu'a la fin du processus -- et l'atexit,
+        # qui ne connait que le dernier pont, ne le libererait jamais.
+        try:
+            pont.deconnecter()
+        except Exception:
+            pass
+        _PONT_DIRECT.pop("pont", None)
     if port is None:
         ports = ports_disponibles()
         if not ports:
@@ -87,8 +97,11 @@ def _liaison_directe(robot, port: Optional[str]):
         pont.connecter(port)
     except Exception as exc:
         raise RuntimeError(str(exc)) from exc
-    if not _PONT_DIRECT:
+    # une seule fois pour le processus : le dictionnaire se vide a chaque
+    # changement de port, il ne peut donc pas servir de temoin
+    if not _PONT_DIRECT.get("atexit"):
         atexit.register(_fermer_liaison_directe)
+        _PONT_DIRECT["atexit"] = True
     _PONT_DIRECT["pont"] = pont
     return pont
 
