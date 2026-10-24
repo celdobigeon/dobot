@@ -362,8 +362,22 @@ class PontReel:
 
         self._preparer_file(li)
         commandes: List[Callable[[], int]] = []
+        couper = False
         for ins in programme.instructions:
             commandes.extend(self._traduire(li, ins, programme, outil))
+            # Ouvrir la pince ou relacher la ventouse fait SOUFFLER la
+            # pompe, qui ne s'arrete plus. On la coupe dans la file, APRES
+            # le mouvement suivant : elle souffle pendant ce mouvement, le
+            # temps que la pince s'ouvre, sans pause ajoutee au cycle.
+            if ins.type == "OUTIL" and outil in ("pince", "ventouse"):
+                couper = not bool(ins.etat)
+            elif couper and ins.type in ("MOVJ", "MOVL", "MOVC"):
+                commandes.extend(self._couper_pompe_en_file(li))
+                couper = False
+        if couper:
+            # ouverture en fin de programme : une seconde, puis coupure
+            commandes.append(lambda: li.attendre(1.0))
+            commandes.extend(self._couper_pompe_en_file(li))
         return self._deposer(li, commandes, progression,
                              "programme televerse : {} instructions"
                              .format(len(programme.instructions)))
@@ -486,6 +500,12 @@ class PontReel:
                                                float(p[2]), float(r))
             out.append(lambda x=x, y=y, z=z, v=reglage[1]: li.cp(x, y, z, v))
         return out
+
+    @staticmethod
+    def _couper_pompe_en_file(li: LiaisonDobot) -> List[Callable[[], int]]:
+        """Pompe arretee (ventouse et pince), comme commandes DE FILE."""
+        return [lambda: li.ventouse(False, active=False),
+                lambda: li.pince(False, active=False)]
 
     def _traduire(self, li: LiaisonDobot, ins, programme,
                   outil: str) -> List[Callable[[], int]]:
