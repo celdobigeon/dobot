@@ -30,6 +30,7 @@ _SANS_NOMBRES = re.compile(r"[-+]?\d[\d.]*")
 
 __all__ = [
     "Profil", "ProfilLineaire", "ProfilTrapeze", "ProfilPolynomial5", "ProfilSinus",
+    "ProfilDemarrage", "ProfilArret",
     "creer_profil", "creer_profil_vitesse", "PROFILS",
     "Segment", "SegmentArticulaire", "SegmentLineaire", "SegmentCirculaire",
     "SegmentAttente", "SegmentAction", "Trajectoire",
@@ -214,11 +215,92 @@ class ProfilSinus(Profil):
         return 0.5 * np.pi * np.sin(np.pi * u) / self.duree
 
 
+class ProfilDemarrage(Profil):
+    """
+    Demarrage puis vitesse constante : on part de l'arret, on n'y revient pas.
+
+    C'est le premier segment d'un mouvement CONTINU (trajectoire CP du
+    controleur) : le robot accelere, puis enchaine sur le segment suivant
+    sans ralentir. Enchaine avec `lineaire` puis `arret`, il donne un
+    trapeze etale sur plusieurs segments -- ce que fait la machine.
+
+    `fraction` est la part de la duree consacree a l'acceleration
+    (0 < fraction <= 1). La vitesse de palier normalisee vaut
+    1 / (1 - fraction / 2).
+    """
+
+    nom = "demarrage"
+    K_V = 1.0 / (1.0 - 0.125)        # palier, pour fraction = 0.25
+    K_A = K_V / 0.25
+
+    def __init__(self, duree: float, fraction: float = 0.25):
+        super().__init__(duree)
+        self.fraction = float(np.clip(fraction, 1e-3, 1.0))
+
+    def _vp(self) -> float:
+        return 1.0 / (1.0 - 0.5 * self.fraction)
+
+    def _s(self, u: float) -> float:
+        f, vp = self.fraction, self._vp()
+        if u < f:
+            return 0.5 * vp * u * u / f
+        return 0.5 * vp * f + vp * (u - f)
+
+    def _v(self, u: float) -> float:
+        f, vp = self.fraction, self._vp()
+        return vp * u / f if u < f else vp
+
+    def s(self, t: float) -> float:
+        return self._s(self._u(t))
+
+    def ds(self, t: float) -> float:
+        return self._v(self._u(t)) / self.duree
+
+    @classmethod
+    def duree_pour(cls, longueur: float, v_max: float, a_max: float) -> float:
+        """
+        Une seule rampe : L / v + v / (2a) si le palier est atteint
+        (L >= v^2 / 2a), sinon la rampe seule, racine(2 L / a).
+        """
+        L = abs(float(longueur))
+        v = max(float(v_max), 1e-9)
+        a = max(float(a_max), 1e-9)
+        if L <= 1e-12:
+            return 0.0
+        if L >= v * v / (2.0 * a):
+            return L / v + v / (2.0 * a)
+        return float(np.sqrt(2.0 * L / a))
+
+    @classmethod
+    def adapte(cls, longueur: float, v_max: float, a_max: float,
+               duree_min: float = 0.05) -> "ProfilDemarrage":
+        T = max(cls.duree_pour(longueur, v_max, a_max), duree_min)
+        t_acc = min(max(float(v_max), 1e-9) / max(float(a_max), 1e-9), T)
+        return cls(T, t_acc / T)
+
+
+class ProfilArret(ProfilDemarrage):
+    """
+    Vitesse constante puis arret : le dernier segment d'un mouvement
+    continu. C'est le `demarrage` joue a l'envers dans le temps.
+    """
+
+    nom = "arret"
+
+    def s(self, t: float) -> float:
+        return 1.0 - self._s(1.0 - self._u(t))
+
+    def ds(self, t: float) -> float:
+        return self._v(1.0 - self._u(t)) / self.duree
+
+
 PROFILS = {
     "lineaire": ProfilLineaire,
     "trapeze": ProfilTrapeze,
     "polynome5": ProfilPolynomial5,
     "sinus": ProfilSinus,
+    "demarrage": ProfilDemarrage,
+    "arret": ProfilArret,
 }
 
 

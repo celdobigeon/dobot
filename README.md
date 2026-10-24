@@ -63,6 +63,8 @@ APPS_DOBOT/
 │   ├── trajectory.py          lois horaires + segments MOVJ / MOVL / MOVC
 │   ├── program.py             programme éditable, JSON, export robot réel
 │   ├── pilote.py              API de script (movj, movl, movc, simuler…)
+│   ├── commande.py            commande temps réel : chaque appel bouge tout de suite
+│   ├── alertes.py             alertes du terminal, ErreurExecution
 │   ├── outils.py              catalogue d'outils : ventouse, pince, stylo, laser
 │   ├── es.py                  entrées / sorties tout-ou-rien (20 ports EIO)
 │   ├── urdf.py                lecture de la description ROS officielle + STL
@@ -77,10 +79,12 @@ APPS_DOBOT/
 │   └── fiche_api.html         référence : définition de chaque commande
 ├── examples/
 │   ├── exemple_matrices.py    matrices homogènes, MGD, MGI, jacobienne
-│   └── exemple_pick_place.py  trajectoires et export
+│   ├── exemple_pick_place.py  trajectoires et export
+│   └── controle-temps-reel/   Commande, pas à pas et au clavier (01 à 09)
 ├── tests/
 │   ├── test_kinematics.py     modèle, trajectoires, outils, repères
-│   └── test_protocole.py      protocole série et pont vers la machine réelle
+│   ├── test_protocole.py      protocole série et pont vers la machine réelle
+│   └── test_commande.py       commande temps réel, robot et fenêtre simulés
 ├── Modele3D/                  OBJ d'origine (source de secours)
 └── Magician & Accessories-2D&3D files/
                                dossier constructeur : URDF officiel, table DH,
@@ -375,14 +379,16 @@ vérifié par balayage de l'espace articulaire :
 
 ## 5. L'interface
 
-Trois fiches HTML autonomes, à ouvrir dans un navigateur et à garder à côté du
-simulateur pendant la séance :
+Un index et quatre fiches HTML autonomes, à ouvrir dans un navigateur et à
+garder à côté du simulateur pendant la séance :
 
 | Fiche | Pour | Contenu |
 |-------|------|---------|
+| [`fiche_index.html`](fiches/fiche_index.html) | aide-mémoire | l'index : ce qu'on écrit, sous forme matricielle, avec un renvoi vers les fiches 2 et 3 |
 | [`fiche_interface.html`](fiches/fiche_interface.html) | pendant la séance | chaque panneau, chaque case et chaque bouton de la fenêtre |
 | [`fiche_programmation.html`](fiches/fiche_programmation.html) | support de TP | vocabulaire (TCP, pose, MGD, MGI), fabrication d'une cible, deux schémas, les erreurs expliquées, cinq exercices |
 | [`fiche_api.html`](fiches/fiche_api.html) | ressource | la définition de chaque ligne de code : signature, paramètres, types, unités, valeur renvoyée, index |
+| [`fiche_commande.html`](fiches/fiche_commande.html) | robot réel, scripts interactifs | la commande temps réel (`Commande`) : les trois montages, les neuf exemples commentés, la référence, le mode continu et ses mesures, les garde-fous, ce qui reste à vérifier |
 
 | Zone | Contenu |
 |------|---------|
@@ -1268,6 +1274,58 @@ except ErreurExecution:
 Les avertissements non bloquants (survitesse…) s'affichent en jaune avant
 le départ, sans empêcher l'exécution.
 
+### Commande temps réel : `Commande`
+
+`Pilote` décrit un programme puis le joue d'un bloc. `Commande` est l'autre
+paradigme : **chaque appel bouge tout de suite**, et ne rend la main qu'une
+fois le mouvement **fini**. C'est ce qu'il faut pour un script interactif —
+une cible tapée au clavier, plus tard une caméra :
+
+```python
+from dobot_sim import Commande, ErreurExecution, cible
+
+with Commande(simulateur=True, robot=True, vitesse=40,       # mm/s
+              zone=((170, 270), (-90, 90), (30, 140))) as robot:
+    robot.movj(cible(220, 0, 80))              # rend la main à l'arrivée
+    x, y, z, r = robot.pose()                  # LUE sur la machine
+    robot.movl([(cible(220, 60, 80), 1.5),     # plusieurs cibles, chacune
+                (cible(260, 60, 80), 0.8)])    # avec sa durée, SANS arrêt
+    try:
+        robot.movl(cible(400, 0, 80))
+    except ErreurExecution:
+        print("refusée : rien n'est parti")
+```
+
+Mêmes verbes et mêmes cibles que `Pilote` (`movj`, `movl`, `movc`, `repli`,
+`ventouse`, `sortie`, `entree`…). Trois cibles matérielles :
+
+| | |
+|---|---|
+| `robot=True, simulateur=False` | le script ouvre lui-même le port série |
+| `simulateur=True, robot=False` | la fenêtre ouverte anime chaque commande |
+| `simulateur=True, robot=True` | la fenêtre tient la liaison et exécute sur le robot, miroir actif ; le script attend la fin du **robot** |
+
+`lancer_simulateur=True` ouvre `main.py` dans un processus séparé si aucune
+fenêtre ne répond.
+
+**Garde-fous**, vérifiés avant chaque mouvement depuis la posture **lue** :
+MGI, butées et collisions sur tout le chemin, `zone=`, `pas_max=` ; un refus
+lève `ErreurExecution` sans rien envoyer. Robot en défaut : assistant de mise
+en route. Ctrl+C : arrêt d'urgence.
+
+**Plusieurs cibles s'enchaînent sans arrêt** grâce au mode CP du contrôleur
+(`SetCPParams` / `SetCPCmd`), dont les règles ont été mesurées sur la machine
+(`essai_cp.py`) : la vitesse de croisière est le `junctionVel` de
+`SetCPParams`, mis en file entre deux portions ; l'accélération et la
+courbure plafonnent la vitesse ; l'outil ne tourne pas — un segment qui le
+fait tourner repasse en point à point, et c'est annoncé. La trajectoire est
+construite par le moteur du simulateur, échantillonnée tous les 5 mm, et
+chaque durée est **prévue** avant le départ : ce qui ne peut pas tenir est
+signalé en jaune, avec la durée réaliste. `continu=False` force le point à
+point.
+
+Exemples pas à pas, au clavier : [`examples/controle-temps-reel/`](examples/controle-temps-reel/).
+
 ### Exporter un script DobotStudio
 
 `Fichier ▸ Exporter un script Dobot` produit un script utilisant
@@ -1757,13 +1815,23 @@ pont.demarrer()
 python -m unittest discover -s tests -v
 ```
 
-186 tests, dont **38 sur le protocole et le pont vers la machine réelle**
+283 tests, dont **38 sur le protocole et le pont vers la machine réelle**
 (`tests/test_protocole.py`), exécutés sans matériel grâce à un **port série
 simulé** qui rejoue le comportement du contrôleur : cadrage conforme à
 l'exemple du protocole, checksum, `Ctrl`, endianness, refus des trames
 invalides, index de file, traduction de chaque type d'instruction, ordre
 arrêt-puis-vidage, refus d'un programme fautif, et exactitude de la
 conversion de repère.
+
+`tests/test_commande.py` (65 tests) exerce la commande temps réel sans
+matériel : un contrôleur simulé qui **bouge** — file bornée à 32 commandes,
+index figé quand elle est pleine, angles qui suivent les commandes
+exécutées —, une fausse passerelle, et la **vraie fenêtre** hors écran
+branchée sur ce contrôleur. Résolution des cibles, refus (MGI, butées,
+collision, zone, `pas_max`) sans qu'aucune commande ne parte, commandes CP et
+PTP générées dans le bon ordre, `junctionVel` mis en file, repli en point à
+point quand l'outil tourne, échantillonnage, prévision des durées, mise en
+route, Ctrl+C.
 
 Le reste couvre : identités des matrices homogènes, aller-retours RPY /
 quaternion / axe-angle, conformité des deux conventions de

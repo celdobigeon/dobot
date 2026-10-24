@@ -1,0 +1,1717 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commande temps r&eacute;el du Dobot</title>
+<style>
+:root{
+  --fond:#f6f7f9; --carte:#ffffff; --encre:#191d24; --encre2:#4d5666;
+  --muet:#7b8496; --trait:#dde1e8; --trait2:#eceff4;
+  --accent:#3d6fd8; --accent-doux:#eaf0fd;
+  --axe-x:#c33f3f; --axe-y:#3a9448; --axe-z:#3d6fd8; --axe-r:#7c96d8;
+  --ok:#4c8f60; --alerte:#b3781f; --faute:#c0392b;
+  --ombre:0 1px 2px rgba(20,28,45,.06), 0 6px 18px rgba(20,28,45,.05);
+  --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+    --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+    --accent:#7aa2f7; --accent-doux:#1b2330;
+    --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+    --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+    --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+  --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+  --accent:#7aa2f7; --accent-doux:#1b2330;
+  --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+  --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+  --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth; scroll-padding-top:74px;}
+body{
+  margin:0; background:var(--fond); color:var(--encre);
+  font-family:var(--serif); font-size:16.5px; line-height:1.62;
+  padding-inline:16px; padding-block:0;
+}
+.page{max-width:920px; margin:0 auto;}
+
+/* ---- en-tete ---- */
+header.une{padding-block:44px 26px; border-bottom:3px double var(--trait);}
+.surtitre{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 12px;
+}
+h1{
+  font-family:var(--sans); font-weight:650; letter-spacing:-.02em;
+  font-size:clamp(28px,5.2vw,42px); line-height:1.12; margin:0 0 10px;
+  text-wrap:balance;
+}
+.chapeau{margin:0; color:var(--encre2); font-size:17.5px; max-width:62ch;}
+.jeu-fiches{
+  margin-top:20px; font-family:var(--sans); font-size:13.5px;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+}
+.jeu-fiches a{
+  color:var(--accent); text-decoration:none;
+  border:1px solid var(--trait); border-radius:3px; padding:4px 10px;
+  background:var(--carte);
+}
+.jeu-fiches a:hover{border-color:var(--accent);}
+.jeu-fiches .ici{color:var(--muet); border-style:dashed; background:none;}
+
+/* ---- sommaire ---- */
+nav.sommaire{
+  position:sticky; top:0; z-index:5; background:var(--fond);
+  border-bottom:1px solid var(--trait); margin-bottom:8px;
+  padding-block:10px; font-family:var(--sans); font-size:13px;
+}
+nav.sommaire ol{
+  list-style:none; display:flex; flex-wrap:wrap; gap:6px 18px;
+  margin:0; padding:0; counter-reset:s;
+}
+nav.sommaire a{color:var(--encre2); text-decoration:none; white-space:nowrap;}
+nav.sommaire a::before{
+  counter-increment:s; content:counter(s,decimal-leading-zero) " ";
+  font-family:var(--mono); font-size:10.5px; color:var(--muet);
+}
+nav.sommaire a:hover{color:var(--accent);}
+
+/* ---- sections ---- */
+section{padding-block:34px 6px; border-top:1px solid var(--trait2);}
+section:first-of-type{border-top:none;}
+h2{
+  font-family:var(--sans); font-weight:640; letter-spacing:-.015em;
+  font-size:24px; line-height:1.2; margin:0 0 4px; text-wrap:balance;
+}
+h2 .num{
+  font-family:var(--mono); font-size:12px; font-weight:400;
+  color:var(--accent); letter-spacing:.1em; display:block; margin-bottom:6px;
+}
+h3{
+  font-family:var(--sans); font-weight:620; font-size:16.5px;
+  margin:26px 0 6px; letter-spacing:-.005em;
+}
+p{margin:.7em 0; max-width:68ch;}
+.intro{color:var(--encre2); max-width:66ch;}
+ul,ol.liste{max-width:66ch; padding-left:1.2em;}
+li{margin:.3em 0;}
+a{color:var(--accent);}
+
+/* ---- jetons ---- */
+.ui{
+  font-family:var(--sans); font-size:.9em; font-weight:600;
+  background:var(--accent-doux); color:var(--accent);
+  border-radius:3px; padding:1px 6px; white-space:nowrap;
+}
+kbd{
+  font-family:var(--mono); font-size:.82em; background:var(--carte);
+  border:1px solid var(--trait); border-bottom-width:2px; border-radius:4px;
+  padding:1px 6px; color:var(--encre2); white-space:nowrap;
+}
+code{font-family:var(--mono); font-size:.87em; color:var(--encre2);
+  background:var(--trait2); border-radius:3px; padding:1px 5px;}
+pre{
+  font-family:var(--mono); font-size:13px; line-height:1.55;
+  background:var(--carte); border:1px solid var(--trait); border-left:3px solid var(--accent);
+  border-radius:4px; padding:14px 16px; overflow-x:auto; margin:14px 0;
+  color:var(--encre);
+}
+pre code{background:none; padding:0; font-size:inherit; color:inherit;}
+pre .c{color:var(--muet); font-style:italic;}
+pre .k{color:var(--accent); font-weight:600;}
+pre .n{color:var(--axe-y);}
+
+/* ---- tableaux ---- */
+.cadre{overflow-x:auto; margin:16px 0;}
+table{border-collapse:collapse; width:100%; min-width:520px;
+  font-family:var(--sans); font-size:14px;}
+caption{
+  text-align:left; font-family:var(--mono); font-size:11px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muet);
+  padding-bottom:8px;
+}
+th{
+  text-align:left; font-weight:620; font-size:11.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muet);
+  border-bottom:1px solid var(--trait); padding:6px 12px 6px 0;
+}
+td{border-bottom:1px solid var(--trait2); padding:9px 12px 9px 0;
+  vertical-align:top; color:var(--encre2);}
+td:first-child{color:var(--encre); font-weight:560; white-space:nowrap;}
+td.libre:first-child{white-space:normal;}
+tr:last-child td{border-bottom:none;}
+td .mono,th .mono{font-family:var(--mono); font-size:12.5px;}
+td.num{font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---- encarts ---- */
+.note{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  box-shadow:var(--ombre); padding:14px 18px; margin:18px 0; max-width:70ch;
+}
+.note p{margin:.4em 0;}
+.note .etiquette{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; display:block; margin-bottom:5px;
+}
+.note.attention{border-left:3px solid var(--alerte);}
+.note.attention .etiquette{color:var(--alerte);}
+.note.piege{border-left:3px solid var(--faute);}
+.note.piege .etiquette{color:var(--faute);}
+.note.astuce{border-left:3px solid var(--ok);}
+.note.astuce .etiquette{color:var(--ok);}
+
+/* ---- axes colores ---- */
+.ax{font-family:var(--mono); font-weight:700;}
+.ax-x{color:var(--axe-x);} .ax-y{color:var(--axe-y);}
+.ax-z{color:var(--axe-z);} .ax-r{color:var(--axe-r);}
+
+footer{
+  margin-top:40px; padding-block:22px 48px; border-top:3px double var(--trait);
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+}
+
+@media (max-width:560px){
+  body{font-size:16px;}
+  nav.sommaire{position:static;}
+}
+@media print{
+  :root{--fond:#fff; --carte:#fff;}
+  body{font-size:11pt;} nav.sommaire{display:none;}
+  section{break-inside:auto; page-break-inside:auto;}
+  h2,h3{break-after:avoid;} .note,pre,.cadre{break-inside:avoid;}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+
+/* ---- entrees de reference ---- */
+.api{margin:28px 0 10px;}
+.api .sig{
+  background:var(--trait2); border-left:3px solid var(--accent);
+  border-radius:0 4px 4px 0; margin-bottom:10px; color:var(--encre2);
+  font-family:var(--mono); font-size:13.5px; line-height:1.65;
+  /* la signature s'ecrit en entier : elle passe a la ligne au lieu de
+     defiler, avec un retrait pour que la suite se distingue du nom */
+  padding:10px 16px 10px 34px; text-indent:-18px;
+  white-space:normal; overflow-wrap:break-word;
+}
+.api .sig b{color:var(--encre); font-weight:700;}
+.api .sig i{color:var(--accent); font-style:italic;}
+.api .sig u{color:var(--muet); text-decoration:none;}
+.api .corps{padding-left:16px; border-left:1px solid var(--trait2);}
+.api .corps > p:first-child{margin-top:0;}
+.api .corps p{max-width:66ch;}
+dl.params{
+  display:grid; grid-template-columns:max-content 1fr; gap:7px 18px;
+  margin:12px 0; font-family:var(--sans); font-size:14px; max-width:70ch;
+}
+dl.params dt{
+  font-family:var(--mono); font-size:12.5px; font-weight:600;
+  color:var(--encre); white-space:nowrap; padding-top:1px;
+}
+dl.params dd{margin:0; color:var(--encre2);}
+.ty{
+  font-family:var(--sans); font-size:10px; font-weight:400; color:var(--muet);
+  border:1px solid var(--trait); border-radius:2px; padding:0 4px; margin-left:5px;
+  white-space:nowrap;
+}
+.rend{font-family:var(--sans); font-size:14px; color:var(--encre2);
+  margin:10px 0; max-width:70ch;}
+.rend > b{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--accent); font-weight:400;
+  margin-right:10px;
+}
+.rend.leve > b{color:var(--faute);}
+.api pre{margin:12px 0 0;}
+
+/* ---- listes compactes de fonctions ---- */
+table.compacte td:first-child{
+  font-family:var(--mono); font-size:12.5px; white-space:normal;
+  color:var(--encre); font-weight:600; width:42%;
+}
+table.compacte td{vertical-align:top;}
+
+/* ---- rappel de lecture ---- */
+.legende{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  padding:6px 18px 18px; margin:18px 0; box-shadow:var(--ombre);
+}
+@media (max-width:620px){
+  dl.params{grid-template-columns:1fr; gap:2px 0;}
+  dl.params dd{margin:0 0 8px;}
+  table.compacte td:first-child{width:auto;}
+}
+/* ---- matrices homogenes ---- */
+.matrice{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  margin:16px 0; font-family:var(--mono); font-size:13px;
+}
+.matrice .etiq{font-style:italic; color:var(--encre2); font-size:14px;}
+.matrice .grille{
+  display:grid; grid-template-columns:repeat(4, minmax(0, auto));
+  gap:5px 20px; padding:10px 16px; position:relative;
+  font-variant-numeric:tabular-nums;
+}
+.matrice .grille::before,.matrice .grille::after{
+  content:""; position:absolute; top:0; bottom:0; width:8px;
+  border:2px solid var(--muet);
+}
+.matrice .grille::before{left:0; border-right:none;}
+.matrice .grille::after{right:0; border-left:none;}
+.matrice .grille span{text-align:right; white-space:nowrap; color:var(--encre2);}
+.matrice .grille span.pos{color:var(--accent); font-weight:700;}
+.matrice .grille span.bas{color:var(--muet);}
+.legende-mat{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin:-4px 0 18px; max-width:64ch;
+}
+@media (max-width:520px){
+  .matrice{font-size:11.5px; gap:8px;}
+  .matrice .grille{gap:4px 10px; padding:8px 12px;}
+}
+/* ---- renvois vers les exemples de la fiche 2 ---- */
+.voir{
+  font-family:var(--sans); font-size:12.5px; margin:12px 0 0;
+  color:var(--muet); display:flex; flex-wrap:wrap; gap:4px 14px;
+  align-items:baseline;
+}
+.voir .mot{
+  font-family:var(--mono); font-size:10px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muet);
+}
+.voir a{
+  color:var(--accent); text-decoration:none;
+  border-bottom:1px solid transparent;
+}
+.voir a::before{content:"\2192"; margin-right:5px; color:var(--muet);}
+.voir a:hover{border-bottom-color:var(--accent);}
+/* ---- figures ---- */
+figure.schema{
+  margin:24px 0; padding:18px 18px 14px; background:var(--carte);
+  border:1px solid var(--trait); border-radius:5px; box-shadow:var(--ombre);
+}
+figure.schema svg{width:100%; height:auto; display:block;}
+figcaption{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin-top:12px; max-width:62ch;
+}
+.s-os{stroke:var(--encre2); stroke-width:7; stroke-linecap:round; fill:none;}
+.s-cote{stroke:var(--muet); stroke-width:1; fill:none;}
+.s-pointille{stroke:var(--muet); stroke-width:1; stroke-dasharray:4 4; fill:none;}
+.s-sol{stroke:var(--trait); stroke-width:2;}
+.s-txt{font-family:var(--sans); font-size:12px; fill:var(--encre2);}
+.s-cle{font-family:var(--sans); font-size:12.5px; font-weight:650; fill:var(--encre);}
+.s-mut{font-family:var(--sans); font-size:11.5px; fill:var(--muet);}
+.s-x{stroke:var(--axe-x); fill:var(--axe-x);}
+.s-z{stroke:var(--axe-z); fill:var(--axe-z);}
+.s-pt{fill:var(--accent);}
+.s-arc{stroke:var(--accent); stroke-width:1.6; fill:none;}
+
+/* ---- badges de parametres ---- */
+.oblig,.opt{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.09em;
+  text-transform:uppercase; border-radius:2px; padding:1px 5px;
+  white-space:nowrap; font-weight:400;
+}
+.oblig{color:var(--faute); border:1px solid var(--faute);}
+.opt{color:var(--muet); border:1px solid var(--trait);}
+td .arg{font-family:var(--mono); font-size:12.5px; color:var(--encre); font-weight:600;}
+
+/* ---- etapes numerotees ---- */
+ol.etapes{list-style:none; padding:0; counter-reset:e; max-width:68ch;}
+ol.etapes > li{
+  counter-increment:e; position:relative; padding-left:38px; margin:14px 0;
+}
+ol.etapes > li::before{
+  content:counter(e); position:absolute; left:0; top:1px;
+  font-family:var(--mono); font-size:12px; color:var(--accent);
+  border:1px solid var(--accent); border-radius:50%;
+  width:24px; height:24px; line-height:22px; text-align:center;
+}
+ol.etapes b{font-family:var(--sans); font-size:.97em;}
+/* ---- points a verifier sur la machine ---- */
+.verif{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.09em;
+  text-transform:uppercase; border-radius:2px; padding:1px 5px;
+  white-space:nowrap; font-weight:400;
+  color:var(--alerte); border:1px solid var(--alerte);
+}
+.note ol.etapes{margin:.4em 0;}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="une">
+  <p class="surtitre">Fiche 4 &nbsp;/&nbsp; Simulateur Dobot Magician</p>
+  <h1>Commande temps r&eacute;el</h1>
+  <p class="chapeau">Piloter le robot ligne &agrave; ligne&nbsp;: chaque appel bouge
+  <strong>tout de suite</strong> et rend la main <strong>&agrave; l'arriv&eacute;e</strong>. C'est
+  l'outil des scripts interactifs &mdash; une cible tap&eacute;e au clavier, demain une
+  cam&eacute;ra. Les neuf exemples comment&eacute;s, la r&eacute;f&eacute;rence de la classe
+  <code>Commande</code>, le mode continu tel qu'il a &eacute;t&eacute; mesur&eacute; sur la machine, et
+  ce qui reste &agrave; v&eacute;rifier.</p>
+  <p class="jeu-fiches">
+    <a href="fiche_index.html">&larr; Index &mdash; programmation sous VS-Code</a>
+    <a href="fiche_interface.html">&larr; Fiche 1 &mdash; l'interface</a>
+    <a href="fiche_programmation.html">&larr; Fiche 2 &mdash; exemples de programmation</a>
+    <a href="fiche_api.html">&larr; Fiche 3 &mdash; r&eacute;f&eacute;rence</a>
+    <span class="ici">Fiche 4 &mdash; commande temps r&eacute;el</span>
+  </p>
+</header>
+
+<nav class="sommaire" aria-label="Sommaire">
+  <ol>
+    <li><a href="#principe">Le principe</a></li>
+    <li><a href="#ce-qui-bouge">Ce qui bouge</a></li>
+    <li><a href="#exemples">Les exemples</a></li>
+    <li><a href="#reference">R&eacute;f&eacute;rence</a></li>
+    <li><a href="#formes">Cibles et listes</a></li>
+    <li><a href="#continu">Le mode continu</a></li>
+    <li><a href="#garde-fous">Garde-fous</a></li>
+    <li><a href="#limites">&Agrave; v&eacute;rifier</a></li>
+    <li><a href="#index">Index</a></li>
+  </ol>
+</nav>
+
+<!-- =============================================================== -->
+<section id="principe">
+  <h2><span class="num">Section 01</span>Le principe&nbsp;: chaque ligne bouge tout de suite</h2>
+  <p class="intro">Deux fa&ccedil;ons de piloter le m&ecirc;me robot, avec les m&ecirc;mes verbes
+  &mdash; <code>movj</code>, <code>movl</code>, <code>movc</code>,
+  <code>repli</code>, <code>ventouse</code> &mdash; et les m&ecirc;mes cibles. Ce qui
+  change, c'est le <strong>moment</strong> o&ugrave; le robot bouge.</p>
+
+  <div class="cadre"><table>
+    <tr><th></th><th><code>Pilote</code> &mdash; fiches 2 et 3</th><th><code>Commande</code> &mdash; cette fiche</th></tr>
+    <tr><td><code>robot.movl(T)</code></td>
+      <td>ajoute une ligne au programme&nbsp;; <strong>rien ne bouge</strong></td>
+      <td>le robot y va <strong>tout de suite</strong>&nbsp;; l'appel rend la main
+      une fois le mouvement <strong>fini</strong></td></tr>
+    <tr><td>Quand &ccedil;a bouge</td>
+      <td>&agrave; <code>simuler()</code> ou <code>executer_sur_robot()</code>&nbsp;: tout
+      le programme, d'un bloc</td>
+      <td>&agrave; chaque appel, un mouvement &agrave; la fois</td></tr>
+    <tr><td>Point de d&eacute;part</td>
+      <td>la position que le script a calcul&eacute;e</td>
+      <td>la posture <strong>lue sur la machine</strong> juste avant chaque
+      mouvement</td></tr>
+    <tr><td>Relecture</td>
+      <td><code>resume()</code>, <code>controler()</code>, l'animation&nbsp;: on
+      relit avant de lancer</td>
+      <td>aucune&nbsp;: des garde-fous contr&ocirc;lent chaque mouvement avant son
+      d&eacute;part</td></tr>
+    <tr><td>R&eacute;agir</td>
+      <td>entre deux programmes</td>
+      <td>entre deux lignes&nbsp;: <code>pose()</code>, <code>entree()</code>,
+      <code>input()</code>, plus tard une cam&eacute;ra</td></tr>
+    <tr><td>Encha&icirc;ner sans arr&ecirc;t</td>
+      <td>le lissage n'existe pas en point &agrave; point sur le contr&ocirc;leur&nbsp;: le
+      robot r&eacute;el s'arr&ecirc;te &agrave; chaque point</td>
+      <td>une liste de cibles part en <strong>trajectoire continue</strong>
+      (section&nbsp;6)</td></tr>
+  </table></div>
+
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> Commande, cible
+
+<span class="k">with</span> Commande(simulateur=<span class="k">True</span>, robot=<span class="k">False</span>, vitesse=<span class="n">40</span>) <span class="k">as</span> robot:
+    robot.movj(cible(<span class="n">220</span>, <span class="n">0</span>, <span class="n">80</span>))        <span class="c"># le script attend ICI l'arrivee</span>
+    x, y, z, r = robot.pose()            <span class="c"># lue sur la machine, pas supposee</span>
+    <span class="k">if</span> z &gt; <span class="n">50</span>:
+        robot.movl(z=<span class="n">40</span>)                 <span class="c"># descente verticale : x, y, r gardes</span>
+    robot.ventouse(<span class="k">True</span>)</code></pre>
+  <p>Le bloc <code>with</code> referme la liaison tout seul &agrave; la fin, m&ecirc;me apr&egrave;s
+  une erreur ou un <kbd>Ctrl</kbd>+<kbd>C</kbd>&nbsp;: c'est la forme
+  recommand&eacute;e. En console interactive, on peut aussi &eacute;crire
+  <code>robot = Commande(...)</code>, puis <code>robot.fermer()</code> &agrave; la fin
+  (<a href="#c-fermer">section&nbsp;4</a>).</p>
+
+  <h3>Lequel choisir&nbsp;?</h3>
+  <div class="cadre"><table>
+    <tr><td><code>Pilote</code></td>
+      <td>Le cycle est <strong>connu d'avance</strong>&nbsp;: on l'&eacute;crit, on le
+      relit, on le simule en entier, on le rejoue. C'est la forme de tous les TP
+      de programmation, et la plus s&ucirc;re.</td></tr>
+    <tr><td><code>Commande</code></td>
+      <td>La suite <strong>d&eacute;pend de ce qui se passe</strong>&nbsp;: une touche,
+      un capteur, une position mesur&eacute;e, une image. Aussi pour r&eacute;gler un poste pas
+      &agrave; pas, ou pour mesurer le robot.</td></tr>
+  </table></div>
+
+  <div class="note attention">
+    <span class="etiquette">Moins s&ucirc;r qu'un programme relu</span>
+    <p>Il n'y a pas de programme &agrave; relire avant de partir&nbsp;: une faute de
+    frappe dans une coordonn&eacute;e part tout de suite. D'o&ugrave; des
+    <strong>garde-fous automatiques</strong>, v&eacute;rifi&eacute;s avant chaque mouvement
+    depuis la posture lue&nbsp;: atteignabilit&eacute;, but&eacute;es et collisions sur tout le
+    chemin, et deux r&egrave;gles que vous fixez vous-m&ecirc;me, <code>zone=</code> et
+    <code>pas_max=</code> (section&nbsp;7). Un refus arr&ecirc;te le mouvement
+    <em>avant</em> que rien ne parte.</p>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="ce-qui-bouge">
+  <h2><span class="num">Section 02</span>Ce qui bouge&nbsp;: simulateur, robot, ou les deux</h2>
+  <p class="intro">Deux param&egrave;tres du constructeur, <code>simulateur</code> et
+  <code>robot</code>, disent &agrave; qui parle la commande. Les scripts d'exemple
+  appellent ce choix <code>CIBLE</code>, &agrave; ne pas confondre avec la cible d'un
+  mouvement.</p>
+
+  <figure class="schema">
+    <svg viewBox="0 0 640 330" role="img" aria-labelledby="t-cibles">
+      <title id="t-cibles">Les trois montages : le script parle au robot par le
+      port s&eacute;rie ; ou &agrave; la fen&ecirc;tre du simulateur par la passerelle ; ou &agrave; la
+      fen&ecirc;tre, qui tient elle-m&ecirc;me le port s&eacute;rie du robot</title>
+      <defs>
+        <marker id="fleche" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      <text class="s-cle" x="90" y="22" text-anchor="middle">le script</text>
+      <text class="s-cle" x="320" y="22" text-anchor="middle">la fen&ecirc;tre (main.py)</text>
+      <text class="s-cle" x="550" y="22" text-anchor="middle">le Dobot</text>
+
+      <!-- robot seul -->
+      <text class="s-mut" x="30" y="50">robot=True, simulateur=False</text>
+      <rect x="30" y="58" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="90" y="83" text-anchor="middle">Commande</text>
+      <text class="s-mut" x="320" y="83" text-anchor="middle">ferm&eacute;e</text>
+      <rect x="490" y="58" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="550" y="83" text-anchor="middle">contr&ocirc;leur</text>
+      <path d="M152 78 C 220 112, 420 112, 488 78" fill="none" stroke="var(--accent)"
+            stroke-width="1.6" marker-end="url(#fleche)"/>
+      <text class="s-mut" x="320" y="122" text-anchor="middle">port s&eacute;rie, ouvert par le script</text>
+
+      <!-- simulateur seul -->
+      <text class="s-mut" x="30" y="158">simulateur=True, robot=False</text>
+      <rect x="30" y="166" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="90" y="191" text-anchor="middle">Commande</text>
+      <rect x="260" y="166" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="320" y="191" text-anchor="middle">anime le mod&egrave;le</text>
+      <line x1="152" y1="186" x2="257" y2="186" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#fleche)"/>
+      <text class="s-mut" x="204" y="178" text-anchor="middle">passerelle</text>
+      <text class="s-mut" x="550" y="191" text-anchor="middle">non utilis&eacute;</text>
+
+      <!-- les deux -->
+      <text class="s-mut" x="30" y="248">simulateur=True, robot=True</text>
+      <rect x="30" y="256" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="90" y="281" text-anchor="middle">Commande</text>
+      <rect x="260" y="256" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="320" y="281" text-anchor="middle">tient la liaison</text>
+      <rect x="490" y="256" width="120" height="40" rx="4" fill="var(--carte)" stroke="var(--encre2)"/>
+      <text class="s-txt" x="550" y="281" text-anchor="middle">contr&ocirc;leur</text>
+      <line x1="152" y1="276" x2="257" y2="276" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#fleche)"/>
+      <text class="s-mut" x="204" y="268" text-anchor="middle">passerelle</text>
+      <line x1="382" y1="270" x2="487" y2="270" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#fleche)"/>
+      <text class="s-mut" x="434" y="262" text-anchor="middle">port s&eacute;rie</text>
+      <line x1="488" y1="284" x2="384" y2="284" class="s-pointille" marker-end="url(#fleche)"/>
+      <text class="s-mut" x="434" y="300" text-anchor="middle">miroir</text>
+    </svg>
+    <figcaption>Un port s&eacute;rie ne s'ouvre qu'une fois. Robot seul&nbsp;: c'est le
+    script qui l'ouvre, le simulateur doit &ecirc;tre ferm&eacute;. Les deux&nbsp;: c'est la
+    fen&ecirc;tre qui le tient, et le mod&egrave;le 3D suit le vrai bras.</figcaption>
+  </figure>
+
+  <div class="cadre"><table>
+    <tr><th>Montage</th><th>Ce qu'il faut</th><th>Ce qui se passe</th></tr>
+    <tr><td class="libre"><code>simulateur=True, robot=False</code><br><span class="opt">par d&eacute;faut</span></td>
+      <td>le simulateur <strong>ouvert</strong> (<code>python main.py</code>)</td>
+      <td>chaque commande part &agrave; la fen&ecirc;tre, qui l'anime&nbsp;; le script attend
+      la fin de l'animation. Si la fen&ecirc;tre est connect&eacute;e au robot avec le miroir
+      actif, elle <strong>coupe le miroir</strong>&nbsp;: la commande vise le
+      mod&egrave;le, pas le bras.</td></tr>
+    <tr><td class="libre"><code>robot=True, simulateur=False</code></td>
+      <td>le Dobot branch&eacute; et allum&eacute;, simulateur <strong>ferm&eacute;</strong></td>
+      <td>le script ouvre lui-m&ecirc;me le port s&eacute;rie, sans fen&ecirc;tre&nbsp;; il remplit
+      la file du contr&ocirc;leur et la suit jusqu'&agrave; la fin. Le ratio de vitesse du
+      contr&ocirc;leur est mis &agrave; 100&nbsp;%&nbsp;: les vitesses de <code>Commande</code>
+      sont absolues.</td></tr>
+    <tr><td class="libre"><code>simulateur=True, robot=True</code></td>
+      <td>le simulateur ouvert (ou <code>lancer_simulateur=True</code>), le Dobot
+      branch&eacute;</td>
+      <td>le script demande &agrave; la fen&ecirc;tre de se connecter&nbsp;; elle ex&eacute;cute
+      chaque commande sur le robot, <strong>miroir actif</strong>, ratio &agrave;
+      100&nbsp;%. Le script attend la fin du <strong>robot</strong>, pas celle
+      de l'animation.</td></tr>
+  </table></div>
+
+<pre><code>CIBLE = <span class="k">"les-deux"</span>                       <span class="c"># "simulateur", "robot" ou "les-deux"</span>
+
+<span class="k">with</span> Commande(simulateur=CIBLE <span class="k">in</span> (<span class="k">"simulateur"</span>, <span class="k">"les-deux"</span>),
+              robot=CIBLE <span class="k">in</span> (<span class="k">"robot"</span>, <span class="k">"les-deux"</span>)) <span class="k">as</span> robot:
+    ...</code></pre>
+  <p>Avec <code>simulateur=False, robot=False</code>, le constructeur l&egrave;ve
+  <code>ValueError</code>&nbsp;: il faut au moins une destination.</p>
+
+  <h3><code>lancer_simulateur=True</code>&nbsp;: le script ouvre la fen&ecirc;tre</h3>
+  <p>Si aucune fen&ecirc;tre ne r&eacute;pond, le script lance <code>main.py</code> dans un
+  <strong>processus s&eacute;par&eacute;</strong> et attend sa passerelle, jusqu'&agrave;
+  60&nbsp;s&nbsp;: Qt veut le fil principal, que le script garde pour attendre ses
+  mouvements. La fen&ecirc;tre vit ensuite sa vie&nbsp;: un <kbd>Ctrl</kbd>+<kbd>C</kbd>
+  dans le terminal ne la tue pas, la fin du script ne la ferme pas, et un script
+  relanc&eacute; la retrouve. Sans ce param&egrave;tre, l'absence de fen&ecirc;tre est une alerte
+  rouge, <code>AUCUN SIMULATEUR OUVERT</code>.</p>
+
+  <div class="note piege">
+    <span class="etiquette">Un simulateur trop ancien</span>
+    <p>Une fen&ecirc;tre ouverte <em>avant</em> la mise &agrave; jour du d&eacute;p&ocirc;t r&eacute;pond &agrave; la
+    passerelle mais ignore la commande temps r&eacute;el&nbsp;: alerte rouge
+    <code>LE SIMULATEUR OUVERT NE CONNAIT PAS LA COMMANDE TEMPS REEL</code>.
+    Fermez-la, relancez <code>python main.py</code>.</p>
+  </div>
+
+  <p><code>fermer()</code> &mdash; ou la sortie du bloc <code>with</code> &mdash;
+  lib&egrave;re ce que la commande tient&nbsp;: le port s&eacute;rie en mode robot seul. La
+  fen&ecirc;tre, elle, reste ouverte, et garde sa liaison avec le robot s'il y en a une
+  (<a href="fiche_interface.html#reel">fiche&nbsp;1, le panneau robot r&eacute;el</a>).</p>
+</section>
+
+<!-- =============================================================== -->
+<section id="exemples">
+  <h2><span class="num">Section 03</span>Les neuf exemples, un par un</h2>
+  <p class="intro">Ils sont dans <code>examples/controle-temps-reel/</code>,
+  courts et comment&eacute;s. Chacun prend le montage en argument &mdash; ou dans la
+  constante <code>CIBLE</code> en t&ecirc;te du fichier &mdash; et <strong>aucun ne bouge
+  le robot sans que vous ayez tap&eacute; Entr&eacute;e</strong>.</p>
+
+<pre><code>python examples/controle-temps-reel/02_mouvements_simples.py              <span class="c"># simulateur</span>
+python examples/controle-temps-reel/02_mouvements_simples.py robot        <span class="c"># robot seul</span>
+python examples/controle-temps-reel/02_mouvements_simples.py les-deux     <span class="c"># les deux</span></code></pre>
+
+  <div class="note attention">
+    <span class="etiquette">Premier essai sur le vrai robot&nbsp;: dans cet ordre</span>
+    <ol class="etapes">
+      <li><b><a href="#ex01">01</a> en mode <code>les-deux</code>.</b> Aucun
+        mouvement. Si le robot est en d&eacute;faut &mdash; c'est le cas apr&egrave;s chaque mise
+        sous tension &mdash; l'assistant de mise en route s'ouvre dans la
+        fen&ecirc;tre&nbsp;: suivez-le. Puis v&eacute;rifiez que la <strong>pose lue est
+        juste</strong>&nbsp;: le mod&egrave;le 3D doit se superposer au vrai bras.</li>
+      <li><b><a href="#ex02">02</a> en mode <code>les-deux</code>, zone
+        d&eacute;gag&eacute;e.</b> Rien sur la table entre le repos et les points
+        (220,&nbsp;&plusmn;50,&nbsp;80)&nbsp;; la main pr&egrave;s du bouton d'arr&ecirc;t du robot,
+        le terminal au premier plan pour <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
+      <li><b>Seulement ensuite, <a href="#ex06">06</a> et <a href="#ex07">07</a></b>&nbsp;:
+        le mode continu, moins &eacute;prouv&eacute; que le point &agrave; point (section&nbsp;8).</li>
+    </ol>
+    <p>Les positions des exemples sont pr&eacute;vues pour la <strong>ventouse</strong>
+    (62&nbsp;mm). Avec un autre outil, v&eacute;rifiez-les d'abord dans le simulateur.</p>
+  </div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex01">01 &mdash; Choisir ce qui bouge, lire o&ugrave; en est le bras</h3>
+  <p><code>01_choisir_la_cible.py</code> ne fait <strong>que lire</strong>&nbsp;:
+  le montage, le bloc <code>with</code>, <code>pose()</code> et
+  <code>angles()</code>. C'est le seul script qu'on peut lancer sur le robot sans
+  rien d&eacute;gager.</p>
+<pre><code><span class="k">with</span> Commande(simulateur=CIBLE <span class="k">in</span> (<span class="k">"simulateur"</span>, <span class="k">"les-deux"</span>),
+              robot=CIBLE <span class="k">in</span> (<span class="k">"robot"</span>, <span class="k">"les-deux"</span>)) <span class="k">as</span> robot:
+    x, y, z, r = robot.pose()          <span class="c"># pointe de la ventouse, mm et degres</span>
+    j1, j2, j3, j4 = robot.angles()    <span class="c"># degres, les memes pour robot et modele</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>01_choisir_la_cible.py les-deux</code> pour le
+      premier essai&nbsp;; <code>simulateur</code> pour s'exercer.</td></tr>
+    <tr><td>Observer</td><td>Dans le simulateur, bougez un curseur puis Entr&eacute;e&nbsp;:
+      la pose suit. Sur le robot, comparez la pose affich&eacute;e au bras r&eacute;el et au
+      mod&egrave;le 3D&nbsp;: les <strong>angles</strong> sont ceux du contr&ocirc;leur tels
+      quels&nbsp;; la <strong>pose</strong> est convertie depuis le rep&egrave;re du
+      contr&ocirc;leur, dont l'origine est &agrave; hauteur d'&eacute;paule. Un &eacute;cart de plusieurs
+      millim&egrave;tres signale une mise en route mal faite ou une mauvaise longueur
+      d'outil.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>En mode <code>robot</code>, le simulateur doit &ecirc;tre
+      ferm&eacute;. La pose est celle de la <strong>pointe de l'outil</strong>&nbsp;: avec
+      un outil d'une autre longueur, passez <code>longueur_outil=</code>
+      (<a href="fiche_programmation.html#outil">fiche&nbsp;2, l'outil et le TCP</a>).
+      <kbd>q</kbd> puis Entr&eacute;e pour quitter.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex02">02 &mdash; Mouvements simples&nbsp;: chaque appel attend la fin</h3>
+  <p><code>02_mouvements_simples.py</code>&nbsp;: <code>movj</code>,
+  <code>movl</code>, une dur&eacute;e impos&eacute;e, une composante omise, le repli. Apr&egrave;s
+  chaque mouvement, le script affiche le temps &eacute;coul&eacute; et la pose relue.</p>
+<pre><code><span class="k">with</span> Commande(..., vitesse=<span class="n">40</span>, vitesse_articulaire=<span class="n">40</span>) <span class="k">as</span> robot:
+    robot.movj(AU_DESSUS)            <span class="c"># cible(220, 0, 120) ; attend la fin</span>
+    robot.movl(A)                    <span class="c"># cible(220, -50, 80), a 40 mm/s</span>
+    robot.movl(B, duree=<span class="n">2.0</span>)         <span class="c"># cible(220, 50, 80), en 2 s</span>
+    robot.movl(z=<span class="n">50</span>)                 <span class="c"># x, y et r repris de B</span>
+    robot.repli()                    <span class="c"># (0, 15, 30, 0) deg</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>02_mouvements_simples.py les-deux</code>, zone
+      d&eacute;gag&eacute;e, apr&egrave;s <code>01</code>.</td></tr>
+    <tr><td>Observer</td><td>Le terminal ne rend la main qu'&agrave; l'arr&ecirc;t du bras.
+      Une cible seule part toujours en <strong>point &agrave; point</strong>&nbsp;:
+      l'&eacute;tape&nbsp;3 dure environ 2&nbsp;s, la dur&eacute;e ayant &eacute;t&eacute; convertie en
+      vitesse pour le profil trap&egrave;ze du contr&ocirc;leur. Le temps affich&eacute; comprend
+      aussi la lecture, le contr&ocirc;le et l'envoi.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td><code>vitesse=40</code> est en <strong>mm/s</strong>
+      (<code>movl</code>), <code>vitesse_articulaire=40</code> en
+      <strong>deg/s</strong> (<code>movj</code>)&nbsp;: les deux n'ont rien de
+      comparable. Une composante omise reprend la <strong>derni&egrave;re cible
+      command&eacute;e</strong>, pas la pose relue.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex03">03 &mdash; Une cible tap&eacute;e au clavier</h3>
+  <p><code>03_cible_au_clavier.py</code>&nbsp;: on tape <code>x y z</code>
+  (ou <code>x y z r</code>), le robot y va en ligne droite. La zone de travail
+  est active, et un refus est <strong>attrap&eacute;</strong> au lieu d'arr&ecirc;ter le
+  script.</p>
+<pre><code>ZONE = ((<span class="n">170</span>, <span class="n">270</span>), (<span class="n">-90</span>, <span class="n">90</span>), (<span class="n">30</span>, <span class="n">140</span>))       <span class="c"># mm : x, y, z</span>
+
+<span class="k">with</span> Commande(..., vitesse=<span class="n">40</span>, zone=ZONE) <span class="k">as</span> robot:
+    while <span class="k">True</span>:
+        ...                                      <span class="c"># lecture de "x y z [r]"</span>
+        <span class="k">try</span>:
+            robot.movl(cible(*valeurs))          <span class="c"># rend la main a l'arrivee</span>
+        <span class="k">except</span> ErreurExecution:
+            <span class="k">print</span>(<span class="k">"cible refusee, le robot n'a pas bouge"</span>)
+            <span class="k">continue</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>03_cible_au_clavier.py</code>, puis
+      <code>les-deux</code> une fois le principe compris.</td></tr>
+    <tr><td>Observer</td><td>Essayez <code>220 0 80</code> (accept&eacute;),
+      <code>400 0 80</code> (hors zone), <code>170 0 140</code> (dans la zone,
+      mais J2 sortirait de ses but&eacute;es). Chaque refus affiche une alerte rouge
+      qui dit pourquoi, puis le script redemande une cible.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>La zone est une bo&icirc;te devant le robot, &agrave; adapter au
+      poste. La virgule d&eacute;cimale est accept&eacute;e (<code>220,5</code>). Un quatri&egrave;me
+      nombre tourne l'outil&nbsp;: c'est <code>r</code>, en degr&eacute;s.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex04">04 &mdash; Pas &agrave; pas au clavier</h3>
+  <p><code>04_pas_a_pas_clavier.py</code>&nbsp;: <code>x+</code>,
+  <code>z-</code>&hellip; avancent d'un pas&nbsp;; <code>pas 5</code> change le
+  pas&nbsp;; Entr&eacute;e seule refait le dernier d&eacute;placement&nbsp;; <code>r</code>
+  ram&egrave;ne au repli. La nouvelle cible part de la pose <strong>lue</strong>.</p>
+<pre><code><span class="k">with</span> Commande(..., vitesse=<span class="n">30</span>, zone=ZONE, pas_max=<span class="n">30</span>) <span class="k">as</span> robot:
+    x, y, z, r = robot.pose()
+    robot.movl(x=x + dx * pas, y=y + dy * pas, z=z + dz * pas)   <span class="c"># r garde</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>04_pas_a_pas_clavier.py</code> &mdash; ou
+      <code>les-deux</code> pour r&eacute;gler un poste.</td></tr>
+    <tr><td>Observer</td><td>Tapez <code>pas 50</code> puis <code>x+</code>&nbsp;:
+      refus&eacute;, <code>pas_max</code> vaut 30&nbsp;mm &mdash; une faute de frappe ne
+      lance pas le bras &agrave; l'autre bout de la table. <code>r</code>, lui, est
+      accept&eacute; m&ecirc;me &agrave; plus de 30&nbsp;mm&nbsp;: le repli &eacute;chappe &agrave;
+      <code>pas_max</code>, pas &agrave; la zone.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>Une but&eacute;e <em>fr&ocirc;l&eacute;e</em> n'est signal&eacute;e en jaune
+      qu'une fois par s&eacute;ance, pas &agrave; chaque pas. Le repli
+      (222,&nbsp;0,&nbsp;134 avec la ventouse) doit &ecirc;tre dans la zone, sinon il est
+      refus&eacute;.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex05">05 &mdash; La ventouse, les sorties et les entr&eacute;es</h3>
+  <p><code>05_ventouse_et_es.py</code>&nbsp;: une prise et d&eacute;pose &eacute;tape par
+  &eacute;tape, puis la sortie EIO18 allum&eacute;e et &eacute;teinte, puis l'entr&eacute;e EIO17 lue &agrave; la
+  demande.</p>
+<pre><code>HAUT = hg.translation(<span class="n">0</span>, <span class="n">0</span>, <span class="n">-50</span>)    <span class="c"># 50 mm plus haut : z de l'outil vers le bas</span>
+
+robot.movj(PRISE @ HAUT)
+robot.movl(PRISE)
+robot.ventouse(<span class="k">True</span>)                <span class="c"># rend la main une fois l'outil actionne</span>
+robot.movl(PRISE @ HAUT)
+...
+robot.sortie(PORT_SORTIE, <span class="k">True</span>)
+<span class="k">print</span>(robot.entree(PORT_ENTREE))    <span class="c"># lue sur la machine, a l'instant</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>05_ventouse_et_es.py</code>&nbsp;; sur le robot,
+      apr&egrave;s avoir v&eacute;rifi&eacute; ce qui est branch&eacute; sur EIO17 et EIO18.</td></tr>
+    <tr><td>Observer</td><td>Dans le simulateur, la ventouse s'affiche active
+      d'une commande &agrave; l'autre&nbsp;; la sortie s'allume dans le panneau
+      <span class="ui">Entr&eacute;es / Sorties</span>, et l'entr&eacute;e se bascule &agrave; la main
+      en cliquant sur EIO17. Sur le robot, le port est configur&eacute; en entr&eacute;e au
+      premier <code>entree()</code>.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>La ventouse <strong>n'est pas</strong> une sortie
+      EIO&nbsp;: elle a sa propre commande, choisie d'apr&egrave;s l'outil d&eacute;clar&eacute;
+      (<code>outil="ventouse"</code>). Rel&acirc;ch&eacute;e, elle laisse la pompe tourner&nbsp;:
+      <code>ventouse(False, couper=True)</code> l'arr&ecirc;te une seconde apr&egrave;s.
+      Ce script n'emploie pas la pince&nbsp;; avec <code>outil="pince"</code>,
+      <code>pince(False)</code> coupe la pompe d'elle-m&ecirc;me
+      (<a href="#c-couper-pompe">couper_pompe</a>). Une sortie peut commander un v&eacute;rin ou
+      un convoyeur. Le d&eacute;gagement s'&eacute;crit avec un z <strong>n&eacute;gatif</strong>,
+      parce que l'axe z de l'outil pointe vers le bas
+      (<a href="fiche_programmation.html#cible">fiche&nbsp;2, fabriquer une cible</a>).</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex06">06 &mdash; Plusieurs cibles avec leurs dur&eacute;es&nbsp;: continu ou pas</h3>
+  <p><code>06_plusieurs_cibles.py</code>&nbsp;: un carr&eacute; de 100&nbsp;&times;&nbsp;70&nbsp;mm
+  parcouru deux fois, en point &agrave; point puis en trajectoire continue, avec une
+  dur&eacute;e par c&ocirc;t&eacute;&nbsp;; puis sans dur&eacute;es, &agrave; 60&nbsp;mm/s&nbsp;; puis une dur&eacute;e
+  impossible.</p>
+<pre><code>CARRE = [(COINS[<span class="n">1</span>], <span class="n">2.0</span>), (COINS[<span class="n">2</span>], <span class="n">1.5</span>), (COINS[<span class="n">3</span>], <span class="n">2.0</span>), (COINS[<span class="n">0</span>], <span class="n">1.5</span>)]
+
+robot.movl(CARRE, continu=<span class="k">False</span>)    <span class="c"># arret a chaque coin</span>
+robot.movl(CARRE, continu=<span class="k">True</span>)     <span class="c"># sans arret : c'est le defaut</span>
+robot.movl(COINS[<span class="n">1</span>:] + COINS[:<span class="n">1</span>], vitesse=<span class="n">60</span>)
+robot.movl([(COINS[<span class="n">1</span>], <span class="n">0.5</span>), COINS[<span class="n">2</span>], COINS[<span class="n">3</span>], COINS[<span class="n">0</span>]])   <span class="c"># 100 mm en 0,5 s</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>06_plusieurs_cibles.py</code>, puis
+      <code>les-deux</code> <strong>apr&egrave;s</strong> 01 et 02.</td></tr>
+    <tr><td>Observer</td><td>Sur le robot, <strong>regardez et &eacute;coutez les
+      coins</strong>&nbsp;: arr&ecirc;t franc en point &agrave; point, passage sans arr&ecirc;t en
+      continu. Le chronom&egrave;tre affiche la dur&eacute;e r&eacute;elle&nbsp;; le simulateur pr&eacute;voit
+      7,00&nbsp;s en point &agrave; point et environ 7,10&nbsp;s en continu, pour
+      7,00&nbsp;s demand&eacute;es. La derni&egrave;re ligne donne l'avertissement
+      jaune&nbsp;:<br><code>1 MOVL : 0.50 s demandees, ~1.06 s en realite
+      (vitesse plafonnee a 125 mm/s)</code>.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>Un &eacute;l&eacute;ment de la liste est une cible, ou un couple
+      <code>(cible, dur&eacute;e)</code>&nbsp;; sans dur&eacute;e, c'est la vitesse qui d&eacute;cide.
+      Le chronom&egrave;tre du script compte aussi la pr&eacute;paration&nbsp;: comparez les
+      ordres de grandeur, pas les centi&egrave;mes.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex07">07 &mdash; Arcs de cercle et coins arrondis</h3>
+  <p><code>07_arc_et_lissage.py</code>&nbsp;: un demi-cercle, puis un cercle
+  complet en deux demi-cercles, puis un zigzag sans et avec lissage.</p>
+<pre><code>robot.movc(DROITE, HAUT_CERCLE, duree=<span class="n">3.0</span>)                    <span class="c"># via, fin</span>
+robot.movc([(GAUCHE, BAS_CERCLE, <span class="n">2.5</span>), (DROITE, HAUT_CERCLE, <span class="n">2.5</span>)])
+robot.movl(ZIGZAG[<span class="n">1</span>:], lissage=<span class="n">0</span>, vitesse=<span class="n">50</span>)
+robot.movl(ZIGZAG[<span class="n">1</span>:], lissage=<span class="n">60</span>, vitesse=<span class="n">50</span>)                <span class="c"># coins coupes</span></code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>07_arc_et_lissage.py</code>, puis
+      <code>les-deux</code> apr&egrave;s 06.</td></tr>
+    <tr><td>Observer</td><td>Un arc, m&ecirc;me seul, part en trajectoire
+      continue&nbsp;: des points tous les 5&nbsp;mm, parcourus sans arr&ecirc;t. Pr&eacute;visions
+      du simulateur&nbsp;: demi-cercle de 3,00&nbsp;s &agrave; environ 55&nbsp;mm/s,
+      cercle de 5,00&nbsp;s&nbsp;; zigzag de 3,85&nbsp;s sans lissage, 3,55&nbsp;s
+      &agrave; 60&nbsp;%. Le mod&egrave;le pr&eacute;voit que le robot ralentisse nettement &agrave; chaque coin vif,
+      beaucoup moins une fois arrondi&nbsp;: &agrave; v&eacute;rifier sur la machine.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>Avec lissage, le robot ne passe plus
+      <strong>exactement</strong> par les cibles
+      (<a href="fiche_programmation.html#lissage">fiche&nbsp;2, le lissage</a>).
+      Un arc qui fait <strong>tourner l'outil</strong> part par l'arc du
+      contr&ocirc;leur, &agrave; la vitesse moins bien tenue&nbsp;: c'est annonc&eacute; en jaune.
+      Le ralentissement en courbe n'est cal&eacute; que sur une mesure.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex08">08 &mdash; Le simulateur et le robot, simulateur lanc&eacute; par le script</h3>
+  <p><code>08_simulateur_et_robot.py</code>&nbsp;: le script trouve la fen&ecirc;tre,
+  ou l'ouvre, lui demande de se connecter au robot, puis lui confie chaque
+  commande.</p>
+<pre><code><span class="k">with</span> Commande(simulateur=<span class="k">True</span>, robot=(CIBLE == <span class="k">"les-deux"</span>),
+              lancer_simulateur=<span class="k">True</span>,   <span class="c"># ouvre main.py s'il n'est pas ouvert</span>
+              port=<span class="k">None</span>,                <span class="c"># None : premier port serie trouve</span>
+              vitesse=<span class="n">40</span>) <span class="k">as</span> robot:
+    robot.movj(A)
+    robot.movl([B, A])</code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>08_simulateur_et_robot.py</code>
+      (<code>les-deux</code> par d&eacute;faut)&nbsp;; <code>simulateur</code> pour
+      essayer sans robot. Le mode robot seul n'a pas de sens ici.</td></tr>
+    <tr><td>Observer</td><td>La fen&ecirc;tre s'ouvre si besoin&nbsp;; robot en
+      d&eacute;faut&nbsp;: le terminal dit <code>terminez la MISE EN ROUTE dans la
+      fenetre du simulateur</code> et attend. Le mod&egrave;le suit le vrai bras. &Agrave; la
+      fin, la fen&ecirc;tre reste ouverte et garde la liaison&nbsp;: relancez le script,
+      il la retrouve.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>Si un autre script tient d&eacute;j&agrave; le port (mode robot
+      seul), la fen&ecirc;tre ne peut pas se connecter. <code>port="COM4"</code> ou
+      <code>port="/dev/ttyUSB0"</code> quand plusieurs ports sont pr&eacute;sents.</td></tr>
+  </table></div>
+
+  <!-- ------------------------------------------------------------- -->
+  <h3 id="ex09">09 &mdash; Les garde-fous</h3>
+  <p><code>09_garde_fous.py</code>&nbsp;: sept mouvements, dont cinq refus&eacute;s pour
+  cinq raisons diff&eacute;rentes, puis un mouvement lent de 12&nbsp;s &agrave; interrompre au
+  <kbd>Ctrl</kbd>+<kbd>C</kbd>. Ce que donne chaque essai, avec
+  <code>zone=((170, 270), (-90, 90), (30, 140))</code> et
+  <code>pas_max=100</code>&nbsp;:</p>
+  <div class="cadre"><table>
+    <tr><th>Essai</th><th>R&eacute;sultat</th><th>Message</th></tr>
+    <tr><td>1. (220, 0, 80)</td><td>accept&eacute;</td><td>&mdash;</td></tr>
+    <tr><td>2. (170, 0, 140)</td><td>refus&eacute;</td>
+      <td><code>cible hors des butees</code>&nbsp;: J2 = &minus;7,91&deg; hors de [0&nbsp;; 85]</td></tr>
+    <tr><td>3. (400, 0, 80)</td><td>refus&eacute;</td>
+      <td><code>hors de la zone de travail</code>&nbsp;: la zone est jug&eacute;e
+      <em>avant</em> l'atteignabilit&eacute;</td></tr>
+    <tr><td>4. (220, 120, 80)</td><td>refus&eacute;</td>
+      <td><code>hors de la zone de travail</code>&nbsp;: y = 120</td></tr>
+    <tr><td>5. (220, &minus;50, 80)</td><td>accept&eacute;</td><td>50&nbsp;mm de pas</td></tr>
+    <tr><td>6. (220, 70, 80)</td><td>refus&eacute;</td>
+      <td><code>deplacement trop grand</code>&nbsp;: 120&nbsp;mm, pas_max = 100</td></tr>
+    <tr><td>7. arc</td><td>refus&eacute;</td>
+      <td><code>le trajet sort de la zone de travail</code>&nbsp;: les deux bouts
+      sont dedans, le milieu de l'arc passe x = 270</td></tr>
+  </table></div>
+<pre><code><span class="k">try</span>:
+    robot.movl(cible(<span class="n">220</span>, <span class="n">40</span>, <span class="n">80</span>), duree=<span class="n">12.0</span>)
+<span class="k">except</span> KeyboardInterrupt:
+    <span class="c"># l'arret d'urgence est deja parti : le bras n'est pas ou le script le croit</span>
+    sys.exit(<span class="n">1</span>)</code></pre>
+  <div class="cadre"><table>
+    <tr><td>Lancer</td><td><code>09_garde_fous.py</code>, de pr&eacute;f&eacute;rence d'abord en
+      simulateur.</td></tr>
+    <tr><td>Observer</td><td>Chaque refus&nbsp;: alerte rouge, puis
+      <code>REFUSE</code>&nbsp;: le robot n'a pas boug&eacute;. Au
+      <kbd>Ctrl</kbd>+<kbd>C</kbd>&nbsp;: alerte <code>ARRET D'URGENCE</code> sur
+      le robot, <code>SIMULATION INTERROMPUE</code> en simulateur seul.</td></tr>
+    <tr><td>Pi&egrave;ges</td><td>Le <kbd>Ctrl</kbd>+<kbd>C</kbd> se tape dans le
+      terminal du <strong>script</strong>. Apr&egrave;s un arr&ecirc;t d'urgence, v&eacute;rifiez la
+      posture avant de relancer quoi que ce soit.</td></tr>
+  </table></div>
+</section>
+
+<!-- =============================================================== -->
+<section id="reference">
+  <h2><span class="num">Section 04</span>R&eacute;f&eacute;rence de <code>Commande</code></h2>
+  <p class="intro">Les entr&eacute;es se lisent comme celles de la
+  <a href="fiche_api.html#lire">fiche&nbsp;3</a>. Toutes les longueurs sont en
+  millim&egrave;tres, tous les angles en degr&eacute;s.</p>
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> Commande, ErreurExecution, cible</code></pre>
+
+  <h3>Construire la commande</h3>
+  <div class="api" id="c-init">
+    <p class="sig"><b>Commande</b>(<i>simulateur</i>=<u>True</u>, <i>robot</i>=<u>False</u>,
+      <i>vitesse</i>=<u>50.0</u>, <i>port</i>=<u>None</u>,
+      <i>lancer_simulateur</i>=<u>False</u>, <i>zone</i>=<u>None</u>,
+      <i>pas_max</i>=<u>None</u>, <i>outil</i>=<u>"ventouse"</u>,
+      <i>longueur_outil</i>=<u>None</u>, <i>vitesse_articulaire</i>=<u>50.0</u>,
+      <i>acceleration</i>=<u>400.0</u>, <i>acceleration_articulaire</i>=<u>400.0</u>,
+      <i>lissage</i>=<u>0.0</u>, <i>continu</i>=<u>True</u>)</p>
+    <div class="corps">
+      <p>Se connecte au montage choisi, puis <strong>lit</strong> la pose&nbsp;:
+      c'est d'elle que partent les composantes omises du premier mouvement. Les
+      r&eacute;glages servent de valeurs par d&eacute;faut &agrave; tous les mouvements, et se
+      changent ensuite par <a href="#c-regler"><code>regler()</code></a>.</p>
+      <dl class="params">
+        <dt>simulateur <span class="ty">bool</span></dt>
+        <dd>Passer par la fen&ecirc;tre du simulateur (section&nbsp;2).</dd>
+        <dt>robot <span class="ty">bool</span></dt>
+        <dd>Ex&eacute;cuter sur le robot r&eacute;el. Seul, le script ouvre le port&nbsp;; avec
+          <code>simulateur=True</code>, c'est la fen&ecirc;tre.</dd>
+        <dt>vitesse <span class="ty">float</span></dt>
+        <dd>En <strong>mm/s</strong>&nbsp;: <code>movl</code> et <code>movc</code>,
+          en point &agrave; point comme en continu.</dd>
+        <dt>port <span class="ty">str</span></dt>
+        <dd>Port s&eacute;rie du robot, <code>"COM4"</code>,
+          <code>"/dev/ttyUSB0"</code>&hellip; <code>None</code>&nbsp;: le premier
+          trouv&eacute;. Ignor&eacute; sans <code>robot=True</code>.</dd>
+        <dt>lancer_simulateur <span class="ty">bool</span></dt>
+        <dd>Ouvrir <code>main.py</code> dans un autre processus si aucune fen&ecirc;tre
+          ne r&eacute;pond.</dd>
+        <dt>zone <span class="ty">3 couples</span></dt>
+        <dd><code>((xmin, xmax), (ymin, ymax), (zmin, zmax))</code> en mm, chaque
+          min &lt; max. Toute cible, et tout trajet, qui en sortirait est refus&eacute;
+          (section&nbsp;7). <code>None</code>&nbsp;: pas de zone.</dd>
+        <dt>pas_max <span class="ty">float</span></dt>
+        <dd>Distance maximale, en mm, entre une cible et la pr&eacute;c&eacute;dente.
+          <code>None</code>&nbsp;: pas de limite.</dd>
+        <dt>outil <span class="ty">str</span></dt>
+        <dd>Outil mont&eacute;, au catalogue&nbsp;: <code>"aucun"</code>,
+          <code>"ventouse"</code>, <code>"pince"</code>, <code>"stylo"</code>,
+          <code>"laser"</code>.</dd>
+        <dt>longueur_outil <span class="ty">float</span></dt>
+        <dd>Longueur r&eacute;elle de l'outil, en mm. <code>None</code>&nbsp;: celle du
+          catalogue, 62&nbsp;mm pour la ventouse.</dd>
+        <dt>vitesse_articulaire <span class="ty">float</span></dt>
+        <dd>En <strong>deg/s</strong>&nbsp;: tout <code>movj</code>, en point &agrave;
+          point comme en continu, et le repli.</dd>
+        <dt>acceleration <span class="ty">float</span></dt>
+        <dd>En mm/s&sup2;. Elle sert aussi au mode continu&nbsp;: c'est elle qui
+          d&eacute;cide si la vitesse demand&eacute;e est atteinte (section&nbsp;6).</dd>
+        <dt>acceleration_articulaire <span class="ty">float</span></dt>
+        <dd>En deg/s&sup2;, pour un <code>movj</code> point &agrave; point.</dd>
+        <dt>lissage <span class="ty">float</span></dt>
+        <dd>Arrondi des raccords entre les cibles d'une liste, de 0 &agrave; 100&nbsp;%.</dd>
+        <dt>continu <span class="ty">bool</span></dt>
+        <dd><code>True</code>&nbsp;: une liste de cibles s'encha&icirc;ne sans
+          arr&ecirc;t&nbsp;; <code>False</code>&nbsp;: arr&ecirc;t &agrave; chaque cible.</dd>
+      </dl>
+      <p class="rend leve"><b>L&egrave;ve</b> <code>ValueError</code> sans aucune
+        destination, ou pour une zone mal form&eacute;e&nbsp;; <code>ErreurExecution</code>
+        si aucun simulateur ne r&eacute;pond, si la connexion au robot &eacute;choue, ou si le
+        robot reste en d&eacute;faut apr&egrave;s la mise en route.</p>
+      <div class="cadre"><table>
+        <tr><th>D&eacute;faut</th><th><code>Pilote</code></th><th><code>Commande</code></th></tr>
+        <tr><td>vitesse</td><td class="num">120 mm/s</td><td class="num">50 mm/s</td></tr>
+        <tr><td>vitesse_articulaire</td><td class="num">90 deg/s</td><td class="num">50 deg/s</td></tr>
+        <tr><td>acceleration</td><td class="num">500 mm/s&sup2;</td><td class="num">400 mm/s&sup2;</td></tr>
+        <tr><td>acceleration_articulaire</td><td class="num">300 deg/s&sup2;</td><td class="num">400 deg/s&sup2;</td></tr>
+        <tr><td>loi horaire</td><td><code>"polynome5"</code></td>
+          <td>trap&egrave;ze, impos&eacute;&nbsp;: celui du contr&ocirc;leur</td></tr>
+      </table></div>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-init">fiche&nbsp;3, Pilote</a> <a href="fiche_programmation.html#temps">fiche&nbsp;2, r&eacute;gler la vitesse</a></p>
+    </div>
+  </div>
+
+  <h3>Les mouvements</h3>
+  <p>Tous rendent la main <strong>&agrave; l'arriv&eacute;e</strong>, et renvoient la commande
+  elle-m&ecirc;me&nbsp;: ils s'encha&icirc;nent si on le souhaite. Un refus l&egrave;ve
+  <code>ErreurExecution</code> sans que rien ne parte.</p>
+
+  <div class="api" id="c-movj">
+    <p class="sig"><b>movj</b>(<i>T</i>=<u>None</u>, *, <i>x</i>=<u>None</u>,
+      <i>y</i>=<u>None</u>, <i>z</i>=<u>None</u>, <i>r</i>=<u>None</u>,
+      <i>q</i>=<u>None</u>, <i>duree</i>=<u>None</u>, <i>vitesse</i>=<u>None</u>,
+      <i>lissage</i>=<u>None</u>, <i>continu</i>=<u>None</u>,
+      <i>repere</i>=<u>None</u>, <i>commentaire</i>=<u>""</u>)</p>
+    <div class="corps">
+      <p><strong>Mouvement articulaire</strong>&nbsp;: les angles sont interpol&eacute;s,
+      le chemin de la pointe n'est pas rectiligne.</p>
+      <dl class="params">
+        <dt>T <span class="ty">cible</span> <span class="ty">ou liste</span></dt>
+        <dd>Une cible (section&nbsp;5), ou une <strong>liste</strong> de cibles,
+          chacune &eacute;ventuellement accompagn&eacute;e de sa dur&eacute;e.</dd>
+        <dt>x, y, z, r <span class="ty">float</span></dt>
+        <dd>Surchargent la cible composante par composante. Interdits avec une
+          liste.</dd>
+        <dt>q <span class="ty">q</span></dt>
+        <dd>Configuration articulaire impos&eacute;e, <code>[J1, J2, J3, J4]</code> en
+          degr&eacute;s&nbsp;: le MGI n'est pas appel&eacute;.</dd>
+        <dt>duree <span class="ty">float</span></dt>
+        <dd>Dur&eacute;e impos&eacute;e, en s. Avec une liste&nbsp;: celle des &eacute;l&eacute;ments qui n'ont
+          pas la leur.</dd>
+        <dt>vitesse <span class="ty">float</span></dt>
+        <dd>En <strong>deg/s</strong>, plafonn&eacute;e &agrave; 200&nbsp;deg/s en point &agrave;
+          point. Dans une liste en continu, elle fixe la <strong>dur&eacute;e</strong> de
+          chaque <code>movj</code> &mdash; celle que le simulateur lui donne &agrave;
+          cette vitesse articulaire &mdash;, et c'est cette dur&eacute;e que la course
+          tient, dans la limite de 125&nbsp;mm/s pour la pointe&nbsp;: un avertissement
+          jaune le dit quand elle est trop courte.</dd>
+        <dt>lissage, continu <span class="ty">float, bool</span></dt>
+        <dd>Pour une liste&nbsp;: remplacent les r&eacute;glages de la commande le temps de
+          cet appel.</dd>
+        <dt>repere, commentaire <span class="ty">str</span></dt>
+        <dd>Repris de <code>Pilote</code>. <code>Commande</code> n'a pas de rep&egrave;re
+          objet&nbsp;: laissez <code>repere</code> de c&ocirc;t&eacute;.</dd>
+      </dl>
+<pre><code>robot.movj(PRISE)                       <span class="c"># une cible</span>
+robot.movj(x=<span class="n">220</span>, y=<span class="n">-50</span>, z=<span class="n">80</span>)          <span class="c"># des coordonnees</span>
+robot.movj(q=[<span class="n">0</span>, <span class="n">15</span>, <span class="n">30</span>, <span class="n">0</span>])            <span class="c"># des angles</span>
+robot.movj([A, (B, <span class="n">2.0</span>), C])            <span class="c"># plusieurs cibles, sans arret</span></code></pre>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-movj">fiche&nbsp;3, movj</a> <a href="#ex02">exemple 02</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-movl">
+    <p class="sig"><b>movl</b>(<i>T</i>=<u>None</u>, *, <i>x</i>, <i>y</i>, <i>z</i>,
+      <i>r</i>, <i>duree</i>, <i>vitesse</i>, <i>lissage</i>, <i>continu</i>,
+      <i>repere</i>, <i>commentaire</i>)</p>
+    <div class="corps">
+      <p><strong>Mouvement rectiligne</strong>&nbsp;: la pointe suit une droite.
+      M&ecirc;mes param&egrave;tres que <code>movj</code>, sans <code>q</code>&nbsp;;
+      <code>vitesse</code> en mm/s, plafonn&eacute;e &agrave; 125&nbsp;mm/s, la plus haute vitesse mesur&eacute;e.</p>
+<pre><code>robot.movl(PRISE)
+robot.movl(z=<span class="n">40</span>)                                  <span class="c"># descente verticale</span>
+robot.movl([(A, <span class="n">1.0</span>), (B, <span class="n">0.5</span>), C])               <span class="c"># cible, duree en s</span>
+robot.movl([A, B, C], lissage=<span class="n">50</span>)                 <span class="c"># coins arrondis</span>
+robot.movl([A, B, C], continu=<span class="k">False</span>)              <span class="c"># arret a chaque cible</span></code></pre>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-movl">fiche&nbsp;3, movl</a> <a href="#ex03">exemple 03</a> <a href="#ex06">exemple 06</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-movc">
+    <p class="sig"><b>movc</b>(<i>via</i>, <i>T</i>=<u>None</u>, *, <i>x</i>, <i>y</i>,
+      <i>z</i>, <i>r</i>, <i>duree</i>, <i>vitesse</i>, <i>lissage</i>,
+      <i>continu</i>, <i>repere</i>, <i>commentaire</i>)</p>
+    <div class="corps">
+      <p><strong>Arc de cercle</strong> partant de la position actuelle, passant
+      par <code>via</code> et finissant en <code>T</code>. Un arc, m&ecirc;me seul, est
+      suivi en trajectoire continue, ce qui en ma&icirc;trise la vitesse&nbsp;; s'il fait
+      tourner l'outil, il passe par l'arc du contr&ocirc;leur, et c'est annonc&eacute;.</p>
+      <dl class="params">
+        <dt>via <span class="ty">cible</span> <span class="ty">ou liste d'arcs</span></dt>
+        <dd>Le point de passage. Ou, <code>T</code> omis, une liste d'arcs
+          <code>(via, fin)</code> ou <code>(via, fin, duree)</code>.</dd>
+        <dt>T <span class="ty">cible</span></dt>
+        <dd>La fin de l'arc.</dd>
+      </dl>
+<pre><code>robot.movc(cible(<span class="n">260</span>, <span class="n">0</span>, <span class="n">80</span>), cible(<span class="n">220</span>, <span class="n">40</span>, <span class="n">80</span>))
+robot.movc([(via1, fin1, <span class="n">1.5</span>), (via2, fin2)])     <span class="c"># plusieurs arcs</span></code></pre>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-movc">fiche&nbsp;3, movc</a> <a href="#ex07">exemple 07</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-repli">
+    <p class="sig"><b>repli</b>(<i>duree</i>=<u>None</u>, <i>vitesse</i>=<u>None</u>)</p>
+    <div class="corps">
+      <p>Retour &agrave; la position de repos <code>J = (0, 15, 30, 0)&nbsp;&deg;</code>,
+      en <code>movj</code>. <strong>&Eacute;chappe &agrave; <code>pas_max</code></strong>&nbsp;:
+      c'est une posture connue, qu'un pas de 30&nbsp;mm rendrait inaccessible. La
+      zone, les but&eacute;es et les collisions s'appliquent comme partout.</p>
+      <p class="voir"><span class="mot">Voir</span> <a href="#ex04">exemple 04</a></p>
+    </div>
+  </div>
+
+  <h3>Outil, entr&eacute;es / sorties, attente</h3>
+  <div class="api" id="c-actionner">
+    <p class="sig"><b>actionner</b>(<i>actif</i>=<u>True</u>)
+      &nbsp;&middot;&nbsp; <b>ventouse</b>(<i>actif</i>=<u>True</u>, <i>couper</i>=<u>False</u>)
+      &nbsp;&middot;&nbsp; <b>pince</b>(<i>fermee</i>=<u>True</u>, <i>couper</i>=<u>True</u>)</p>
+    <div class="corps">
+      <p>Commande l'outil mont&eacute;, et rend la main une fois la commande faite. Sur
+      le robot, c'est une commande &agrave; part&nbsp;: jamais au milieu d'une
+      trajectoire continue.</p>
+      <dl class="params">
+        <dt>actif, fermee <span class="ty">bool</span></dt>
+        <dd><code>True</code>&nbsp;: aspirer, fermer, allumer&nbsp;;
+          <code>False</code>&nbsp;: rel&acirc;cher, ouvrir, &eacute;teindre.</dd>
+        <dt>couper <span class="ty">bool</span></dt>
+        <dd>Au rel&acirc;chement de la ventouse ou &agrave; l'ouverture de la pince
+          seulement&nbsp;: la pompe &agrave; air est coup&eacute;e <strong>1&nbsp;s apr&egrave;s</strong>
+          (<code>DELAI_COUPURE_POMPE</code>), le temps que la pince s'ouvre ou que
+          la pi&egrave;ce soit chass&eacute;e. <strong>Le script n'attend pas</strong>&nbsp;: une
+          minuterie s'en charge en arri&egrave;re-plan, et le mouvement suivant peut
+          partir pendant cette seconde. Par d&eacute;faut <code>True</code> pour la
+          pince, <code>False</code> pour la ventouse. Sans effet &agrave; la prise, et
+          sans robot r&eacute;el.</dd>
+      </dl>
+      <p>Une nouvelle action sur l'outil avant l'&eacute;ch&eacute;ance &mdash; par exemple
+      <code>pince(True)</code> pour reprendre une pi&egrave;ce &mdash; <strong>annule la
+      coupure</strong> pr&eacute;vue&nbsp;: couper la pompe d'une pince qu'on vient de
+      refermer lui ferait l&acirc;cher sa pi&egrave;ce. Un appel direct &agrave;
+      <code>couper_pompe()</code> l'annule aussi, puisqu'il coupe tout de suite.
+      <code>fermer()</code> &mdash; donc la fin d'un bloc <code>with</code>
+      &mdash; attend l'&eacute;ch&eacute;ance d'une coupure encore pr&eacute;vue et l'envoie avant de
+      fermer la liaison. <code>couper=False</code> laisse la pompe tourner.</p>
+      <div class="note piege">
+        <span class="etiquette">C'est l'outil d&eacute;clar&eacute; qui compte, pas le nom de la m&eacute;thode</span>
+        <p><code>ventouse()</code> et <code>pince()</code> sont des alias
+        d'<code>actionner()</code>. La commande envoy&eacute;e au robot d&eacute;pend de
+        l'<strong>outil d&eacute;clar&eacute;</strong> dans le constructeur&nbsp;: avec
+        <code>Commande(..., outil="pince")</code>, <code>robot.ventouse(True)</code>
+        ferme la pince&nbsp;; avec l'outil par d&eacute;faut, <code>"ventouse"</code>,
+        <code>robot.pince(True)</code> fait aspirer la ventouse. D&eacute;clarez
+        l'outil r&eacute;ellement mont&eacute;. Pour <code>"laser"</code>, c'est le laser&nbsp;;
+        pour tous les autres outils, la commande de la ventouse.</p>
+      </div>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-actionner">fiche&nbsp;3, actionner</a> <a href="#ex05">exemple 05</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-couper-pompe">
+    <p class="sig"><b>couper_pompe</b>()</p>
+    <div class="corps">
+      <p>Arr&ecirc;te la pompe &agrave; air, de la ventouse <em>et</em> de la pince,
+      <strong>tout de suite</strong>&nbsp;: deux commandes <strong>imm&eacute;diates</strong>,
+      hors de la file du contr&ocirc;leur, qui agissent m&ecirc;me pendant un mouvement. Sans
+      robot r&eacute;el, elle ne fait rien&nbsp;: le simulateur n'a pas de pompe.</p>
+      <p><strong>Pourquoi il le faut.</strong> Rel&acirc;cher la ventouse ou ouvrir la
+      pince n'&eacute;teint pas la pompe&nbsp;: la commande envoy&eacute;e garde l'outil
+      <em>command&eacute;</em> (<code>isCtrlEnable = 1</code>) en le mettant au repos
+      (<code>isGripped = 0</code>), et la pompe <strong>souffle</strong>, pour
+      chasser la pi&egrave;ce ou ouvrir les doigts&nbsp;; puis elle continue de tourner,
+      avec son bruit. Seul <code>isCtrlEnable = 0</code> l'arr&ecirc;te&nbsp;: c'est ce
+      qu'envoie <code>couper_pompe()</code>.</p>
+      <div class="note attention">
+        <span class="etiquette">Une pi&egrave;ce tenue est l&acirc;ch&eacute;e</span>
+        <p>Couper la pompe d'une ventouse qui aspire, ou d'une pince ferm&eacute;e, fait
+        <strong>tomber la pi&egrave;ce</strong>. &Agrave; n'appeler qu'une fois la pi&egrave;ce pos&eacute;e
+        &mdash; ou laisser faire <code>pince(False)</code>, qui la coupe
+        d'elle-m&ecirc;me une seconde apr&egrave;s l'ouverture, et
+        <code>ventouse(False, couper=True)</code>, qui fait de m&ecirc;me au
+        rel&acirc;chement.</p>
+      </div>
+<pre><code>robot.movl(DEPOSE)
+robot.ventouse(<span class="k">False</span>, couper=<span class="k">True</span>)    <span class="c"># relache ; pompe coupee 1 s apres</span>
+robot.movl(DEPOSE @ HAUT)             <span class="c"># part tout de suite, sans attendre</span>
+
+robot.pince(<span class="k">False</span>)                    <span class="c"># ouvre ; coupure automatique 1 s apres</span>
+robot.pince(<span class="k">False</span>, couper=<span class="k">False</span>)      <span class="c"># ouvre, la pompe continue de tourner</span></code></pre>
+      <p>Le panneau <span class="ui">Robot r&eacute;el</span> de la fen&ecirc;tre a le m&ecirc;me
+      geste&nbsp;: le bouton <span class="ui">Couper la pompe</span>.</p>
+      <p class="rend leve"><b>L&egrave;ve</b> <code>ErreurExecution</code>
+        (<code>ARRET DE LA POMPE IMPOSSIBLE</code>) si la liaison ne r&eacute;pond pas.</p>
+    </div>
+  </div>
+
+  <div class="api" id="c-sortie">
+    <p class="sig"><b>sortie</b>(<i>port</i>, <i>etat</i>=<u>True</u>)
+      &nbsp;&middot;&nbsp; <b>entree</b>(<i>port</i>)</p>
+    <div class="corps">
+      <p><code>sortie()</code> met la sortie EIO<em>port</em> &agrave; l'&eacute;tat
+      demand&eacute;. <code>entree()</code> lit l'entr&eacute;e EIO<em>port</em>
+      <strong>tout de suite</strong>&nbsp;: sur le robot, le port est configur&eacute;
+      en entr&eacute;e au premier usage&nbsp;; dans le simulateur, c'est le bouton du
+      panneau <span class="ui">Entr&eacute;es / Sorties</span> qui r&eacute;pond.</p>
+      <p class="rend"><b>Renvoie</b> <code>sortie</code>&nbsp;: la commande&nbsp;;
+        <code>entree</code>&nbsp;: <span class="ty">bool</span>.</p>
+      <p>Il n'y a pas d'<code>attendre_entree()</code>&nbsp;: on lit
+      <code>entree()</code> dans une boucle, et l'on d&eacute;cide.</p>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-sortie">fiche&nbsp;3, sortie</a> <a href="#ex05">exemple 05</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-attendre">
+    <p class="sig"><b>attendre</b>(<i>secondes</i>)</p>
+    <div class="corps">
+      <p>Attend sans bouger. <strong>Rien ne part vers le robot</strong>&nbsp;: le
+      script dort, et <kbd>Ctrl</kbd>+<kbd>C</kbd> l'interrompt comme
+      d'habitude.</p>
+    </div>
+  </div>
+
+  <h3>R&eacute;glages et lectures</h3>
+  <div class="api" id="c-regler">
+    <p class="sig"><b>regler</b>(<i>vitesse</i>=<u>None</u>,
+      <i>acceleration</i>=<u>None</u>, <i>vitesse_articulaire</i>=<u>None</u>,
+      <i>acceleration_articulaire</i>=<u>None</u>, <i>lissage</i>=<u>None</u>,
+      <i>continu</i>=<u>None</u>)</p>
+    <div class="corps">
+      <p>Change les valeurs par d&eacute;faut <strong>pour la suite du script</strong>.
+      Les param&egrave;tres laiss&eacute;s &agrave; <code>None</code> ne sont pas touch&eacute;s. M&ecirc;mes unit&eacute;s
+      que le constructeur. L'acc&eacute;l&eacute;ration ne se donne pas mouvement par
+      mouvement&nbsp;: c'est ici qu'on la change.</p>
+      <p class="rend"><b>Renvoie</b> la commande.</p>
+    </div>
+  </div>
+
+  <div class="api" id="c-longueur">
+    <p class="sig"><b>regler_longueur_outil</b>(<i>millimetres</i>)</p>
+    <div class="corps">
+      <p>Impose la longueur r&eacute;elle de l'outil. Le z d&eacute;signe la
+      <strong>pointe</strong>&nbsp;: changer de longueur change le sens de toutes
+      les cibles. La derni&egrave;re cible m&eacute;moris&eacute;e est donc <strong>relue</strong> sur
+      la machine&nbsp;: passer de 62 &agrave; 79,3&nbsp;mm fait baisser le z lu de
+      17,3&nbsp;mm, sans que rien ne bouge.</p>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#p-longueur-outil">fiche&nbsp;3, regler_longueur_outil</a> <a href="fiche_programmation.html#outil">fiche&nbsp;2, l'outil et le TCP</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-pose">
+    <p class="sig"><b>pose</b>() &nbsp;&middot;&nbsp; <b>angles</b>()</p>
+    <div class="corps">
+      <p>Lues <strong>sur la machine</strong> &agrave; chaque appel&nbsp;: le robot s'il
+      est pilot&eacute;, sinon la fen&ecirc;tre. <code>pose()</code> rend
+      <code>(x, y, z, r)</code> de la pointe de l'outil dans le rep&egrave;re du
+      simulateur&nbsp;; sur le robot, c'est la pose du contr&ocirc;leur, convertie.
+      <code>angles()</code> rend J1 &agrave; J4, en degr&eacute;s.</p>
+      <p class="rend"><b>Renvoie</b> <span class="ty">pose</span> un tuple de 4
+        nombres&nbsp;; <span class="ty">q</span> un tableau NumPy de 4 angles.</p>
+      <p class="voir"><span class="mot">Voir</span> <a href="fiche_api.html#m-pose">fiche&nbsp;3, pose</a> <a href="#ex01">exemple 01</a></p>
+    </div>
+  </div>
+
+  <div class="api" id="c-fermer">
+    <p class="sig"><b>fermer</b>() &nbsp;&middot;&nbsp; <b>with</b> Commande(&hellip;) <b>as</b> robot</p>
+    <div class="corps">
+      <p>Lib&egrave;re ce que la commande tient&nbsp;: le port s&eacute;rie en mode robot
+      seul. La fen&ecirc;tre du simulateur reste ouverte, avec sa liaison. Fermer deux
+      fois ne fait rien. Deux fa&ccedil;ons de s'en servir&nbsp;:</p>
+<pre><code><span class="c"># 1. le bloc with : RECOMMANDE. fermer() est appele a la sortie du bloc,</span>
+<span class="c">#    meme apres une erreur ou un Ctrl+C</span>
+<span class="k">with</span> Commande(simulateur=<span class="k">True</span>, robot=<span class="k">True</span>, vitesse=<span class="n">40</span>) <span class="k">as</span> robot:
+    robot.movj(cible(<span class="n">220</span>, <span class="n">0</span>, <span class="n">80</span>))
+    robot.repli()
+
+<span class="c"># 2. sans with : utile en console interactive, ligne a ligne</span>
+robot = Commande(simulateur=<span class="k">True</span>, robot=<span class="k">True</span>, vitesse=<span class="n">40</span>)
+robot.movj(cible(<span class="n">220</span>, <span class="n">0</span>, <span class="n">80</span>))
+robot.pose()
+robot.fermer()                       <span class="c"># a ne pas oublier</span></code></pre>
+      <p>Sans <code>with</code>, une erreur qui arr&ecirc;te le script saute le
+      <code>fermer()</code>&nbsp;; en mode robot seul, le port est tout de m&ecirc;me
+      referm&eacute; &agrave; la fin du processus, mais une console interactive, elle, ne se
+      termine pas&nbsp;: fermez &agrave; la main avant de relancer un autre script sur le
+      m&ecirc;me port.</p>
+      <p class="rend leve"><b>L&egrave;ve</b> <code>RuntimeError</code> si l'on se sert
+        de la commande une fois ferm&eacute;e.</p>
+      <p>Deux attributs se lisent&nbsp;: <code>direct</code>, vrai quand le script
+      tient lui-m&ecirc;me la liaison, et <code>processus_simulateur</code>, le
+      processus de la fen&ecirc;tre si c'est le script qui l'a lanc&eacute;e.</p>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== -->
+<section id="formes">
+  <h2><span class="num">Section 05</span>Cibles, listes de cibles, options par appel</h2>
+  <p class="intro">M&ecirc;mes cibles que <code>Pilote</code>&nbsp;: une
+  <strong>matrice homog&egrave;ne 4&times;4</strong> de pr&eacute;f&eacute;rence
+  (<a href="fiche_programmation.html#cible">fiche&nbsp;2</a>,
+  <a href="fiche_api.html#matrices">fiche&nbsp;3</a>), ou des coordonn&eacute;es.</p>
+
+  <h3>Une cible</h3>
+  <div class="cadre"><table>
+    <tr><td class="libre"><code>robot.movl(T)</code></td>
+      <td>une matrice 4&times;4 &mdash; <strong>la forme recommand&eacute;e</strong>. Elle
+      peut aussi &ecirc;tre &eacute;crite en listes imbriqu&eacute;es&nbsp;: une liste 4&times;4 dont
+      la derni&egrave;re ligne vaut (0,&nbsp;0,&nbsp;0,&nbsp;1) est reconnue comme une
+      matrice.</td></tr>
+    <tr><td class="libre"><code>robot.movl([220, 0, 80])</code></td>
+      <td>trois ou quatre nombres&nbsp;: <code>(x, y, z)</code> ou
+      <code>(x, y, z, r)</code>. Sans <code>r</code>, l'orientation pr&eacute;c&eacute;dente est
+      gard&eacute;e.</td></tr>
+    <tr><td class="libre"><code>robot.movl(T, z=40)</code></td>
+      <td>une cible, avec une composante forc&eacute;e.</td></tr>
+    <tr><td class="libre"><code>robot.movl(z=25)</code></td>
+      <td>les composantes omises reprennent la <strong>derni&egrave;re cible
+      command&eacute;e</strong>.</td></tr>
+  </table></div>
+
+  <div class="note piege">
+    <span class="etiquette">La derni&egrave;re cible command&eacute;e, pas la pose lue</span>
+    <p>La commande m&eacute;morise sa derni&egrave;re cible. Au d&eacute;part, c'est la pose lue&nbsp;;
+    ensuite, c'est la cible du dernier mouvement <strong>r&eacute;ussi</strong>&nbsp;: un
+    refus la laisse o&ugrave; elle &eacute;tait. <code>regler_longueur_outil()</code> la relit
+    sur la machine. Pour repartir de la position r&eacute;elle, lisez-la et
+    donnez-la&nbsp;: <code>x, y, z, r = robot.pose()</code>, comme le fait
+    l'<a href="#ex04">exemple&nbsp;04</a>.</p>
+  </div>
+
+  <h3>Plusieurs cibles d'un coup</h3>
+  <p>Un seul appel encha&icirc;ne plusieurs cibles, <strong>sans s'arr&ecirc;ter</strong>
+  par d&eacute;faut. Les formes accept&eacute;es&nbsp;:</p>
+  <div class="cadre"><table>
+    <tr><th>Appel</th><th>Chaque &eacute;l&eacute;ment</th></tr>
+    <tr><td class="libre"><code>movl([A, B, C])</code><br><code>movj([A, B, C])</code></td>
+      <td>une cible, sous l'une des formes ci-dessus</td></tr>
+    <tr><td class="libre"><code>movl([(A, 1.5), (B, 0.8), C])</code></td>
+      <td>ou un couple <code>(cible, dur&eacute;e en s)</code>&nbsp;; sans dur&eacute;e, c'est la
+      vitesse qui d&eacute;cide</td></tr>
+    <tr><td class="libre"><code>movl([(220, 0, 80), ((220, 40, 80), 1.0)])</code></td>
+      <td>des coordonn&eacute;es, seules ou avec leur dur&eacute;e</td></tr>
+    <tr><td class="libre"><code>movc([(via1, fin1, 2.0), (via2, fin2)])</code></td>
+      <td>un arc&nbsp;: <code>(via, fin)</code> ou <code>(via, fin, dur&eacute;e)</code>,
+      <code>T</code> omis</td></tr>
+  </table></div>
+  <p>La diff&eacute;rence entre une cible et une liste se fait sur la forme&nbsp;: une
+  matrice, ou une suite de nombres, est <strong>une</strong> cible&nbsp;; une
+  suite de cibles ou de couples est une liste. Un couple est reconnu quand son
+  second terme est un nombre et son premier, non.</p>
+
+  <div class="note piege">
+    <span class="etiquette">Deux erreurs de forme</span>
+    <p><code>robot.movl([220, 0, 80, 10])</code> est <strong>une</strong> cible
+    (x, y, z, r), pas une liste de quatre. Et <code>x</code>, <code>y</code>,
+    <code>z</code>, <code>r</code> &mdash; ou <code>q</code> &mdash; ne vont pas
+    avec une liste&nbsp;: <code>ValueError</code>.</p>
+  </div>
+
+  <h3>Les options d'un appel</h3>
+  <div class="cadre"><table>
+    <tr><th>Option</th><th>Effet</th><th>Unit&eacute;</th></tr>
+    <tr><td><span class="arg">duree</span></td>
+      <td>dur&eacute;e impos&eacute;e&nbsp;; avec une liste, celle des &eacute;l&eacute;ments sans dur&eacute;e
+      propre. Elle l'emporte sur la vitesse.</td><td>s</td></tr>
+    <tr><td><span class="arg">vitesse</span></td>
+      <td>vitesse de cet appel seulement</td>
+      <td>mm/s (<code>movl</code>, <code>movc</code>)<br>deg/s (<code>movj</code>)</td></tr>
+    <tr><td><span class="arg">lissage</span></td>
+      <td>arrondi des raccords entre les cibles d'une <strong>liste</strong>&nbsp;;
+      le raccord du dernier &eacute;l&eacute;ment ne raccorde &agrave; rien</td><td>%</td></tr>
+    <tr><td><span class="arg">continu</span></td>
+      <td><code>False</code>&nbsp;: arr&ecirc;t &agrave; chaque cible pour cet appel</td><td>&mdash;</td></tr>
+    <tr><td><span class="arg">q</span></td>
+      <td><code>movj</code> seulement&nbsp;: angles impos&eacute;s</td><td>deg</td></tr>
+  </table></div>
+  <p>Contrairement &agrave; <code>Pilote</code>, ni <code>acceleration</code> ni
+  <code>profil</code> ne se donnent par appel&nbsp;: l'acc&eacute;l&eacute;ration se change par
+  <a href="#c-regler"><code>regler()</code></a>, et la loi horaire est toujours le
+  trap&egrave;ze du contr&ocirc;leur.</p>
+</section>
+
+<!-- =============================================================== -->
+<section id="continu">
+  <h2><span class="num">Section 06</span>Le mode continu</h2>
+  <p class="intro">Le contr&ocirc;leur du Magician a deux fa&ccedil;ons d'aller d'un point &agrave;
+  l'autre. En <strong>point &agrave; point</strong> (PTP), il s'arr&ecirc;te &agrave; chaque
+  cible. En <strong>trajectoire continue</strong> (CP), il encha&icirc;ne des points
+  sans s'arr&ecirc;ter. Une liste de cibles part en CP par d&eacute;faut.</p>
+
+  <figure class="schema">
+    <svg viewBox="0 0 640 230" role="img" aria-labelledby="t-cp">
+      <title id="t-cp">Vitesse de la pointe en fonction du temps, pour les m&ecirc;mes
+      trois cibles : en point &agrave; point, elle retombe &agrave; z&eacute;ro &agrave; chaque cible ; en
+      continu, elle ne retombe qu'&agrave; la fin</title>
+      <text class="s-cle" x="20" y="24">point &agrave; point (PTP)</text>
+      <line class="s-sol" x1="20" y1="96" x2="620" y2="96"/>
+      <polyline points="40,96 70,48 150,48 180,96 210,48 290,48 320,96 350,48 430,48 460,96"
+                fill="none" stroke="var(--muet)" stroke-width="2.2" stroke-linejoin="round"/>
+      <circle class="s-pt" cx="180" cy="96" r="4"/>
+      <circle class="s-pt" cx="320" cy="96" r="4"/>
+      <circle class="s-pt" cx="460" cy="96" r="4"/>
+      <text class="s-mut" x="480" y="70">arr&ecirc;t &agrave; chaque cible</text>
+
+      <text class="s-cle" x="20" y="132">trajectoire continue (CP)</text>
+      <line class="s-sol" x1="20" y1="204" x2="620" y2="204"/>
+      <polyline points="40,204 70,156 160,156 172,166 184,156 292,156 304,166 316,156 370,156 400,204"
+                fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
+      <circle class="s-pt" cx="172" cy="204" r="4"/>
+      <circle class="s-pt" cx="304" cy="204" r="4"/>
+      <circle class="s-pt" cx="400" cy="204" r="4"/>
+      <text class="s-mut" x="420" y="178">jonctions pass&eacute;es sans arr&ecirc;t,</text>
+      <text class="s-mut" x="420" y="193">un peu ralenties dans un angle</text>
+      <text class="s-mut" x="620" y="222" text-anchor="end">temps &rarr;</text>
+    </svg>
+    <figcaption>M&ecirc;mes cibles, m&ecirc;mes vitesses de croisi&egrave;re&nbsp;: en continu, le
+    robot ne perd plus le temps d'un freinage et d'un red&eacute;marrage &agrave; chaque
+    cible. Sch&eacute;ma, pas mesure.</figcaption>
+  </figure>
+
+  <h3>Le principe</h3>
+  <ol class="etapes">
+    <li><b>Le simulateur calcule la trajectoire</b>, avec son propre moteur&nbsp;:
+      dur&eacute;es, arcs, lissage, <code>movj</code> compris. C'est le m&ecirc;me calcul que
+      pour un programme de <code>Pilote</code>.</li>
+    <li><b>Il l'&eacute;chantillonne en points</b>&nbsp;: tous les 5&nbsp;mm le long d'une
+      courbe&nbsp;; une droite ne garde que ses extr&eacute;mit&eacute;s. Le tout premier point
+      est plac&eacute; &agrave; 1&nbsp;mm du d&eacute;part, pour adoucir le d&eacute;marrage. Un coin tombe
+      exactement sur la cible.</li>
+    <li><b>Chaque portion re&ccedil;oit sa vitesse</b>, celle qui tient sa dur&eacute;e. Elle
+      est transmise par le r&eacute;glage <code>junctionVel</code> de
+      <code>SetCPParams</code>, <strong>mis en file</strong> juste avant les points
+      de la portion&nbsp;: la vitesse change en route, sans arr&ecirc;t.</li>
+    <li><b>Les points partent en file</b> (<code>SetCPCmd</code>, coordonn&eacute;es
+      absolues du contr&ocirc;leur), vers&eacute;s au fil de l'eau&nbsp;: la file du
+      contr&ocirc;leur ne tient que 32 commandes.</li>
+  </ol>
+
+  <h3>Quand le point &agrave; point est utilis&eacute; &agrave; la place</h3>
+  <div class="cadre"><table>
+    <tr><th>Situation</th><th>Ce qui part</th><th>Annonc&eacute;&nbsp;?</th></tr>
+    <tr><td class="libre">Une <strong>seule</strong> droite ou un seul
+      <code>movj</code> &mdash; donc tout <code>movl(T)</code></td>
+      <td>point &agrave; point&nbsp;: il fait aussi bien, c'est le mode &eacute;prouv&eacute;, et il
+      garde <code>r</code></td><td>non</td></tr>
+    <tr><td class="libre">Dans une liste, un segment qui fait <strong>tourner
+      l'outil</strong> de plus de 0,5&deg;</td>
+      <td>ce segment en point &agrave; point, avec un arr&ecirc;t avant et apr&egrave;s&nbsp;: le mode
+      CP n'a pas de <code>r</code></td><td>oui, en jaune</td></tr>
+    <tr><td class="libre">Un <strong>arc</strong> qui fait tourner l'outil</td>
+      <td>l'arc du contr&ocirc;leur (<code>SetARCCmd</code>), dur&eacute;e moins bien
+      tenue</td><td>oui, en jaune</td></tr>
+    <tr><td class="libre">Une <strong>action d'outil</strong> ou une sortie</td>
+      <td>une commande &agrave; part, entre deux mouvements</td><td>non&nbsp;: un appel
+      <code>Commande</code> n'en contient qu'une</td></tr>
+    <tr><td class="libre"><code>continu=False</code></td>
+      <td>chaque mouvement &agrave; part, arr&ecirc;t &agrave; chaque cible&nbsp;; un arc reste suivi
+      en CP, seul. Le lissage est ignor&eacute;</td>
+      <td>le lissage ignor&eacute;, oui</td></tr>
+  </table></div>
+  <p>Un arc seul reste en CP parce que sa vitesse y est ma&icirc;tris&eacute;e, alors que
+  celle de l'arc du contr&ocirc;leur ne l'est pas.</p>
+
+  <h3>Pr&eacute;voir avant de partir</h3>
+  <p>Avant le d&eacute;part, la commande <strong>pr&eacute;voit</strong> la dur&eacute;e de chaque
+  portion (<code>prevoir_cp</code>)&nbsp;: chaque tron&ccedil;on vise sa vitesse, chaque
+  jonction est plafonn&eacute;e par un mod&egrave;le de virage, le robot part et finit &agrave;
+  l'arr&ecirc;t, et n'acc&eacute;l&egrave;re ni ne freine plus fort que <code>acceleration</code>.
+  Les vitesses sont ajust&eacute;es jusqu'&agrave; ce que la dur&eacute;e pr&eacute;vue colle &agrave; la dur&eacute;e
+  demand&eacute;e &mdash; jusqu'&agrave; 125&nbsp;% de la vitesse nominale pour rattraper un
+  changement de vitesse, jamais au-del&agrave; de la vitesse nominale quand c'est la
+  courbure qui freine.</p>
+  <p>Ce qui ne peut pas tenir est dit en <strong>jaune</strong>, avec la dur&eacute;e
+  r&eacute;aliste et sa cause&nbsp;; c'est alors cette dur&eacute;e que joue le
+  simulateur&nbsp;:</p>
+<pre><code>/!\ duree ou vitesse non tenable : le robot fera au mieux
+      1 MOVL : 0.50 s demandees, ~1.06 s en realite (vitesse plafonnee a 125 mm/s)
+      duree prevue de l'ensemble : ~7.17 s</code></pre>
+  <p>Trois causes possibles&nbsp;: <code>vitesse plafonnee a 125 mm/s</code>,
+  <code>acceleration 400 mm/s2</code>, ou <code>courbure ou angle : le robot
+  ralentit aux jonctions</code>. Une dur&eacute;e est jug&eacute;e tenue &agrave; 3&nbsp;% + 0,05&nbsp;s
+  pr&egrave;s. En point &agrave; point, la dur&eacute;e demand&eacute;e devient la vitesse qui fait durer le
+  trap&egrave;ze du contr&ocirc;leur ce temps-l&agrave;&nbsp;: <em>dur&eacute;e = L / v + v / a</em>.</p>
+
+  <h3>Ce qui a &eacute;t&eacute; mesur&eacute; sur la machine</h3>
+  <p>Les r&egrave;gles du mode CP ne sont pas celles qu'on lirait dans le protocole&nbsp;:
+  elles ont &eacute;t&eacute; <strong>mesur&eacute;es</strong> sur le Magician du labo, firmware 3.7.0,
+  avec le script <code>essai_cp.py</code> &agrave; la racine du d&eacute;p&ocirc;t. Aller-retour de
+  120&nbsp;mm en y, &agrave; x&nbsp;=&nbsp;220 et z&nbsp;=&nbsp;80, pose relev&eacute;e toutes les
+  50&nbsp;ms.</p>
+  <div class="cadre"><table>
+    <tr><th>Essai</th><th>Demand&eacute;</th><th>Constat&eacute;</th></tr>
+    <tr><td><code>ptp</code></td><td>13 points en point &agrave; point</td>
+      <td><strong>arr&ecirc;t &agrave; chaque point</strong></td></tr>
+    <tr><td><code>cp</code></td><td>les m&ecirc;mes points en CP</td>
+      <td><strong>encha&icirc;n&eacute;s sans arr&ecirc;t</strong></td></tr>
+    <tr><td><code>cp2</code></td><td>vitesse par point&nbsp;: champ
+      <code>velocity</code> de <code>SetCPCmd</code></td>
+      <td><strong>ignor&eacute;</strong>&nbsp;: tout &agrave; environ 50&nbsp;mm/s, le
+      <code>junctionVel</code> r&eacute;gl&eacute;</td></tr>
+    <tr><td><code>cp3</code></td><td><code>junctionVel</code> mis en file&nbsp;:
+      aller droit &agrave; 30&nbsp;mm/s</td>
+      <td><strong>4,03&nbsp;s pour 4,00 attendues</strong></td></tr>
+    <tr><td></td><td>retour en arc de rayon 60&nbsp;mm, points tous les 5&nbsp;mm,
+      80&nbsp;mm/s, acc&eacute;l&eacute;ration 200&nbsp;mm/s&sup2;</td>
+      <td>palier &agrave; environ <strong>62&nbsp;mm/s</strong>&nbsp;: la courbure
+      freine</td></tr>
+    <tr><td><code>cp4</code></td><td>ligne droite &agrave; 80&nbsp;mm/s</td>
+      <td class="num">84&nbsp;mm/s</td></tr>
+    <tr><td></td><td>ligne droite &agrave; 120&nbsp;mm/s, acc&eacute;l&eacute;ration 200</td>
+      <td class="num">107&nbsp;mm/s</td></tr>
+    <tr><td></td><td>ligne droite &agrave; 120&nbsp;mm/s, acc&eacute;l&eacute;ration 400</td>
+      <td class="num">126&nbsp;mm/s</td></tr>
+    <tr><td>d&eacute;marrage</td><td>premier segment</td>
+      <td>l&eacute;ger &agrave;-coup, <strong>att&eacute;nu&eacute;</strong> par un premier point &agrave;
+      1&nbsp;mm</td></tr>
+    <tr><td><code>cptr</code></td><td>mode CP &laquo;&nbsp;temps r&eacute;el&nbsp;&raquo;&nbsp;: notre
+      propre trajectoire, un point toutes les 100&nbsp;ms</td>
+      <td><strong>&eacute;chec</strong>&nbsp;: lent, moteurs qui gr&eacute;sillent. Abandonn&eacute;
+      (<code>realTimeTrack = 0</code>)</td></tr>
+  </table></div>
+  <p>D'o&ugrave; les quatre r&egrave;gles appliqu&eacute;es par <code>Commande</code>&nbsp;: la vitesse
+  de croisi&egrave;re est <code>junctionVel</code>, mis en file&nbsp;; l'acc&eacute;l&eacute;ration
+  d&eacute;cide si elle est atteinte, sur les droites comme dans les courbes&nbsp;;
+  l'outil ne tourne pas en CP&nbsp;; un premier point &agrave; 1&nbsp;mm adoucit le
+  d&eacute;part.</p>
+
+  <h3>Les valeurs retenues dans le code</h3>
+  <p>Dans <code>dobot_sim/commande.py</code>&nbsp;:</p>
+  <div class="cadre"><table>
+    <tr><th>Constante</th><th>Valeur</th><th>Pourquoi</th></tr>
+    <tr><td><code>ACCELERATION_DEFAUT</code></td><td class="num">400 mm/s&sup2;</td>
+      <td>&agrave; 200, la droite &agrave; 120&nbsp;mm/s plafonnait &agrave; 107&nbsp;; &agrave; 400, elle
+      atteignait 126. Vaut aussi en deg/s&sup2; pour <code>movj</code>.</td></tr>
+    <tr><td><code>VITESSE_CP_MAX</code></td><td class="num">125 mm/s</td>
+      <td>plafond du continu <em>et</em> du point &agrave; point cart&eacute;sien&nbsp;: la plus
+      haute vitesse mesur&eacute;e (126&nbsp;mm/s)&nbsp;; au-del&agrave;, rien n'a &eacute;t&eacute; essay&eacute;</td></tr>
+    <tr><td><code>VITESSE_CP_MIN</code></td><td class="num">2 mm/s</td><td>plancher d'une portion</td></tr>
+    <tr><td><code>PAS_CP</code></td><td class="num">5 mm</td><td>espacement des points
+      sur une courbe&nbsp;: celui de l'arc mesur&eacute;</td></tr>
+    <tr><td><code>PREMIER_POINT_CP</code></td><td class="num">1 mm</td><td>contre l'&agrave;-coup
+      du d&eacute;marrage</td></tr>
+    <tr><td><code>K_JONCTION</code></td><td class="num">62&sup2; / (60 &times; 200) &asymp; 0,32</td>
+      <td>mod&egrave;le de virage <em>v&sup2; = K &middot; a &middot; R</em>, cal&eacute; sur l'arc
+      mesur&eacute;</td></tr>
+    <tr><td><code>TOLERANCE_R</code></td><td class="num">0,5&deg;</td><td>en de&ccedil;&agrave;, l'outil
+      est r&eacute;put&eacute; ne pas tourner</td></tr>
+    <tr><td>vitesse d'un <code>movj</code> point &agrave; point</td><td class="num">200 deg/s</td>
+      <td>la plus petite des limites articulaires J1 &agrave; J3 du mod&egrave;le</td></tr>
+  </table></div>
+</section>
+
+<!-- =============================================================== -->
+<section id="garde-fous">
+  <h2><span class="num">Section 07</span>Les garde-fous et les messages</h2>
+  <p class="intro">Avant <strong>chaque</strong> mouvement, depuis la posture
+  <strong>lue</strong> sur la machine &mdash; et non celle que le script croit
+  &mdash;, dans cet ordre. Le premier contr&ocirc;le qui &eacute;choue arr&ecirc;te tout&nbsp;: rien
+  n'est parti.</p>
+
+  <ol class="etapes">
+    <li><b>Les r&egrave;gles du script, cible par cible.</b> La <strong>zone</strong>&nbsp;:
+      chaque cible, et le point de passage d'un arc. Puis le
+      <strong>pas maximal</strong>&nbsp;: la distance <em>en ligne droite</em> entre
+      une cible et la pr&eacute;c&eacute;dente &mdash; la pose lue pour la premi&egrave;re, la cible
+      d'avant pour les suivantes d'une liste. <code>repli()</code> en est
+      exempt&eacute;, pas de la zone.</li>
+    <li><b>La m&eacute;canique, cible par cible.</b> Le MGI, appel&eacute; <strong>sans
+      tol&eacute;rance</strong>&nbsp;: une cible hors d'atteinte est refus&eacute;e, au lieu
+      d'&ecirc;tre ramen&eacute;e au point le plus proche. Puis les but&eacute;es.</li>
+    <li><b>Tout le chemin.</b> La trajectoire compl&egrave;te, &eacute;chantillonn&eacute;e&nbsp;: but&eacute;es,
+      plan de pose, embase, colonne, et le bras contre lui-m&ecirc;me
+      (auto-collision). Puis la zone sur tout le trajet &mdash;
+      <strong>si le d&eacute;part y est d&eacute;j&agrave;</strong>&nbsp;: un d&eacute;part hors zone (le
+      repli, la pose d'une s&eacute;ance pr&eacute;c&eacute;dente) n'est pas une faute, on ne juge alors
+      que les cibles.</li>
+    <li><b>Les r&eacute;serves, en jaune.</b> Les annonces (outil qui tourne, lissage
+      ignor&eacute;), les dur&eacute;es non tenables, les survitesses, les but&eacute;es
+      fr&ocirc;l&eacute;es &mdash; celles-ci une seule fois par s&eacute;ance. Le mouvement part.</li>
+  </ol>
+
+  <h3>Un refus&nbsp;: alerte rouge, puis <code>ErreurExecution</code></h3>
+<pre><code>!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!! MOUVEMENT REFUSE : cible hors de la zone de travail
+!!!     1 MOVL (220, 120, 80) : y = 120.0 hors de [-90 ; 90]
+!!!     zone : x [170 ; 270], y [-90 ; 90], z [30 ; 140]
+!!!     rien n'a ete envoye
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!</code></pre>
+  <p>Puis l'exception <code>ErreurExecution</code> <strong>arr&ecirc;te le
+  script</strong>&nbsp;: la suite partirait d'une posture qui n'est pas celle
+  pr&eacute;vue. Pour continuer malgr&eacute; tout, on l'attrape&nbsp;:</p>
+<pre><code><span class="k">from</span> dobot_sim <span class="k">import</span> Commande, ErreurExecution, cible
+
+<span class="k">with</span> Commande(simulateur=<span class="k">True</span>, robot=<span class="k">False</span>, zone=((<span class="n">170</span>, <span class="n">270</span>), (<span class="n">-90</span>, <span class="n">90</span>), (<span class="n">30</span>, <span class="n">140</span>))) <span class="k">as</span> robot:
+    <span class="k">for</span> x, y, z <span class="k">in</span> [(<span class="n">220</span>, <span class="n">0</span>, <span class="n">80</span>), (<span class="n">220</span>, <span class="n">120</span>, <span class="n">80</span>), (<span class="n">240</span>, <span class="n">40</span>, <span class="n">80</span>)]:
+        <span class="k">try</span>:
+            robot.movl(cible(x, y, z))
+        <span class="k">except</span> ErreurExecution <span class="k">as</span> e:
+            <span class="k">print</span>(<span class="k">"refusee :"</span>, e)            <span class="c"># le robot n'a pas bouge</span>
+            <span class="k">continue</span>
+        <span class="k">print</span>(<span class="k">"arrive :"</span>, robot.pose())</code></pre>
+  <p>Un refus ne touche pas la m&eacute;moire des cibles&nbsp;: un <code>movl(z=60)</code>
+  qui suit repart de la derni&egrave;re cible <em>atteinte</em>.</p>
+
+  <h3>Les messages rouges</h3>
+  <div class="cadre"><table>
+    <tr><th>Titre</th><th>Ce qui s'est pass&eacute;</th></tr>
+    <tr><td class="libre"><code>MOUVEMENT REFUSE : cible hors de la zone de travail</code></td>
+      <td>une cible, ou le point de passage d'un arc, est hors de
+      <code>zone</code></td></tr>
+    <tr><td class="libre"><code>MOUVEMENT REFUSE : deplacement trop grand</code></td>
+      <td>plus de <code>pas_max</code> depuis la cible pr&eacute;c&eacute;dente</td></tr>
+    <tr><td class="libre"><code>MOUVEMENT REFUSE : cible hors d'atteinte</code></td>
+      <td>le MGI n'a pas de solution&nbsp;: le message donne la distance
+      &eacute;paule-poignet</td></tr>
+    <tr><td class="libre"><code>MOUVEMENT REFUSE : cible hors des butees</code></td>
+      <td>la cible demande un angle hors de ses bornes</td></tr>
+    <tr><td class="libre"><code>MOUVEMENT REFUSE : N defaut(s) sur le trajet</code></td>
+      <td>en chemin&nbsp;: but&eacute;e, table travers&eacute;e, embase, colonne,
+      auto-collision. Dans les but&eacute;es, une auto-collision va toujours de pair
+      avec une collision de la colonne&nbsp;: les deux lignes apparaissent
+      ensemble</td></tr>
+    <tr><td class="libre"><code>MOUVEMENT REFUSE : le trajet sort de la zone de travail</code></td>
+      <td>les cibles sont dedans, le chemin non</td></tr>
+    <tr><td class="libre"><code>ROBOT EN DEFAUT : mouvement interrompu</code></td>
+      <td>une alarme est apparue pendant le mouvement</td></tr>
+    <tr><td class="libre"><code>LIAISON PERDUE PENDANT LE MOUVEMENT</code></td>
+      <td>le contr&ocirc;leur ne r&eacute;pond plus</td></tr>
+    <tr><td class="libre"><code>LE MOUVEMENT NE SE TERMINE PAS : arret d'urgence</code></td>
+      <td>rien de fini apr&egrave;s 3&nbsp;&times;&nbsp;la dur&eacute;e pr&eacute;vue + 15&nbsp;s&nbsp;:
+      arr&ecirc;t d'urgence automatique</td></tr>
+    <tr><td class="libre"><code>AUCUN SIMULATEUR OUVERT</code></td>
+      <td>lancez <code>python main.py</code>, ou passez
+      <code>lancer_simulateur=True</code></td></tr>
+    <tr><td class="libre"><code>CONNEXION AU ROBOT IMPOSSIBLE</code></td>
+      <td>pas de port s&eacute;rie&nbsp;: Dobot &eacute;teint, d&eacute;branch&eacute;, ou port tenu par la
+      fen&ecirc;tre</td></tr>
+  </table></div>
+
+  <h3>Les messages jaunes</h3>
+  <p>Ils commencent par <code>/!\</code> et <strong>laissent partir</strong> le
+  mouvement&nbsp;: dur&eacute;e non tenable (section&nbsp;6), segment repass&eacute; en point &agrave;
+  point, lissage ignor&eacute;, survitesse, but&eacute;e fr&ocirc;l&eacute;e. Apr&egrave;s le mouvement, sur le
+  robot, un dernier contr&ocirc;le compare la position atteinte &agrave; la position
+  attendue&nbsp;: au-del&agrave; de 2&nbsp;mm d'&eacute;cart, <code>le robot s'est arrete a
+  N mm de la cible</code>.</p>
+
+  <h3>Robot en d&eacute;faut&nbsp;: l'assistant de mise en route</h3>
+  <p>C'est le cas apr&egrave;s <strong>chaque mise sous tension</strong>&nbsp;: les
+  capteurs d'angle du bras sont faux &agrave; l'allumage. Rien ne part tant qu'un d&eacute;faut
+  reste&nbsp;; l'assistant s'ouvre &mdash; dans la fen&ecirc;tre du simulateur en mode
+  <code>les-deux</code>, en fen&ecirc;tre autonome en mode robot seul &mdash; et
+  conduit trois &eacute;tapes, dans cet ordre&nbsp;:</p>
+  <ol class="etapes">
+    <li><b>D&eacute;clarer une posture de r&eacute;f&eacute;rence</b>, rien ne bouge&nbsp;:
+      l'&eacute;querre (bras arri&egrave;re vertical, avant-bras horizontal), ou les but&eacute;es
+      arri&egrave;re, plus reproductibles.</li>
+    <li><b>Prise d'origine</b>&nbsp;: le bras parcourt sa course pour recaler J1.</li>
+    <li><b>Effacer les d&eacute;fauts</b> et comparer le miroir au vrai bras.</li>
+  </ol>
+  <p>En mode <code>les-deux</code>, le terminal l'annonce une fois et attend.
+  Si le d&eacute;faut persiste &agrave; la fermeture&nbsp;: alerte rouge, rien n'est parti.</p>
+
+  <h3><kbd>Ctrl</kbd>+<kbd>C</kbd>&nbsp;: arr&ecirc;t d'urgence</h3>
+  <p>Pendant un mouvement, <kbd>Ctrl</kbd>+<kbd>C</kbd> dans le terminal du
+  script &mdash; ou le bouton stop de VS&nbsp;Code, qui envoie
+  <code>SIGTERM</code> &mdash; coupe le mouvement <strong>avant</strong> que le
+  script ne s'arr&ecirc;te&nbsp;: la file du contr&ocirc;leur est vid&eacute;e, le robot s'arr&ecirc;te o&ugrave;
+  il est.</p>
+<pre><code>!!! ARRET D'URGENCE : mouvement coupe, file du controleur videe
+!!!     le robot est arrete la ou il etait ; verifiez sa posture avant de relancer</code></pre>
+  <p>En simulateur seul, c'est <code>SIMULATION INTERROMPUE</code>&nbsp;: l'animation
+  s'arr&ecirc;te, et le robot qu'on piloterait &agrave; c&ocirc;t&eacute; n'est pas touch&eacute;. Puis
+  <code>KeyboardInterrupt</code> remonte au script&nbsp;; l'<a href="#ex09">exemple
+  09</a> l'attrape pour quitter proprement.</p>
+</section>
+
+<!-- =============================================================== -->
+<section id="limites">
+  <h2><span class="num">Section 08</span>Limites connues, et ce qui reste &agrave; v&eacute;rifier</h2>
+  <p class="intro">La commande temps r&eacute;el est r&eacute;cente. Le point &agrave; point est
+  &eacute;prouv&eacute;&nbsp;; le mode continu repose sur une poign&eacute;e de mesures, faites sur une
+  seule machine. Voici, honn&ecirc;tement, ce qui n'a pas encore &eacute;t&eacute; confirm&eacute; sur le
+  robot. Si vous l'observez, notez-le&nbsp;: c'est ainsi que cette liste
+  raccourcit.</p>
+
+  <div class="cadre"><table>
+    <tr><th>Point</th><th>Ce que fait le code aujourd'hui</th><th></th></tr>
+    <tr><td class="libre">D&eacute;tection de la fin d'un mouvement</td>
+      <td>L'index du contr&ocirc;leur d&eacute;signe la commande <em>en cours</em>, pas la
+      derni&egrave;re termin&eacute;e&nbsp;: l'atteindre ne prouve pas qu'elle soit finie. Par
+      prudence, on exige en plus <strong>trois lectures immobiles</strong>
+      successives (toutes les 50&nbsp;ms, moins de 0,01&deg; d'&eacute;cart). Sans quoi la
+      commande suivante, qui commence par vider la file, couperait la fin de
+      celle-ci.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+    <tr><td class="libre">Plusieurs changements de vitesse dans une m&ecirc;me
+      course</td>
+      <td>Un <code>junctionVel</code> mis en file avant chaque portion. Un seul
+      changement a &eacute;t&eacute; essay&eacute; (30 puis 80&nbsp;mm/s)&nbsp;; une suite de portions &agrave;
+      vitesses toutes diff&eacute;rentes, jamais.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+    <tr><td class="libre">CP et PTP dans un m&ecirc;me appel</td>
+      <td>Une course continue, un segment en point &agrave; point (l'outil tourne), puis
+      une autre course&nbsp;: les commandes partent dans le bon ordre &mdash; c'est
+      test&eacute; sur un contr&ocirc;leur simul&eacute; &mdash; mais ce m&eacute;lange n'a pas &eacute;t&eacute; essay&eacute; sur
+      le robot.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+    <tr><td class="libre">Ralentissement dans les courbes et les angles</td>
+      <td>Le mod&egrave;le de virage <code>K_JONCTION</code> est cal&eacute; sur
+      <strong>une seule mesure</strong>&nbsp;: arc de rayon 60, points tous les
+      5&nbsp;mm, 200&nbsp;mm/s&sup2;. Qu'il vaille &agrave; 400&nbsp;mm/s&sup2;, et dans un
+      angle vif, n'a pas &eacute;t&eacute; v&eacute;rifi&eacute;. Les dur&eacute;es pr&eacute;vues dans un zigzag en
+      d&eacute;pendent.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+    <tr><td class="libre">Orientation <code>r</code> pendant une course CP</td>
+      <td>Le CP n'a pas de <code>r</code>&nbsp;: une course n'est form&eacute;e que de
+      segments qui tournent l'outil de moins de 0,5&deg;. &Agrave; l'arriv&eacute;e, le contr&ocirc;le
+      compare la position, <strong>pas l'orientation</strong>&nbsp;: un
+      <code>r</code> qui aurait d&eacute;riv&eacute; ne serait pas signal&eacute;.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+    <tr><td class="libre">Arc qui fait tourner l'outil</td>
+      <td>Part par l'arc du contr&ocirc;leur (<code>SetARCCmd</code>), dont la vitesse
+      n'est pas ma&icirc;tris&eacute;e&nbsp;: la dur&eacute;e demand&eacute;e est moins bien tenue. Annonc&eacute; en
+      jaune.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+    <tr><td class="libre">Dur&eacute;es en point &agrave; point</td>
+      <td>Converties en vitesse en <strong>supposant</strong> que le contr&ocirc;leur suit
+      un trap&egrave;ze &agrave; l'acc&eacute;l&eacute;ration demand&eacute;e. Le profil r&eacute;el du point &agrave; point n'a
+      pas &eacute;t&eacute; mesur&eacute;.</td>
+      <td><span class="verif">&agrave; v&eacute;rifier sur la machine</span></td></tr>
+  </table></div>
+
+</section>
+
+<!-- =============================================================== -->
+<section id="index">
+  <h2><span class="num">Section 09</span>Index</h2>
+  <div class="cadre"><table class="compacte">
+    <tr><td><a href="#c-actionner">actionner</a></td><td>commander l'outil mont&eacute;</td></tr>
+    <tr><td><a href="#c-pose">angles</a></td><td>J1 &agrave; J4, lus sur la machine</td></tr>
+    <tr><td><a href="#garde-fous">arr&ecirc;t d'urgence</a></td><td><kbd>Ctrl</kbd>+<kbd>C</kbd>, SIGTERM</td></tr>
+    <tr><td><a href="#c-attendre">attendre</a></td><td>dormir, sans rien envoyer</td></tr>
+    <tr><td><a href="#c-init">Commande</a></td><td>construire, choisir le montage</td></tr>
+    <tr><td><a href="#c-couper-pompe">couper_pompe</a></td><td>arr&ecirc;ter la pompe &agrave; air</td></tr>
+    <tr><td><a href="#continu">continu</a></td><td>encha&icirc;ner sans arr&ecirc;t</td></tr>
+    <tr><td><a href="#c-sortie">entree</a></td><td>lire une entr&eacute;e EIO</td></tr>
+    <tr><td><a href="#garde-fous">ErreurExecution</a></td><td>le refus, attrapable</td></tr>
+    <tr><td><a href="#c-fermer">fermer</a> / <a href="#c-fermer">with</a></td><td>lib&eacute;rer la liaison</td></tr>
+    <tr><td><a href="#ce-qui-bouge">lancer_simulateur</a></td><td>ouvrir la fen&ecirc;tre depuis le script</td></tr>
+    <tr><td><a href="#formes">listes de cibles</a></td><td>(cible, dur&eacute;e), arcs</td></tr>
+    <tr><td><a href="#garde-fous">mise en route</a></td><td>robot en d&eacute;faut</td></tr>
+    <tr><td><a href="#c-movc">movc</a></td><td>arc de cercle</td></tr>
+    <tr><td><a href="#c-movj">movj</a></td><td>mouvement articulaire</td></tr>
+    <tr><td><a href="#c-movl">movl</a></td><td>mouvement rectiligne</td></tr>
+    <tr><td><a href="#c-actionner">outil d&eacute;clar&eacute;</a></td><td>ce qu'envoient ventouse() et pince()</td></tr>
+    <tr><td><a href="#garde-fous">pas_max</a></td><td>d&eacute;placement maximal</td></tr>
+    <tr><td><a href="#c-actionner">pince</a></td><td>alias de actionner</td></tr>
+    <tr><td><a href="#c-pose">pose</a></td><td>(x, y, z, r), lue sur la machine</td></tr>
+    <tr><td><a href="#continu">pr&eacute;vision des dur&eacute;es</a></td><td>avertissement jaune</td></tr>
+    <tr><td><a href="#c-regler">regler</a></td><td>changer les d&eacute;fauts</td></tr>
+    <tr><td><a href="#c-longueur">regler_longueur_outil</a></td><td>longueur mesur&eacute;e</td></tr>
+    <tr><td><a href="#c-repli">repli</a></td><td>retour au repos</td></tr>
+    <tr><td><a href="#c-sortie">sortie</a></td><td>piloter une sortie EIO</td></tr>
+    <tr><td><a href="#c-actionner">ventouse</a></td><td>alias de actionner</td></tr>
+    <tr><td><a href="#garde-fous">zone</a></td><td>bo&icirc;te de travail autoris&eacute;e</td></tr>
+  </table></div>
+</section>
+
+<footer>
+  <p>Simulateur Dobot Magician &mdash; fiche&nbsp;4, commande temps r&eacute;el
+  (<code>dobot_sim</code> 1.0.0). Les scripts sont dans
+  <code>examples/controle-temps-reel/</code>, les mesures dans
+  <code>essai_cp.py</code>.
+  Voir aussi&nbsp;: <a href="fiche_programmation.html">fiche&nbsp;2, exemples de
+  programmation</a> et <a href="fiche_api.html">fiche&nbsp;3, la r&eacute;f&eacute;rence des
+  commandes</a>.</p>
+</footer>
+
+</div>
+</body>
+</html>

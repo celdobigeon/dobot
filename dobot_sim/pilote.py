@@ -42,58 +42,17 @@ from typing import Optional, Sequence
 
 import numpy as np
 
+# Les alertes du terminal et ErreurExecution vivent dans un module commun :
+# Commande (dobot_sim.commande) parle a l'operateur exactement de la meme
+# facon. Les noms restent importables d'ici, comme avant.
+from .alertes import (ErreurExecution, _alerter, _couleur,  # noqa: F401
+                      _echouer, _signaler, _signaler_urgence)
 from .outils import outil as catalogue_outil
 from .program import Instruction, Programme
 from .robot import DobotMagician, decomposer_cible
 from .trajectory import PROFILS, Trajectoire
 
 __all__ = ["Pilote", "ErreurExecution"]
-
-
-class ErreurExecution(RuntimeError):
-    """
-    Le programme n'a pas pu etre execute jusqu'au bout sur le robot reel.
-
-    Levee par `Pilote.executer_sur_robot()` apres une alerte dans le
-    terminal. Elle arrete le script : un programme suivant partirait d'une
-    posture qui n'est pas celle prevue.
-    """
-
-
-def _couleur(code: str, texte: str) -> str:
-    """Couleur ANSI si la sortie est un terminal (VS Code l'est)."""
-    import sys
-    return ("\033[{}m{}\033[0m".format(code, texte)
-            if getattr(sys.stdout, "isatty", lambda: False)() else texte)
-
-
-def _signaler(titre: str, lignes=()) -> None:
-    """Avertissement : on continue, mais il faut l'avoir vu (jaune)."""
-    print(_couleur("1;33", "/!\\ " + titre))
-    for ligne in lignes:
-        print(_couleur("33", "      " + ligne))
-
-
-def _alerter(titre: str, lignes=()) -> None:
-    """Alerte encadree, en rouge : impossible de la manquer."""
-    barre = "!" * 72
-    print(_couleur("1;31", barre))
-    print(_couleur("1;31", "!!! " + titre))
-    for ligne in lignes:
-        print(_couleur("31", "!!!     " + ligne))
-    print(_couleur("1;31", barre))
-
-
-def _echouer(titre: str, lignes=()):
-    """Alerte, puis ErreurExecution : le script s'arrete la."""
-    _alerter(titre, lignes)
-    raise ErreurExecution(titre)
-
-
-def _signaler_urgence() -> None:
-    _alerter("ARRET D'URGENCE : mouvement coupe, file du controleur videe",
-             ["le robot est arrete la ou il etait ; verifiez sa posture "
-              "avant de relancer"])
 
 
 #: liaison directe gardee ouverte entre deux executer_sur_robot()

@@ -109,6 +109,11 @@ class CommandeDobot:
     PARAMS_PTP_SAUT = 82          # 1.10.3
     PARAMS_PTP_COMMUNS = 83       # 1.10.4  2 float : ratio v, ratio a
     PTP = 84                      # 1.10.5  (file) uint8 mode + 4 float
+    # -- CP : trajectoire continue, les points s'enchainent SANS arret
+    PARAMS_CP = 90              # 1.11.1  3 float + uint8 : planAcc,
+    #                                     junctionVel, acc, realTimeTrack
+    CP = 91                     # 1.11.2  (file) uint8 cpMode + 4 float :
+    #                                     x, y, z, velocity
     # -- ARC
     PARAMS_ARC = 100            # 1.12.1
     ARC = 101                   # 1.12.2  (file) 8 float : via xyzr + cible xyzr
@@ -714,6 +719,44 @@ class LiaisonDobot:
                       ecriture=True, en_file=True)
         return self._dernier_index
 
+    def parametres_cp(self, acceleration: float, vitesse: float) -> int:
+        """
+        Reglage du mode CP, MIS EN FILE : il prend effet entre deux points.
+
+        Mesure sur la machine (firmware 3.7.0), ce qui contredit la lecture
+        naive du protocole :
+
+          * la vitesse de croisiere est `junctionVel` (ici `vitesse`), pas
+            le champ `velocity` de SetCPCmd, que le controleur IGNORE ;
+          * mis en file, ce reglage change la vitesse au bon moment de la
+            trajectoire : aller demande a 30 mm/s, 4,03 s pour 4,00 ;
+          * l'acceleration decide si la vitesse est atteinte, sur les
+            droites comme dans les courbes.
+
+        `realTimeTrack` reste a 0 : le mode "temps reel" (1) a ete essaye,
+        il est lent et fait greziller les moteurs.
+        """
+        a = float(acceleration)
+        self.echanger(CommandeDobot.PARAMS_CP,
+                      struct.pack("<3fB", a, float(vitesse), a, 0),
+                      ecriture=True, en_file=True)
+        return self._dernier_index
+
+    def cp(self, x: float, y: float, z: float, vitesse: float = 0.0) -> int:
+        """
+        Point de trajectoire continue, en coordonnees ABSOLUES du controleur.
+
+        Le robot y passe sans s'arreter si le point suivant est deja en
+        file. Pas de r : l'outil ne tourne pas en CP. `vitesse` est
+        transmise par fidelite au protocole, mais le controleur l'ignore
+        (voir `parametres_cp`).
+        """
+        self.echanger(CommandeDobot.CP,
+                      struct.pack("<B4f", 1, float(x), float(y), float(z),
+                                  float(vitesse)),
+                      ecriture=True, en_file=True)
+        return self._dernier_index
+
     def attendre(self, secondes: float) -> int:
         self.echanger(CommandeDobot.ATTENTE,
                       struct.pack("<I", max(int(round(secondes * 1000)), 0)),
@@ -768,6 +811,20 @@ class LiaisonDobot:
                       struct.pack("<2B", 1 if active else 0, 1 if fermee else 0),
                       ecriture=True, en_file=True)
         return self._dernier_index
+
+    def couper_pompe(self) -> None:
+        """
+        Arrete la pompe a air de la ventouse ET de la pince, tout de suite.
+
+        Ouvrir la pince ou relacher la ventouse laisse la pompe EN MARCHE
+        (isCtrlEnable = 1 : elle souffle). Seul isCtrlEnable = 0 l'arrete.
+        Commandes IMMEDIATES, hors file : elles agissent meme pendant un
+        mouvement, et sans attendre la fin du programme.
+        """
+        self.echanger(CommandeDobot.VENTOUSE, struct.pack("<2B", 0, 0),
+                      ecriture=True)
+        self.echanger(CommandeDobot.PINCE, struct.pack("<2B", 0, 0),
+                      ecriture=True)
 
     def laser(self, allume: bool, active: bool = True) -> int:
         self.echanger(CommandeDobot.LASER,

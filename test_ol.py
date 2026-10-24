@@ -4,7 +4,7 @@ import numpy as np
 from dobot_sim import Pilote
 from dobot_sim import homogeneous as hg
 
-robot = Pilote(nom="cycle", outil="ventouse",
+robot = Pilote(nom="cycle", outil="pince",
                vitesse=100, acceleration=200,      # MOVL, MOVC : mm/s
                vitesse_articulaire=50)             # MOVJ      : deg/s
 
@@ -53,7 +53,6 @@ P3 = np.array([[1, 0, 0, 200],
 HAUT = hg.translation(0, 0, -85)   # 85 mm au-dessus, exprime dans l'axe outil
 
 
-
 # robot.repli()
 # robot.movj(PRISE @ HAUT, lissage=70)
 # robot.movl(PRISE, vitesse=50, profil="trapeze")
@@ -75,11 +74,13 @@ robot.attendre(0.5)
 
 robot.movj(PRISE @ HAUT, lissage=70)
 robot.movl(PRISE, vitesse=100, profil="trapeze")
-#robot.ventouse(True)
+# robot.ventouse(True)
+robot.pince(True)
 robot.attendre(0.5)
 robot.movj(PRISE @ HAUT, vitesse=100, profil="trapeze")
 robot.attendre(0.5)
-#robot.ventouse(False)
+# robot.ventouse(False)
+robot.pince(False)
 
 robot.repli()
 

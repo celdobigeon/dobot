@@ -15,6 +15,8 @@ trajectory   lois horaires et segments MOVJ / MOVL / MOVC
 program      programme robot editable, JSON, export vers le robot reel
 meshes       lecture des OBJ et recalage dans les reperes des corps
 viewer3d     vue OpenGL ; viewer2d : repli en projections
+pilote       un programme decrit, puis joue d'un bloc (simulateur, robot)
+commande     chaque appel execute tout de suite, et attend la fin
 ui           interface graphique
 
 Exemple minimal
@@ -42,6 +44,7 @@ from .homogeneous import (composer, formater, identite, interpoler, inverse,
                           position_de, rot_x, rot_y, rot_z, rotation_de,
                           translation)
 from .pilote import ErreurExecution, Pilote
+from .commande import Commande
 from .program import Instruction, Programme
 from .robot import (DobotMagician, Encombrement, ErreurCinematique, Geometrie,
                     Limites, cible, decomposer_cible, depuis_xyzrpy,
@@ -55,7 +58,7 @@ from .trajectory import (ProfilPolynomial5, ProfilTrapeze, SegmentArticulaire,
 __version__ = "1.0.0"
 
 __all__ = [
-    "Pilote", "ErreurExecution", "cible", "repere_travail", "decomposer_cible",
+    "Pilote", "Commande", "ErreurExecution", "cible", "repere_travail", "decomposer_cible",
     "vers_xyzrpy", "depuis_xyzrpy",
     "verifier_repere_outil", "verifier_repere_objet",
     "DobotMagician", "Geometrie", "Limites", "Encombrement",

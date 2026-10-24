@@ -62,7 +62,7 @@ __all__ = ["PontReel", "ErreurPont", "EtatReel"]
 #: avertissements de controler() qui interdisent le televersement : le
 #: robot irait en butee, hors d'atteinte ou dans son propre volume
 BLOQUANTS_TELEVERSEMENT = ("hors de [", "hors d'atteinte", "plan de pose",
-                           "embase :", "colonne :")
+                           "embase :", "colonne :", "auto-collision")
 
 
 class ErreurPont(RuntimeError):
@@ -360,9 +360,48 @@ class PontReel:
                          "controleur ; le robot reel marquera un arret a "
                          "chaque point.")
 
-        # ORDRE CRITIQUE : arreter AVANT de vider. Si la file etait restee en
-        # mode "demarre", chaque commande televersee partirait des son arrivee
-        # et le robot se mettrait a bouger pendant le remplissage.
+        self._preparer_file(li)
+        commandes: List[Callable[[], int]] = []
+        for ins in programme.instructions:
+            commandes.extend(self._traduire(li, ins, programme, outil))
+        return self._deposer(li, commandes, progression,
+                             "programme televerse : {} instructions"
+                             .format(len(programme.instructions)))
+
+    def televerser_commandes(self, fabriquer: Callable[[], List[Callable[[], int]]],
+                             progression: Optional[Callable[[int, int], None]]
+                             = None, quoi: str = "commandes televersees") -> int:
+        """
+        Vide la file et y depose des commandes deja traduites. NE LANCE RIEN.
+
+        `fabriquer` est appele APRES le vidage et rend la liste des
+        commandes, chacune une fonction qui envoie UNE commande en file et
+        rend son index -- la forme de `_traduire`, `traduire` et
+        `commandes_cp`. On la fabrique apres le vidage, et non avant,
+        parce que la traduction peut envoyer des commandes IMMEDIATES (le
+        multiplexage d'un port) et qu'elle se souvient de ce qu'elle a deja
+        regle : ces souvenirs ne valent que pour la file neuve.
+
+        C'est la porte d'entree de `dobot_sim.Commande`, qui melange
+        mouvements point a point et trajectoire continue. Le surplus suit
+        le meme chemin que pour `televerser` : garde ici, verse pendant
+        l'execution au rythme ou la file se vide.
+
+        Aucun controle de trajectoire ici : l'appelant les a faits, sur un
+        chemin que ce pont ne connait pas (points CP echantillonnes).
+        """
+        li = self._exiger()
+        self._preparer_file(li)
+        return self._deposer(li, list(fabriquer()), progression, quoi)
+
+    def _preparer_file(self, li: LiaisonDobot) -> None:
+        """
+        Arrete puis vide la file, et oublie ce qui la concernait.
+
+        ORDRE CRITIQUE : arreter AVANT de vider. Si la file etait restee en
+        mode "demarre", chaque commande televersee partirait des son arrivee
+        et le robot se mettrait a bouger pendant le remplissage.
+        """
         li.arreter_file()
         li.vider_file()
         self._reste = []
@@ -370,11 +409,11 @@ class PontReel:
         self._index_depart = li.index_courant()
         self._cadence = {}
 
-        commandes: List[Callable[[], int]] = []
-        for ins in programme.instructions:
-            commandes.extend(self._traduire(li, ins, programme, outil))
+    def _deposer(self, li: LiaisonDobot, commandes: List[Callable[[], int]],
+                 progression: Optional[Callable[[int, int], None]],
+                 quoi: str) -> int:
+        """Remplit la file jusqu'a la marge et garde le reste pour plus tard."""
         n = len(commandes)
-
         premier = None
         envoyees = 0
         for envoyer in commandes:
@@ -407,15 +446,46 @@ class PontReel:
         # de la derniere se deduit de celui de la premiere, meme pour celles
         # qui ne partiront qu'en cours d'execution.
         self.index_final = (premier + n - 1) if n else self._index_depart
-        self.journal("programme televerse : {} instructions, {} commandes, "
-                     "index {} -> {}".format(len(programme.instructions), n,
-                                             self._index_depart, self.index_final))
+        self.journal("{}, {} commandes, index {} -> {}"
+                     .format(quoi, n, self._index_depart, self.index_final))
         if self._reste:
             self.journal("file du controleur remplie a {} commandes (marge) : "
                          "les {} suivantes partiront pendant l'execution, au "
                          "rythme ou la file se vide"
                          .format(envoyees, len(self._reste)))
         return self.index_final
+
+    def traduire(self, ins, programme, outil: str = "") -> List[Callable[[], int]]:
+        """Version publique de `_traduire`, sur la liaison ouverte."""
+        return self._traduire(self._exiger(), ins, programme, outil)
+
+    def commandes_cp(self, points, vitesse: float, acceleration: float,
+                     r: float = 0.0) -> List[Callable[[], int]]:
+        """
+        Points de trajectoire CONTINUE, SANS les envoyer.
+
+        `points` sont des (x, y, z) du SIMULATEUR : la conversion vers le
+        repere du controleur se fait ici, comme pour les PTP. `r` ne sert
+        qu'a orienter un point pose exactement sur l'axe de la base ; le
+        mode CP ne fait pas tourner l'outil.
+
+        Le reglage de vitesse precede les points, MIS EN FILE : c'est ainsi
+        qu'une trajectoire change de vitesse en route sans s'arreter. Un
+        reglage identique au precedent n'est pas renvoye, comme pour les
+        PTP.
+        """
+        li = self._exiger()
+        out: List[Callable[[], int]] = []
+        reglage = (round(float(acceleration), 3), round(float(vitesse), 3))
+        if self._cadence.get(CommandeDobot.PARAMS_CP) != reglage:
+            self._cadence[CommandeDobot.PARAMS_CP] = reglage
+            a, v = reglage
+            out.append(lambda: li.parametres_cp(a, v))
+        for p in points:
+            x, y, z, _r = self.vers_controleur(float(p[0]), float(p[1]),
+                                               float(p[2]), float(r))
+            out.append(lambda x=x, y=y, z=z, v=reglage[1]: li.cp(x, y, z, v))
+        return out
 
     def _traduire(self, li: LiaisonDobot, ins, programme,
                   outil: str) -> List[Callable[[], int]]:

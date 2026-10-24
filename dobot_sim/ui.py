@@ -2190,6 +2190,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             "fonctionne sans la case pilotage")
         self.bt_reel_repli.clicked.connect(self._reel_repli)
         ml.addWidget(self.bt_reel_repli)
+        self.bt_pompe = QtWidgets.QPushButton("Couper la pompe")
+        self.bt_pompe.setToolTip(
+            "arrete la pompe a air (ventouse et pince)\n"
+            "ouvrir la pince ou relacher la ventouse la laisse tourner\n"
+            "attention : une piece tenue est lachee")
+        self.bt_pompe.clicked.connect(self._reel_couper_pompe)
+        ml.addWidget(self.bt_pompe)
 
         self.bt_televerser = QtWidgets.QPushButton("Televerser le programme")
         self.bt_televerser.setToolTip(
@@ -2415,6 +2422,20 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self.lab_reel_etat.setText("connexion impossible")
             QtWidgets.QMessageBox.critical(self, "Robot reel", str(exc))
             return
+        # Un robot qui sort d'une mise sous tension leve des alarmes (au
+        # minimum 0x00, reinitialisation) : c'est le moment de la mise en
+        # route, et on la propose d'office plutot que de laisser chercher.
+        if self._reel_apres_connexion(port, version):
+            self.journal("robot en defaut a la connexion : mise en route "
+                         "proposee")
+            QtCore.QTimer.singleShot(0, self._reel_mise_en_route)
+
+    def _reel_apres_connexion(self, port: str, version: str) -> List[int]:
+        """
+        Ce qui suit toute connexion, au bouton ou a la demande d'un script :
+        controle de coherence, panneau, ratio, miroir. Rend les alarmes du
+        controleur -- a l'appelant de proposer la mise en route.
+        """
         # Le controleur annonce a la fois une pose et des angles : les
         # confronter verifie que sa geometrie et celle du modele coincident.
         # ATTENTION, ce controle ne dit RIEN de la calibration : pose et
@@ -2443,18 +2464,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._reel_maj_boutons()
         self._reel_ratio()
         self.minuteur_reel.start()
-
-        # Un robot qui sort d'une mise sous tension leve des alarmes (au
-        # minimum 0x00, reinitialisation) : c'est le moment de la mise en
-        # route, et on la propose d'office plutot que de laisser chercher.
         try:
-            alarmes = self.pont.liaison.alarmes()
+            return list(self.pont.liaison.alarmes())
         except Exception:
-            alarmes = []
-        if alarmes:
-            self.journal("robot en defaut a la connexion : mise en route "
-                         "proposee")
-            QtCore.QTimer.singleShot(0, self._reel_mise_en_route)
+            return []
 
     def _reel_mise_en_route(self) -> None:
         if not self.pont.connecte:
@@ -2553,6 +2566,14 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         """
         self._appliquer_q(np.array(q, float))
         self._reel_envoyer_pose()
+
+    def _reel_couper_pompe(self) -> None:
+        try:
+            self.pont.liaison.couper_pompe()
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Robot reel", str(exc))
+            return
+        self.journal("pompe a air coupee")
 
     def _reel_repli(self) -> None:
         """
@@ -4195,6 +4216,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         Elle garde ainsi sa liaison serie, ses reglages et sa place a
         l'ecran.
         """
+        if "commande" in charge:
+            # dobot_sim.Commande : une commande a la fois, executee tout de
+            # suite, et suivie par le script jusqu'a sa fin
+            return self._recevoir_commande(charge["commande"] or {})
         if charge.get("etat_reel"):
             return self._etat_execution_script()
         if charge.get("arret_urgence"):
@@ -4320,6 +4345,243 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return
         self.journal("ARRET D'URGENCE demande par le script")
 
+    # -- commande temps reel : dobot_sim.Commande ----------------------------
+    #
+    # Le script decide et controle (depuis la posture qu'il nous LIT) ; la
+    # fenetre anime, ou execute sur le robot dont elle tient la liaison. Les
+    # rappels de la passerelle repondent TOUJOURS tout de suite : le script
+    # attend sa reponse moins d'une seconde. Ce qui prend du temps -- charger,
+    # televerser, ouvrir un dialogue -- est differe, et le script suit l'etat
+    # (`_etat_commande_script`) jusqu'a "termine" ou "refuse".
+
+    def _recevoir_commande(self, d: dict):
+        if d.get("lire"):
+            return self._commande_lire(d)
+        if d.get("etat"):
+            return self._etat_commande_script()
+        if d.get("arret_urgence"):
+            self._commande_urgence(robot=d.get("reel", True))
+            return dict(self._cmd_script)
+        if d.get("couper_pompe"):
+            if not self.pont.connecte:
+                raise RuntimeError("robot non connecte a la fenetre")
+            self.pont.liaison.couper_pompe()
+            self.journal("pompe a air coupee (demande du script)")
+            return {}
+        if "connecter" in d:
+            port = (d.get("connecter") or {}).get("port")
+            self._cmd_script = {"etat": "connexion"}
+            QtCore.QTimer.singleShot(0, lambda: self._commande_connecter(port))
+            return dict(self._cmd_script)
+        if "executer" in d:
+            e = d["executer"]
+            if e.get("reel") and not self.pont.connecte:
+                # refus immediat : le script le voit et le dit
+                raise RuntimeError("robot non connecte a la fenetre")
+            self._cmd_script = {"etat": "preparation"}
+            QtCore.QTimer.singleShot(0, lambda: self._commande_executer(e))
+            return dict(self._cmd_script)
+        raise RuntimeError("commande inconnue : {}".format(sorted(d)))
+
+    def _commande_lire(self, d: dict) -> dict:
+        """Posture courante : celle du ROBOT si le script le pilote."""
+        reel = bool(d.get("reel"))
+        rep = {"reel": reel, "connecte": self.pont.connecte}
+        if reel:
+            if not self.pont.connecte:
+                raise RuntimeError("robot non connecte a la fenetre")
+            p = self.pont.liaison.pose()
+            rep["q"] = [float(v) for v in p.angles]
+            rep["pose_controleur"] = [float(p.x), float(p.y), float(p.z),
+                                      float(p.r)]
+            rep["biais"] = [float(v) for v in self.pont.biais]
+        else:
+            rep["q"] = [float(v) for v in self.q]
+        port = d.get("entree")
+        if port is not None:
+            port = int(port)
+            if reel:
+                li = self.pont.liaison
+                self.pont._assurer_port(li, port, FonctionES.ENTREE)
+                rep["entree"] = bool(li.entree(port))
+            else:
+                rep["entree"] = bool(self.es.entree(port))
+        return rep
+
+    def _commande_refuser(self, raison: str, alarmes=()) -> None:
+        self._cmd_script = {"etat": "refuse", "raison": raison,
+                            "alarmes": list(alarmes)}
+        self.journal("commande du script refusee : " + raison)
+
+    def _commande_sans_defaut(self) -> bool:
+        """
+        Un robot en defaut ouvre la mise en route ; rien ne part tant
+        qu'un defaut reste. Le script, lui, voit "mise_en_route" et patiente.
+        """
+        try:
+            alarmes = self.pont.liaison.alarmes()
+        except Exception as exc:
+            self._commande_refuser("lecture des alarmes impossible : {}"
+                                   .format(exc))
+            return False
+        if not alarmes:
+            return True
+        self._cmd_script = {"etat": "mise_en_route"}
+        DialogueMiseEnRoute(self).exec_()
+        try:
+            alarmes = self.pont.liaison.alarmes()
+        except Exception:
+            alarmes = [-1]
+        if alarmes:
+            self._commande_refuser("robot toujours en defaut apres la mise en "
+                                   "route", resume_alarmes(alarmes))
+            return False
+        return True
+
+    def _commande_connecter(self, port) -> None:
+        """Le script veut le robot : on ouvre la liaison si besoin."""
+        if not self.pont.connecte:
+            if not port:
+                self._reel_chercher_ports()
+                port = self.cb_port.currentData() or ""
+            if not port:
+                self._commande_refuser("aucun port serie : branchez et allumez "
+                                       "le Dobot")
+                return
+            try:
+                version = self.pont.connecter(port)
+            except Exception as exc:
+                self.lab_reel_etat.setText("connexion impossible")
+                self._commande_refuser("connexion impossible : {}".format(exc))
+                return
+            self._reel_apres_connexion(port, version)
+            self.journal("robot connecte a la demande d'un script")
+        if self._commande_sans_defaut():
+            self._cmd_script = {"etat": "pret"}
+
+    def _commande_executer(self, e: dict) -> None:
+        """Charge la commande, puis l'anime -- ou l'execute sur le robot."""
+        reel = bool(e.get("reel"))
+        try:
+            prog = Programme.depuis_dict(e["programme"])
+            q0 = np.asarray(e["q_depart"], dtype=float)
+        except Exception as exc:
+            self._commande_refuser("commande illisible : {}".format(exc))
+            return
+        if reel:
+            if not self.pont.connecte:
+                self._commande_refuser("robot deconnecte")
+                return
+            if not self._commande_sans_defaut():
+                return
+            # Les vitesses de la commande sont absolues (mm/s, deg/s) : le
+            # ratio du panneau ne doit pas les reduire en douce.
+            if abs(self.sp_reel_ratio.value() - 100.0) > 1e-9:
+                self.sp_reel_ratio.setValue(100.0)
+                self.journal("ratio de vitesse a 100 % : la commande temps "
+                             "reel fixe elle-meme ses vitesses")
+            self.chk_piloter.setChecked(False)
+            self.chk_miroir.setChecked(True)
+        elif self.pont.connecte and self.chk_miroir.isChecked():
+            # le miroir ramenerait le modele sur le vrai bras a la fin de
+            # chaque animation : la commande ne viserait pas le simulateur
+            self.chk_miroir.setChecked(False)
+            self.journal("miroir coupe : le script commande le simulateur seul")
+        # La ventouse activee par la commande precedente l'est encore : le
+        # nouveau programme part de l'etat affiche, pas d'un etat de repos.
+        outil_avant = bool(self.outil_actif)
+        sorties_avant = list(self.es.sorties)
+        self.charger_programme(prog, q0)
+        prog.outil_initial = outil_avant
+        prog.sorties_initiales = sorties_avant
+        self._aller_a(0.0)
+        self._cmd_q_prec = None
+        self._cmd_immobile = 0
+        if reel:
+            try:
+                from .commande import commandes_robot
+                self.pont.televerser_commandes(
+                    lambda: commandes_robot(self.pont, prog, e.get("etapes", []),
+                                            prog.outil),
+                    quoi="commande du script")
+                self.pont.demarrer()
+            except Exception as exc:
+                try:
+                    self.pont.arret_urgence()
+                except Exception:
+                    pass
+                self._commande_refuser(str(exc))
+                return
+            self._cmd_script = {"etat": "en_cours", "reel": True}
+            return
+        self._cmd_script = {"etat": "en_cours", "reel": False}
+        if self.trajectoire is None or not len(self.trajectoire):
+            self._cmd_script = {"etat": "termine"}
+            return
+        self.demarrer_lecture()
+
+    #: lectures successives sans mouvement exigees pour conclure a l'arret
+    IMMOBILE_COMMANDE = 3
+
+    def _etat_commande_script(self) -> dict:
+        """
+        Ou en est la commande. Sur le robot : derniere commande atteinte ET
+        bras immobile -- l'index du controleur designe la commande EN COURS,
+        l'atteindre ne prouve pas qu'elle soit finie.
+        """
+        etat = dict(getattr(self, "_cmd_script", {"etat": "aucune"}))
+        if etat["etat"] != "en_cours":
+            return etat
+        if not etat.get("reel"):
+            if (not self.en_lecture and self.trajectoire is not None
+                    and self.t_courant >= self.trajectoire.duree - 1e-6):
+                self._cmd_script = {"etat": "termine"}
+            return dict(self._cmd_script)
+        try:
+            alarmes = resume_alarmes(self.pont.liaison.alarmes())
+            fini = self.pont.termine()
+            q = self.pont.angles_reels()
+        except Exception as exc:
+            self._commande_refuser("liaison perdue : {}".format(exc))
+            return dict(self._cmd_script)
+        incident = getattr(self.pont, "_incident", "")
+        if alarmes:
+            self._commande_refuser("robot en defaut", alarmes)
+            return dict(self._cmd_script)
+        if incident:
+            self._commande_refuser(incident)
+            return dict(self._cmd_script)
+        prec = getattr(self, "_cmd_q_prec", None)
+        if prec is not None and float(np.max(np.abs(q - prec))) < 0.01:
+            self._cmd_immobile += 1
+        else:
+            self._cmd_immobile = 0
+        self._cmd_q_prec = q
+        if fini and self._cmd_immobile >= self.IMMOBILE_COMMANDE:
+            self._cmd_script = {"etat": "termine"}
+            # pas d'animation sur le robot (le miroir montre le bras) : on
+            # affiche ici l'etat final de l'outil et des sorties
+            if self.trajectoire is not None:
+                fin = self.trajectoire.duree
+                self._definir_etat_outil(self.programme.etat_outil(fin))
+                for p, v in enumerate(self.programme.etat_sorties(
+                        fin, self.es.nb_ports), 1):
+                    self.es.definir_sortie(p, v)
+        return dict(self._cmd_script)
+
+    def _commande_urgence(self, robot: bool = True) -> None:
+        """
+        Ctrl+C dans le script : on coupe l'animation, et le robot si c'est
+        lui que le script commandait. Un script qui ne vise que le
+        simulateur ne vide pas la file d'un robot qu'on pilote a cote.
+        """
+        if self.en_lecture:
+            self._basculer_lecture()
+        if robot:
+            self._reel_urgence_sans_dialogue()
+        self._cmd_script = {"etat": "refuse",
+                            "raison": "arret d'urgence demande par le script"}
+
     def demarrer_lecture(self) -> None:
         """Lance l'animation si elle ne tourne pas deja."""
         if not self.en_lecture:
@@ -4419,6 +4681,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                         len(self.trajectoire) - 1))
         tete = ("Arret de securite a t = {:.2f} s, instruction {}/{}"
                 .format(self.t_courant, i + 1, len(self.trajectoire)))
+        cmd = getattr(self, "_cmd_script", None)
+        if cmd and cmd.get("etat") == "en_cours" and not cmd.get("reel"):
+            # une commande du script, simulee : le script doit le savoir
+            self._commande_refuser(tete + " -- " + defauts[0])
         self.journal("--- " + tete + " ---")
         for d in defauts:
             self.journal("  " + d)

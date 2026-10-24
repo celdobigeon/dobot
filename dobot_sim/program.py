@@ -218,6 +218,14 @@ class Programme:
         self.repere_objet = (np.eye(4) if repere_objet is None
                              else np.asarray(repere_objet, dtype=float).copy())
         self.evenements: List[Evenement] = []
+        #: Etat de l'outil et des sorties AVANT la premiere instruction.
+        #: Un programme se joue d'habitude depuis un etat de repos, d'ou
+        #: False partout. La commande temps reel (dobot_sim.Commande), elle,
+        #: enchaine de petits programmes : une ventouse activee par l'un est
+        #: encore active au debut du suivant, et la fenetre doit le montrer.
+        #: Propre a l'animation : ni enregistre, ni envoye au robot.
+        self.outil_initial = False
+        self.sorties_initiales: Optional[List[bool]] = None
 
     def definir_repere_objet(self, T=None) -> None:
         """Fixe le repere objet a partir d'une matrice homogene 4x4."""
@@ -352,7 +360,7 @@ class Programme:
 
     def etat_outil(self, t: float) -> bool:
         """Etat de l'outil a l'instant t (apres construire())."""
-        etat = False
+        etat = bool(self.outil_initial)
         for te, e in self.evenements_outil:
             if te <= t:
                 etat = e
@@ -361,6 +369,8 @@ class Programme:
     def etat_sorties(self, t: float, nb_ports: int = 20) -> List[bool]:
         """Etat des sorties tout-ou-rien a l'instant t (apres construire())."""
         sorties = [False] * nb_ports
+        for i, v in enumerate((self.sorties_initiales or [])[:nb_ports]):
+            sorties[i] = bool(v)
         for e in self.evenements:
             if e.type == "SORTIE" and e.t <= t and 1 <= e.port <= nb_ports:
                 sorties[e.port - 1] = e.etat
