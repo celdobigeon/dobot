@@ -141,10 +141,20 @@ class Recaleur:
         self.haut = float(haut if haut is not None else modele[:, 2].max())
         self.mod_t = torch.tensor(modele, dtype=torch.float32)
 
+    #: points gardes par vue pour le recalage : au-dela, le calcul s'alourdit
+    #: sans rien gagner (la mediane est deja stable)
+    POINTS_PAR_VUE = 400
+
     def tranche(self, v: Vue, tz: float) -> np.ndarray:
-        """Les points de la vue entre le bout des doigts et le haut du modele."""
+        """Les points de la vue entre le bout des doigts et le haut du modele
+        (au plus POINTS_PAR_VUE, tires toujours de la meme facon)."""
         h = v.points[:, 2] + tz - v.A[2, 3]
-        return v.points[(h > -3.0) & (h < self.haut - 2.0)]
+        P = v.points[(h > -3.0) & (h < self.haut - 2.0)]
+        if len(P) > self.POINTS_PAR_VUE:
+            idx = np.random.default_rng(len(P)).choice(len(P), self.POINTS_PAR_VUE,
+                                                        replace=False)
+            P = P[idx]
+        return P
 
     def ajuster(self, vues: Sequence[Vue], s: Solution, iters: int = 150,
                 garder: float = 0.75) -> Solution:
@@ -180,19 +190,29 @@ class Recaleur:
         return Solution(theta, t, float(np.median(dist)) if len(dist) else float("inf"))
 
     def ajuster_departs(self, vues, s: Solution, departs: int = 8, graine: int = 0,
-                        ecart_angle: float = 10.0, ecart_xy: float = 40.0) -> Solution:
-        """Plusieurs departs autour de s ; la meilleure solution l'emporte."""
+                        ecart_angle: float = 10.0, ecart_xy: float = 40.0,
+                        avancer=None) -> Solution:
+        """Plusieurs departs autour de s ; la meilleure solution l'emporte.
+        `avancer(fait, total)` suit le calcul."""
         rng = np.random.default_rng(graine)
         candidats = [s] + [Solution(s.theta + math.radians(rng.uniform(-ecart_angle, ecart_angle)),
                                     np.asarray(s.t, float) + np.r_[rng.uniform(-ecart_xy, ecart_xy, 2),
                                                                    rng.uniform(-10, 10)])
                            for _ in range(departs)]
         meilleur = None
-        for c in candidats:
+        total = len(candidats) + 1
+        for k, c in enumerate(candidats):
+            if avancer is not None:
+                avancer(k, total)
             r = self.ajuster(vues, c, iters=80)
             if meilleur is None or r.distance < meilleur.distance:
                 meilleur = r
-        return self.ajuster(vues, meilleur, iters=200)
+        if avancer is not None:
+            avancer(total - 1, total)
+        fin = self.ajuster(vues, meilleur, iters=200)
+        if avancer is not None:
+            avancer(total, total)
+        return fin
 
 
 def amorce_par_centres(vues: Sequence[Vue], tz: float = 0.0) -> Solution:
@@ -291,6 +311,17 @@ class Segmenteur:
 # Le deroule
 # ---------------------------------------------------------------------------
 
+def barre(texte: str, fait: int, total: int, largeur: int = 24) -> None:
+    """Ligne d'avancement, reecrite en place : texte [#####-----] 12/45 (27 %)."""
+    f = 0.0 if total <= 0 else min(1.0, fait / total)
+    n = int(round(largeur * f))
+    sys.stdout.write("\r  {} [{}{}] {}/{} ({:.0f} %)   ".format(
+        texte, "#" * n, "-" * (largeur - n), fait, total, 100 * f))
+    if fait >= total:
+        sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
 class EtalonnagePince:
 
     def __init__(self, robot, capturer: Callable[[], dict], journal=print,
@@ -300,7 +331,7 @@ class EtalonnagePince:
         self.capturer = capturer
         self.journal = journal
         self.modele_robot = getattr(robot, "modele", None) or DobotMagician()
-        self.recaleur = Recaleur(charger_modele())
+        self.recaleur = Recaleur(charger_modele(pas=2.5))
         self.vues: List[Vue] = []
         self.seg: Optional[Segmenteur] = None
         self.solution: Optional[Solution] = None
@@ -357,7 +388,7 @@ class EtalonnagePince:
         self.decor_capture = cap
         self.seg = Segmenteur(cap)
         self._archiver("00_decor", cap, {"pose": [float(v) for v in self.robot.pose()]})
-        self.journal("decor releve ; camera a {:.0f} mm au-dessus de la table, plongee {:.1f} "
+        self.journal("[etape 1/4] decor releve ; camera a {:.0f} mm au-dessus de la table, plongee {:.1f} "
                      "deg".format(self.seg.hauteur_camera, self.seg.plongee))
 
     def voir(self, x, y, z, r) -> Optional[Vue]:
@@ -375,19 +406,19 @@ class EtalonnagePince:
         nom = "v{:03d}".format(len(self.vues) + 1)
         self._archiver(nom, cap, {"pose": [xp, yp, zp, rp], "points": int(len(P))})
         if len(P) < 60:
-            self.journal("  {}  x {:6.1f} y {:6.1f} z {:5.1f} r {:+5.0f}  : pince NON VUE".format(
-                nom, xp, yp, zp, rp))
+            self.journal("  {}{}  x {:6.1f} y {:6.1f} z {:5.1f} r {:+5.0f}  : pince NON VUE".format(
+                getattr(self, "prefixe", ""), nom, xp, yp, zp, rp))
             return None
         v = Vue(nom, P, A)
         self.vues.append(v)
-        self.journal("  {}  x {:6.1f} y {:6.1f} z {:5.1f} r {:+5.0f}  : {} points".format(
-            nom, xp, yp, zp, rp, len(P)))
+        self.journal("  {}{}  x {:6.1f} y {:6.1f} z {:5.1f} r {:+5.0f}  : {} points".format(
+            getattr(self, "prefixe", ""), nom, xp, yp, zp, rp, len(P)))
         return v
 
     # -- etapes -------------------------------------------------------------
     def amorcer(self) -> Solution:
         """Poses juste devant le robot (base a 0), sans tourner la base."""
-        self.journal("AMORCAGE : quelques poses devant le robot")
+        self.journal("[etape 2/4] AMORCAGE : quelques poses devant le robot")
         poses = [(x, 0.0, z, r) for x in (200.0, 250.0) for z in (80.0, 130.0)
                  for r in (-45.0, 0.0, 45.0)]
         for p in poses:
@@ -397,8 +428,9 @@ class EtalonnagePince:
             raise ec.Arret("la camera ne voit pas la pince devant le robot ({} vue(s)) : "
                            "orientez-la vers la zone de travail".format(len(self.vues)))
         s = amorce_par_centres(self.vues)
-        self.solution = self.recaleur.ajuster_departs(self.vues, s, departs=12, ecart_angle=25,
-                                                      ecart_xy=80)
+        self.solution = self.recaleur.ajuster_departs(
+            self.vues, s, departs=12, ecart_angle=25, ecart_xy=80,
+            avancer=lambda k, n: barre("premier recalage ", k, n))
         self.journal("  premier recalage : {:.2f} mm (mediane modele -> mesure)".format(
             self.solution.distance))
         return self.solution
@@ -441,10 +473,14 @@ class EtalonnagePince:
             choisis.append(candidats[int(np.argmax(d))])
         # trajet : par angle de base, pour des mouvements courts
         choisis.sort(key=lambda p: (round(math.degrees(math.atan2(p[1], p[0])) / 15), p[3]))
-        self.journal("COUVERTURE : {} poses dans la zone vue".format(len(choisis)))
-        for p in choisis:
+        self.journal("[etape 3/4] COUVERTURE : {} poses dans la zone vue".format(len(choisis)))
+        for k, p in enumerate(choisis):
+            self.prefixe = "{:2d}/{} ".format(k + 1, len(choisis))
             self.voir(*p)
-        self.solution = self.recaleur.ajuster_departs(self.vues, self.solution, departs=6)
+        self.prefixe = ""
+        self.solution = self.recaleur.ajuster_departs(
+            self.vues, self.solution, departs=6,
+            avancer=lambda k, n: barre("recalage final   ", k, n))
         self.journal("  recalage : {:.2f} mm (mediane modele -> mesure), sur {} vues".format(
             self.solution.distance, len(self.vues)))
 
@@ -452,7 +488,9 @@ class EtalonnagePince:
         """Recalage refait sur deux moitiees des vues : ecart sur la zone."""
         moities = []
         for k in (0, 1):
-            s = self.recaleur.ajuster_departs(self.vues[k::2], self.solution, departs=4)
+            s = self.recaleur.ajuster_departs(
+                self.vues[k::2], self.solution, departs=4,
+                avancer=lambda f, n, k=k: barre("controle, moitie {}".format(k + 1), f, n))
             moities.append(s.M() @ self.seg.T_tc)
         return ecart_zone(moities[0], moities[1])
 
@@ -500,6 +538,46 @@ class EtalonnagePince:
         }
 
 
+def depuis_archive(dossier: str, journal=print) -> "EtalonnagePince":
+    """Reconstruit un etalonnage a partir des vues archivees (sans robot)."""
+    import glob
+    et = EtalonnagePince(None, None, journal=journal, archive=None)
+    dec = dict(np.load(os.path.join(dossier, "00_decor.npz")))
+    et.decor_capture, et.seg = dec, Segmenteur(dec)
+    noms = sorted(f[:-5] for f in os.listdir(dossier)
+                  if f.startswith("v") and f.endswith(".json"))
+    solution = None
+    for k, nom in enumerate(noms):
+        with open(os.path.join(dossier, nom + ".json"), encoding="utf-8") as f:
+            meta = json.load(f)
+        chemin = os.path.join(dossier, nom + ".npz")
+        if not os.path.exists(chemin):
+            continue
+        cap = dict(np.load(chemin))
+        A = pose_outil(*meta["pose"])
+        attendu = None
+        if solution is not None:
+            p = A[:3, :3] @ [0.0, 0.0, 45.0] + A[:3, 3]
+            attendu = np.linalg.solve(solution.M(), np.r_[p, 1.0])[:3]
+        P = et.seg.points(cap, attendu)
+        if len(P) >= 60:
+            et.vues.append(Vue(nom, P, A))
+        # meme amorcage qu'en direct : apres les vues devant le robot
+        if solution is None and len(et.vues) >= 9 and k + 1 < len(noms) and \
+                abs(A[1, 3]) < 1.0:
+            nxt = json.load(open(os.path.join(dossier, noms[k + 1] + ".json")))["pose"]
+            if abs(nxt[1]) >= 1.0:
+                s = amorce_par_centres(et.vues)
+                solution = et.recaleur.ajuster_departs(et.vues, s, departs=12,
+                                                       ecart_angle=25, ecart_xy=80)
+                et.solution = solution
+    if et.solution is None:
+        et.solution = et.recaleur.ajuster_departs(et.vues, amorce_par_centres(et.vues),
+                                                  departs=12, ecart_angle=25, ecart_xy=80)
+    et.solution = et.recaleur.ajuster_departs(et.vues, et.solution, departs=6)
+    return et
+
+
 def enregistrer(resultat: dict, chemin: str = ec.FICHIER) -> Optional[str]:
     """Ecrit le fichier d'etalonnage ; l'ancien est garde a cote."""
     sauvegarde = None
@@ -511,6 +589,28 @@ def enregistrer(resultat: dict, chemin: str = ec.FICHIER) -> Optional[str]:
     return sauvegarde
 
 
+def conclure(et: "EtalonnagePince", longueur, sortie) -> int:
+    """Controle de repetabilite, bilan, enregistrement."""
+    et.journal("[etape 4/4] CONTROLE : recalages sur deux moities des vues")
+    stab = et.stabilite()
+    res = et.resultat(longueur, stab)
+    T = np.array(res["T_robot_camera_mm"])
+    et.journal("\nRESULTAT : camera en x {:.0f} y {:.0f} z {:.0f} mm ; table a z = {:.1f} mm "
+               "(repere robot)".format(*T[:3, 3], res["z_table_mm"]))
+    et.journal("  ecart mesure -> modele : {:.2f} mm (mediane) ; {} vues".format(
+        res["rms_mm"], len(et.vues)))
+    et.journal("  repetabilite (deux moities) : {:.1f} mm en moyenne, {:.1f} au pire".format(
+        *stab))
+    avis = ("bonne" if stab[0] < 2.0 else "moyenne" if stab[0] < 4.0
+            else "insuffisante pour saisir")
+    et.journal("  qualite : {}".format(avis))
+    sauvegarde = enregistrer(res, sortie)
+    et.journal("etalonnage enregistre : {}".format(os.path.relpath(sortie)))
+    if sauvegarde:
+        et.journal("  (l'ancien : {})".format(os.path.relpath(sauvegarde)))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Etalonnage camera -> robot par la pince seule")
     ap.add_argument("--longueur-outil", type=float, default=None,
@@ -520,6 +620,9 @@ def main(argv=None) -> int:
     ap.add_argument("--vues", type=int, default=45, help="poses de couverture (45)")
     ap.add_argument("--port", default=None)
     ap.add_argument("--sortie", default=ec.FICHIER)
+    ap.add_argument("--archive", nargs="?", const="derniere", default=None,
+                    help="recalculer a partir des vues enregistrees (la derniere serie, "
+                         "ou le dossier donne), SANS bouger le robot")
     a = ap.parse_args(argv)
 
     longueur = a.longueur_outil
@@ -532,6 +635,16 @@ def main(argv=None) -> int:
     if longueur is None:
         longueur = 107.0
     print("longueur d'outil : {:.1f} mm".format(longueur))
+
+    if a.archive is not None:
+        dossier = a.archive
+        if dossier == "derniere":
+            series = sorted(d for d in os.listdir(ARCHIVE)
+                            if os.path.isdir(os.path.join(ARCHIVE, d)))
+            dossier = os.path.join(ARCHIVE, series[-1])
+        print("recalcul a partir de {}".format(os.path.relpath(dossier)))
+        et = depuis_archive(dossier)
+        return conclure(et, longueur, a.sortie)
 
     import camera
     from dobot_sim import Commande, ErreurExecution
@@ -546,22 +659,7 @@ def main(argv=None) -> int:
         et.relever_decor()
         et.amorcer()
         et.couvrir(a.vues)
-        print("CONTROLE : recalages sur deux moities des vues...")
-        stab = et.stabilite()
-        res = et.resultat(longueur, stab)
-        T = np.array(res["T_robot_camera_mm"])
-        print("\nRESULTAT : camera en x {:.0f} y {:.0f} z {:.0f} mm ; table a z = {:.1f} mm "
-              "(repere robot)".format(*T[:3, 3], res["z_table_mm"]))
-        print("  ecart mesure -> modele : {:.2f} mm (mediane) ; {} vues".format(
-            res["rms_mm"], len(et.vues)))
-        print("  repetabilite (deux moities) : {:.1f} mm en moyenne, {:.1f} au pire".format(*stab))
-        avis = ("bonne" if stab[0] < 2.0 else "moyenne" if stab[0] < 4.0
-                else "insuffisante pour saisir")
-        print("  qualite : {}".format(avis))
-        sauvegarde = enregistrer(res, a.sortie)
-        print("etalonnage enregistre : {}".format(os.path.relpath(a.sortie)))
-        if sauvegarde:
-            print("  (l'ancien : {})".format(os.path.relpath(sauvegarde)))
+        conclure(et, longueur, a.sortie)
         et.equerre()
     except KeyboardInterrupt:
         print("\ninterrompu (robot arrete) : rien d'enregistre")
