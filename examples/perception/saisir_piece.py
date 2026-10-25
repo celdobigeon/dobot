@@ -157,19 +157,29 @@ class Essai:
     # -- la camera ----------------------------------------------------------
     def voir(self):
         pieces = self.perception.detecter()
-        return [p for p in pieces if p.T_robot is not None]
+        return [p for p in pieces if p.T_robot is not None and not dans_le_robot(p)]
 
     def choisir(self, pieces):
-        """La piece a prendre : libre (rien dessus), la plus haute, et qui
-        passe entre les mors."""
+        """
+        La piece a prendre : libre (rien dessus), la plus haute, qui passe
+        entre les mors -- et ATTEIGNABLE d'abord. Une piece hors d'atteinte
+        n'est proposee que s'il n'y a rien d'autre (pour 'Forcer'). Les
+        detections dans l'emprise du robot (son socle vu par la camera) sont
+        ignorees.
+        """
         from perception import ordre_de_prise
-        for p in ordre_de_prise(pieces):
+        possibles = []
+        for p in ordre_de_prise([p for p in pieces if not dans_le_robot(p)]):
             long_, large, haut = p.dimensions
             if large <= LARGEUR_MAX:
-                return p
-            self.journal("  piece {} ({} {}) trop large pour la pince ({:.0f} mm)"
-                         .format(p.numero, p.type, p.face, large))
-        return None
+                possibles.append(p)
+        for p in possibles:
+            try:
+                if not self.statut(p):
+                    return p
+            except Exception:                           # noqa: BLE001
+                continue
+        return possibles[0] if possibles else None
 
     def prise_de(self, piece):
         """(x, y, z, r) de la pince pour saisir la piece."""
@@ -321,6 +331,22 @@ class Essai:
         if not controle:
             return vise
         return self.controler(vise)
+
+
+#: mm : une detection a moins de cette distance de l'axe de la base est
+#: dans l'emprise du robot (socle 158 x 158 mm, colonne) : ce n'est pas une
+#: piece
+EMPRISE_ROBOT = 130.0
+
+
+def dans_le_robot(piece) -> bool:
+    """La piece detectee est-elle dans l'emprise du robot (son socle ou sa
+    colonne, pris pour une piece) ?"""
+    T = getattr(piece, "T_robot", None)
+    if T is None:
+        return False
+    x, y = T[0, 3] * 1000.0, T[1, 3] * 1000.0
+    return math.hypot(x, y) < EMPRISE_ROBOT
 
 
 def probleme_etalonnage(donnees) -> str:

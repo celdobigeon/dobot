@@ -267,7 +267,7 @@ class Detecteur(threading.Thread):
         self.affinage = float(fraction)
 
     def _publier(self, ep, pieces, niveau):
-        pieces = [p for p in pieces if p.T_robot is not None]
+        pieces = [p for p in pieces if p.T_robot is not None and not sp.dans_le_robot(p)]
         with self.verrou:
             d = self.derniere
             # un resultat rapide ne remplace une scene consolidee de la meme
