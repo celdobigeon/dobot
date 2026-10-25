@@ -45,8 +45,9 @@ import etalonner_camera_robot as ec      # noqa: E402
 LARGEUR_MAX = 22.0
 #: mm : hauteur VISEE du bout des doigts au-dessus de la surface sur
 #: laquelle repose la piece (la table, ou la piece du dessous). La hauteur
-#: de table n'est mesuree qu'en un point (accostage) ; ailleurs, le bras se
-#: trompe en z de quelques mm : 3 mm visaient deja le contact, d'ou 6.
+#: de table vient de l'accostage : on y descend jusqu'a pincer une feuille,
+#: et les moteurs pas a pas annoncent la position COMMANDEE, un peu sous la
+#: vraie table quand le bras bute. Constate : 3 mm visaient le contact.
 PIED = 6.0
 #: mm : la nouvelle place est au moins a cette distance de l'ancienne
 ECART_DEPOSE = 60.0
@@ -176,9 +177,9 @@ class Essai:
         z = dessous + self.pied
         # la pince est symetrique : r a 180 deg pres, le plus pres de 0
         r = ec._angle(lacet + self.ecart_r, 180.0)
-        # hauteur de la pince au-dessus du DESSOUS de la piece : pour la
-        # reposer, dessous sur la table
-        self.au_dessus_du_dessous = z - (cz - haut)
+        # hauteur de la pince au-dessus du DESSOUS de la piece -- le meme
+        # dessous que pour la saisie : pour la reposer, dessous sur la table
+        self.au_dessus_du_dessous = z - dessous
         return cx, cy, z, r
 
     def statut(self, piece) -> str:

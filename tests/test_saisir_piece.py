@@ -74,6 +74,22 @@ class TestSaisie(unittest.TestCase):
         self.assertFalse(robot.fermee)
         self.assertGreaterEqual(math.hypot(vise[0] - x, vise[1] - y), sp.ECART_DEPOSE)
         self.assertAlmostEqual(vise[2], z)                   # dessous sur la table
+
+    def test_depose_a_la_hauteur_de_la_saisie(self):
+        """Le dessous de la piece vu 4 mm trop haut par la camera : la saisie
+        prend la table etalonnee, la depose AUSSI (bug du 25/10 : elle
+        descendait de 4 mm de trop)."""
+        z_table = 25.0
+        robot = FauxRobotAngles(x=220.0, y=0.0, z=120.0)
+        perc = FaussePerception(robot, z_table)
+        perc.piece = Piece(240.0, -20.0, z_table + 4.0 + 17.0, 30.0)
+        donnees = {"z_table_mm": z_table, "secteur_base_deg": [-40.0, 20.0],
+                   "ecart_r_deg": 0.0, "depart": [220.0, 0.0, 0.0], "mesures": []}
+        essai = sp.Essai(robot, perc, donnees, journal=lambda m: None, graine=1)
+        prise = essai.saisir(perc.piece)
+        vise = essai.deposer(prise)
+        self.assertAlmostEqual(prise[2], z_table + sp.PIED)
+        self.assertAlmostEqual(vise[2], z_table + sp.PIED)
         self.assertAlmostEqual(robot.angles()[1], ec.EQUERRE_J2, places=3)
 
 
