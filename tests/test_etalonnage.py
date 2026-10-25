@@ -265,6 +265,16 @@ class TestReprise(unittest.TestCase):
         self.assertEqual((et.z_table, et.secteur, len(et.paires)), (-40.0, (-20.0, 30.0), 0))
         self.assertIsNone(et.recalage)
 
+    def test_depart_ramene_dans_un_secteur_plus_etroit(self):
+        robot = FauxRobot(x=200.0, y=0.0)
+        et = ec.Etalonnage(robot, None, z_table=25.0, journal=lambda m: None,
+                           secteur=(10.0, 40.0))
+        et.depart = (200.0, -60.0, 0.0)          # J1 ~ -17 deg : hors secteur
+        et._recentrer_depart()
+        x, y, r = et.depart
+        self.assertTrue(et._atteignable(x, y, r))
+        self.assertAlmostEqual(math.degrees(math.atan2(y, x)), 25.0, delta=1.0)
+
     def test_charger_inacheve(self):
         import json
         import tempfile

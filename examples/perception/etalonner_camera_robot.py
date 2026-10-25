@@ -635,6 +635,7 @@ class Etalonnage:
         """
         if self.paires:
             self.session = max(p.session for p in self.paires) + 1
+        self._recentrer_depart()
         x, y, r = self.depart
         self._aller(x, y, r)
         self.robot.movl(x=x, y=y, z=self._z(PRISE), r=r)
@@ -644,6 +645,24 @@ class Etalonnage:
         self.journal("  piece n {} : retirez de la table toute autre piece"
                      .format(self.session + 1))
         self._placer_a_la_main(x, y, r)
+
+    def _recentrer_depart(self):
+        """Point de depart hors du secteur (secteur releve a nouveau) : on le
+        ramene au milieu du secteur, a la meme distance de la base."""
+        x, y, r = self.depart
+        if self._atteignable(x, y, r) or self.secteur is None:
+            return
+        rayon = math.hypot(x, y)
+        milieu = math.radians(0.5 * (self.secteur[0] + self.secteur[1]))
+        for dr in (0, -10, 10, -20, 20, -30, 30, -40, 40):
+            nx, ny = (rayon + dr) * math.cos(milieu), (rayon + dr) * math.sin(milieu)
+            nr = _angle(r + math.degrees(milieu - math.atan2(y, x)))
+            if self._atteignable(nx, ny, nr):
+                self.depart = (nx, ny, nr)
+                self.journal("  point de depart ramene dans le secteur : x {:.0f} y {:.0f}"
+                             .format(nx, ny))
+                return
+        raise Arret("aucun point de depart atteignable dans le secteur")
 
     def remettre_piece(self):
         """A la reprise : le robot ouvre la pince au point de depart, et on
@@ -987,6 +1006,9 @@ def main(argv=None) -> int:
                     help="nouvel etalonnage SANS la configuration interactive : "
                          "secteur, hauteur de table et point de depart repris du "
                          "fichier, mesures effacees (apres un deplacement de la camera)")
+    ap.add_argument("--secteur", action="store_true",
+                    help="avec --reprendre ou --recommencer : relever a nouveau le "
+                         "secteur angulaire de la base (les poses sont gardees)")
     ap.add_argument("--sortie", default=FICHIER)
     a = ap.parse_args(argv)
     if a.reprendre and a.recommencer:
@@ -1033,6 +1055,9 @@ def main(argv=None) -> int:
                                    if et.secteur else "libre"))
             if et.recalage is not None:
                 print("  recalage actuel : {:.2f} mm rms".format(et.recalage.rms))
+            if a.secteur:
+                et.secteur = relever_secteur(robot, et.modele)
+                et.enregistrer()
             et.remettre_piece()
         else:
             if a.simulation:
