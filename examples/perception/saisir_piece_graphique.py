@@ -182,7 +182,11 @@ def main(argv=None) -> int:
     det = Detecteur(perc_continue, essai)
     from dobot_sim.passerelle import demander
     try:
-        demander({"saisie": {"activer": True}})
+        if demander({"saisie": {"activer": True}}) is None:
+            print("ATTENTION : la fenetre du simulateur ne connait pas le panneau Saisie "
+                  "(elle a ete\n  ouverte avant cette version). Fermez-la et relancez ce "
+                  "script : il en ouvrira une\n  a jour. En attendant : Entree ici pour "
+                  "saisir, f + Entree pour forcer.")
         robot.pince(False)
         essai.equerre()
         det.start()

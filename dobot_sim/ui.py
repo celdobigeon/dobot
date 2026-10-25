@@ -4506,6 +4506,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         if d.get("activer"):
             dock = self._panneau_saisie()
             if programme is not None:
+                # a la place exacte du panneau Programme (meme groupe
+                # d'onglets que Robot reel), puis on masque celui-ci
+                if programme.isVisible():
+                    self.tabifyDockWidget(programme, dock)
                 programme.hide()
             dock.show()
             dock.raise_()
@@ -4518,6 +4522,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 self.dock_saisie.hide()
             if programme is not None:
                 programme.show()
+                programme.raise_()
             if hasattr(self.vue, "definir_objets"):
                 self.vue.definir_objets([])
             return {}
