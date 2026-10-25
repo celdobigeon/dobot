@@ -43,9 +43,9 @@ import etalonner_camera_robot as ec      # noqa: E402
 #: mm : on ne saisit qu'une piece dont la largeur passe entre les mors
 #: (ouverture ~26 mm)
 LARGEUR_MAX = 22.0
-#: mm : les mors prennent au plus cette hauteur de piece, en partant du
-#: dessus ; jamais plus bas que PIED au-dessus de la table
-PRISE_HAUTEUR, PIED = 12.0, 2.0
+#: mm : hauteur du bout des doigts au-dessus de la surface sur laquelle
+#: repose la piece (la table, ou la piece du dessous) pour la saisir
+PIED = 3.0
 #: mm : la nouvelle place est au moins a cette distance de l'ancienne
 ECART_DEPOSE = 60.0
 
@@ -165,7 +165,12 @@ class Essai:
         cx, cy, cz = T[:3, 3] * 1000.0
         lacet = math.degrees(math.atan2(T[1, 0], T[0, 0]))
         haut = float(piece.dimensions[2])
-        z = max(cz - min(PRISE_HAUTEUR, haut - PIED), self.z_table + PIED)
+        dessous = cz - haut
+        # une piece posee sur la table : on prend la hauteur de table
+        # etalonnee plutot que son estimation par la camera
+        if abs(dessous - self.z_table) < 5.0:
+            dessous = self.z_table
+        z = dessous + PIED
         # la pince est symetrique : r a 180 deg pres, le plus pres de 0
         r = ec._angle(lacet + self.ecart_r, 180.0)
         # hauteur de la pince au-dessus du DESSOUS de la piece : pour la

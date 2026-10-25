@@ -65,7 +65,7 @@ class TestSaisie(unittest.TestCase):
         x, y, z, r = essai.saisir(perc.piece)
         self.assertAlmostEqual(x, 240.0)
         self.assertAlmostEqual(y, -20.0)
-        self.assertAlmostEqual(z, z_table + 5.0)            # 12 mm sous le dessus
+        self.assertAlmostEqual(z, z_table + sp.PIED)        # 3 mm au-dessus de la table
         self.assertTrue(robot.fermee)
         # descente verticale sur la piece
         i = [k for k, p in enumerate(robot.trace) if abs(p[2] - z) < 1e-6][0]
