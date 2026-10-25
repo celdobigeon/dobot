@@ -409,7 +409,19 @@ class Arret(Exception):
     pass
 
 
+def _vider_clavier() -> None:
+    """Oublie les touches tapees d'avance (pendant un mouvement, un Entree
+    en trop) : sinon la question suivante les lit et repart sans attendre."""
+    if sys.stdin.isatty():
+        try:
+            import termios
+            termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+        except Exception:                           # noqa: BLE001
+            pass
+
+
 def _demander(texte: str) -> str:
+    _vider_clavier()
     try:
         return input(texte)
     except EOFError:
@@ -840,6 +852,7 @@ def _lire_touche() -> str:
         return sys.stdin.readline().strip() or "\n"
     import termios
     import tty
+    _vider_clavier()
     fd = sys.stdin.fileno()
     ancien = termios.tcgetattr(fd)
     try:
