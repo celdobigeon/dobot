@@ -16,7 +16,9 @@ Le Dobot reel en ligne de commande : une commande, une action.
                                                     l'outil : dx dy dz (mm)
     .venv/bin/python dobot.py deplacer 10 -5 0 --dr 15
     .venv/bin/python dobot.py effacer               effacer les alarmes
-    .venv/bin/python dobot.py mise-en-route [--sans-posture]
+    .venv/bin/python dobot.py mise-en-route [--sans-posture] [--equerre]
+    .venv/bin/python dobot.py origine               prise d'origine seule
+                                                    (= mise-en-route --sans-posture)
     .venv/bin/python dobot.py etalonner [--reprendre ...]
                                                     etalonnage camera -> robot
 
@@ -254,9 +256,17 @@ def effacer(a) -> int:
 
 def mise_en_route(a) -> int:
     import mise_en_route as mer
-    args = (["--port", a.port] if a.port else []) + (["--sans-posture"]
-                                                      if a.sans_posture else [])
+    args = (["--port", a.port] if a.port else [])
+    args += ["--sans-posture"] if getattr(a, "sans_posture", False) else []
+    args += ["--equerre"] if getattr(a, "equerre", False) else []
     return mer.main(args)
+
+
+def origine(a) -> int:
+    """La mise en route SANS declarer la posture : prise d'origine et
+    verification (posture deja declaree depuis la mise sous tension)."""
+    a.sans_posture = True
+    return mise_en_route(a)
 
 
 def etalonner(a) -> int:
@@ -320,7 +330,14 @@ def main(argv=None) -> int:
     p = sp.add_parser("mise-en-route", help="assistant de mise en route")
     p.add_argument("--sans-posture", action="store_true",
                    help="passer l'etape 1 (posture deja declaree)")
+    p.add_argument("--equerre", action="store_true",
+                   help="amener d'abord le bras en equerre en mode manuel")
     p.set_defaults(f=mise_en_route)
+    p = sp.add_parser("origine", help="prise d'origine (= mise-en-route --sans-posture) : "
+                                      "efface les defauts tenaces (0x12)")
+    p.add_argument("--equerre", action="store_true",
+                   help="amener d'abord le bras en equerre en mode manuel")
+    p.set_defaults(f=origine)
     p = sp.add_parser("etalonner", help="etalonnage camera -> robot",
                       add_help=False)
     p.add_argument("reste", nargs=argparse.REMAINDER,
