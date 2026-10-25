@@ -1680,6 +1680,18 @@ bouton de la fourche enfoncé — puis déclarez. Rien ne bouge.
 > Mesurez une bonne fois l'angle qu'elle représente, puis déclarez cette
 > valeur avec `--reference`.
 
+### Mise en route sans le simulateur : `mise_en_route.py`
+
+```
+.venv/bin/python mise_en_route.py
+```
+
+ouvre le même assistant de mise en route que la fenêtre du simulateur
+(posture de référence, prise d'origine, défauts effacés), seul, dans une
+petite fenêtre. À lancer après chaque mise sous tension, fenêtre du
+simulateur fermée, avant les scripts qui pilotent le robot directement
+(`Commande(robot=True, simulateur=False)`, étalonnage de la caméra…).
+
 ### Prise d'origine
 
 > **Séquence de début de séance, validée sur la machine (firmware 3.7.0).**
