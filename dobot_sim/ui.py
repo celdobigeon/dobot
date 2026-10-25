@@ -4470,6 +4470,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.lab_saisie_cible.setStyleSheet(
             "QLabel { background:rgba(127,127,127,0.12); padding:6px; }")
         lay.addWidget(self.lab_saisie_cible)
+        self.barre_detection = QtWidgets.QProgressBar()
+        self.barre_detection.setRange(0, 100)
+        self.barre_detection.setFormat("detection %p %")
+        lay.addWidget(self.barre_detection)
+        self.lab_saisie_etape = QtWidgets.QLabel("")
+        self.lab_saisie_etape.setStyleSheet("color:#9aa4b0")
+        lay.addWidget(self.lab_saisie_etape)
         self.bt_saisir = QtWidgets.QPushButton("Saisir la cible")
         self.bt_saisir.setMinimumHeight(44)
         self.bt_saisir.clicked.connect(lambda: self._saisie_demander("saisir"))
@@ -4560,6 +4567,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             cam = self._panneau_camera()
             cam.show()
             cam.raise_()
+            # le panneau Commande (articulations, cartesien, outil) ne sert
+            # pas en mode saisie : la vue 3D recupere la place
+            commande = self.findChild(QtWidgets.QDockWidget, "dock_commande")
+            if commande is not None:
+                commande.hide()
             self.bt_saisir.setEnabled(False)
             self.bt_forcer.setEnabled(False)
             self.journal("mode saisie : panneau Programme remplace par le panneau Saisie")
@@ -4569,6 +4581,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 self.dock_saisie.hide()
             if getattr(self, "dock_camera", None) is not None:
                 self.dock_camera.hide()
+            commande = self.findChild(QtWidgets.QDockWidget, "dock_commande")
+            if commande is not None:
+                commande.show()
             if programme is not None:
                 programme.show()
                 programme.raise_()
@@ -4577,6 +4592,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return {}
         if "images" in d:
             self._afficher_images_camera(d["images"] or {})
+            if "progression" in d:
+                self._panneau_saisie()
+                self.barre_detection.setValue(int(d["progression"]))
+                self.lab_saisie_etape.setText(d.get("etape", ""))
             return {}
         if "etat" in d:
             self._panneau_saisie()

@@ -182,18 +182,27 @@ def lire_clavier():
     return "forcer" if ligne.strip().lower().startswith("f") else "saisir"
 
 
+#: images par capture de detection : la mediane de 8 images (0,5 s a
+#: 15 images/s) suffit ; l'etalonnage en prend 15
+IMAGES_DETECTION = 8
+
+
 class Detecteur(threading.Thread):
     """
-    La detection en continu. Une image prise pendant un mouvement du bras
+    La detection en continu, PAR ETAPES (Perception.detecter_par_etapes) :
+    le resultat rapide (reseau seul, < 1 s) s'affiche des qu'il n'y a rien
+    de mieux pour la position actuelle du bras, puis la scene consolidee
+    (affinage) le remplace. Une image prise pendant un mouvement du bras
     (ou commencee avant) est jetee : `epoque` avance a chaque mouvement, et
-    seule une detection de l'epoque courante compte.
+    seule une detection de l'epoque courante compte. La saisie n'utilise
+    qu'une detection CONSOLIDEE.
     """
 
     def __init__(self, perception, essai, capturer=None):
         super().__init__(daemon=True)
         if capturer is None:
             import camera
-            capturer = camera.capturer
+            capturer = lambda: camera.capturer(IMAGES_DETECTION)  # noqa: E731
         self.capturer = capturer
         self.perception = perception
         self.essai = essai
@@ -201,53 +210,88 @@ class Detecteur(threading.Thread):
         self.fin = threading.Event()
         self.epoque = 0
         self.verrou = threading.Lock()
-        self.derniere = None           # (epoque, pieces, cible)
+        self.derniere = None           # (epoque, pieces, cible, niveau)
         self._erreur = ""
+        # avancement de la detection en cours, pour la barre de progression
+        self.etape = ""                # "", capture, rapide, propositions, consolidee
+        self.debut = 0.0
+        self.duree_moyenne = 5.0       # s, moyenne glissante d'un cycle complet
+
+    def progression(self) -> float:
+        """Part (0 a 1) de la detection en cours : estimee d'apres la duree
+        habituelle, jamais en dessous de l'etape atteinte, 95 % au plus
+        tant qu'elle n'est pas finie."""
+        if not self.etape:
+            return 0.0
+        if self.etape == "consolidee":
+            return 1.0
+        atteint = self.perception.PROGRESSION.get(self.etape, 0.0)
+        estime = (time.time() - self.debut) / max(self.duree_moyenne, 0.5)
+        return float(min(0.95, max(atteint, estime)))
+
+    def _publier(self, ep, pieces, niveau):
+        pieces = [p for p in pieces if p.T_robot is not None]
+        with self.verrou:
+            d = self.derniere
+            # un resultat rapide ne remplace pas une scene consolidee de la
+            # meme position du bras : on garde le meilleur
+            if niveau == "rapide" and d is not None and d[0] == ep and d[3] == "consolidee":
+                return
+        cible = self.essai.choisir(pieces) if pieces else None
+        boites = [boite(p, self.perception.types) for p in pieces]
+        try:
+            afficher(boites, pieces.index(cible) if cible is not None else None)
+        except Exception:                               # noqa: BLE001
+            pass
+        with self.verrou:
+            self.derniere = (ep, pieces, cible, niveau)
+        quoi = "detection rapide" if niveau == "rapide" else "detection consolidee"
+        if cible is not None:
+            x, y, z = cible.T_robot[:3, 3] * 1000.0
+            texte = "{} : {} piece(s) ; cible : {} {} en x {:.0f} y {:.0f}".format(
+                quoi, len(pieces), cible.type, cible.face, x, y)
+        else:
+            texte = "{} : {} piece(s) ; aucune cible".format(quoi, len(pieces))
+        try:
+            panneau(cible=texte, saisir=cible is not None)
+        except Exception:                               # noqa: BLE001
+            pass
 
     def run(self):
         while not self.fin.is_set():
             if self.pause.is_set():
+                self.etape = ""
                 time.sleep(0.1)
                 continue
             ep = self.epoque
+            self.debut, self.etape = time.time(), "capture"
             try:
                 capture = self.capturer()
-                pieces = [p for p in self.perception.detecter(capture)
-                          if p.T_robot is not None]
+                for etape, pieces in self.perception.detecter_par_etapes(capture):
+                    if self.pause.is_set() or ep != self.epoque:
+                        break               # le bras bouge : resultat perime
+                    self.etape = etape
+                    if pieces is not None:
+                        self._publier(ep, pieces, "consolidee" if etape == "consolidee"
+                                      else "rapide")
+                else:
+                    duree = time.time() - self.debut
+                    self.duree_moyenne = 0.7 * self.duree_moyenne + 0.3 * duree
             except Exception as exc:                    # noqa: BLE001
+                self.etape = ""
                 if str(exc) != self._erreur:
                     self._erreur = str(exc)
                     print("\n  detection impossible : {}".format(exc))
                 time.sleep(1.0)
-                continue
-            if self.pause.is_set() or ep != self.epoque:
-                continue                    # le bras a bouge pendant la prise
-            cible = self.essai.choisir(pieces) if pieces else None
-            boites = [boite(p, self.perception.types) for p in pieces]
-            try:
-                afficher(boites, pieces.index(cible) if cible is not None else None)
-            except Exception:                           # noqa: BLE001
-                pass
-            with self.verrou:
-                self.derniere = (ep, pieces, cible)
-            if cible is not None:
-                x, y, z = cible.T_robot[:3, 3] * 1000.0
-                texte = "{} piece(s) vue(s) ; cible : {} {} en x {:.0f} y {:.0f}".format(
-                    len(pieces), cible.type, cible.face, x, y)
-            else:
-                texte = "{} piece(s) vue(s) ; aucune cible".format(len(pieces))
-            try:
-                panneau(cible=texte, saisir=cible is not None)
-            except Exception:                           # noqa: BLE001
-                pass
 
-    def cible_fraiche(self, delai: float = 20.0):
-        """La cible d'une detection faite APRES le dernier mouvement."""
+    def cible_fraiche(self, delai: float = 30.0):
+        """La cible d'une detection CONSOLIDEE faite APRES le dernier
+        mouvement."""
         fin = time.time() + delai
         while time.time() < fin:
             with self.verrou:
                 d = self.derniere
-            if d is not None and d[0] == self.epoque:
+            if d is not None and d[0] == self.epoque and d[3] == "consolidee":
                 return d[2]
             time.sleep(0.1)
         return None
@@ -284,19 +328,51 @@ class Flux(threading.Thread):
                 d = self.detecteur
                 with d.verrou:
                     derniere = d.derniere
-                pieces, cible = [], None
+                pieces, cible, niveau = [], None, ""
                 if derniere is not None and derniere[0] == d.epoque \
                         and not d.pause.is_set():
-                    pieces, cible = derniere[1], derniere[2]
+                    pieces, cible, niveau = derniere[1], derniere[2], derniere[3]
                 images = {"profondeur": carte_profondeur(capture)}
                 if vue is not None:
-                    images["couleur"] = _jpeg(dessiner_boites(vue.image, vue, pieces,
-                                                              self.types, cible))
-                demander({"saisie": {"images": images}}, attente=2000)
+                    img = dessiner_boites(vue.image, vue, pieces, self.types, cible)
+                    images["couleur"] = _jpeg(bandeau(img, niveau, d))
+                prog = int(round(100 * d.progression()))
+                demander({"saisie": {"images": images,
+                                     "progression": prog,
+                                     "etape": libelle_etape(d)}}, attente=2000)
                 self.images += 1
             except Exception:                           # noqa: BLE001
                 time.sleep(0.5)
             time.sleep(max(0.0, self.periode - (time.time() - t0)))
+
+
+LIBELLES = {"capture": "capture", "rapide": "detection rapide faite, consolidation",
+            "propositions": "consolidation : affinage de la scene",
+            "consolidee": "detection consolidee"}
+
+
+def libelle_etape(d) -> str:
+    if d.pause.is_set():
+        return "robot en mouvement : detection suspendue"
+    return LIBELLES.get(d.etape, "en attente")
+
+
+def bandeau(img, niveau, d):
+    """Ecrit en haut de l'image ce qu'on voit : boites rapides ou
+    consolidees, et l'avancement de la detection en cours."""
+    import cv2
+    if d.pause.is_set():
+        texte = "robot en mouvement"
+    elif not niveau:
+        texte = "detection en cours... {:.0f} %".format(100 * d.progression())
+    else:
+        texte = "{} -- nouvelle detection {:.0f} %".format(
+            "boites RAPIDES" if niveau == "rapide" else "boites CONSOLIDEES",
+            100 * d.progression())
+    cv2.rectangle(img, (0, 0), (img.shape[1], 30), (0, 0, 0), -1)
+    cv2.putText(img, texte, (10, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                (80, 220, 255) if niveau == "rapide" else (120, 230, 120), 1, cv2.LINE_AA)
+    return img
 
 
 def carte_profondeur(capture) -> str:

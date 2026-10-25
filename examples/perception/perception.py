@@ -710,6 +710,30 @@ class Perception:
     def detecter(self, capture=None, images: Optional[int] = None) -> List[PieceVue]:
         """Pieces vues. `capture` : None (capture fraiche par le serveur de
         camera), un chemin .npz, un dictionnaire ou une vision.Scene."""
+        pieces: List[PieceVue] = []
+        for _etape, resultat in self.detecter_par_etapes(capture, images):
+            if resultat is not None:
+                pieces = resultat
+        return pieces
+
+    #: part du temps de calcul de chaque etape, pour une barre de progression
+    PROGRESSION = {"rapide": 0.15, "propositions": 0.60, "consolidee": 1.0}
+
+    def detecter_par_etapes(self, capture=None, images: Optional[int] = None):
+        """
+        La meme detection, PAR ETAPES, pour un affichage qui se consolide :
+
+            for etape, pieces in p.detecter_par_etapes(capture):
+                ...   # pieces : None si l'etape n'a rien d'affichable
+
+        "rapide"        reseau + ajustement des masques (< 1 s) ;
+        "propositions"  pieces de la detection geometrique ajoutees aux
+                        propositions (rien d'affichable : brutes) ;
+        "consolidee"    apres l'affinage de la scene : le resultat final,
+                        celui que rend detecter().
+        Sans reseau, la detection geometrique tient lieu d'etape rapide.
+        PROGRESSION donne la part du temps ecoulee a la fin de chaque etape.
+        """
         t0 = time.perf_counter()
         if capture is None:
             import camera
@@ -722,20 +746,23 @@ class Perception:
         if self.reseau is None or vue is None:
             pieces = self._geometrie(capture, vue)
             table = None
+            yield "rapide", list(pieces)
         else:
             pieces = self._reseau(capture, vue)
             table = self.derniere_table
+            yield "rapide", list(pieces)
             if self.raffinement and self.propositions_geometriques:
                 # la geometrie propose aussi : une piece que le reseau
                 # manque (fond inconnu) n'est pas perdue
                 pieces = list(pieces) + self._geometrie(capture, vue)
                 self.derniere_vue = vue
+                yield "propositions", None
         if self.raffinement and self.points_cles and vue is not None:
             pieces = list(pieces) + self._propositions_cles(capture, vue, table)
         if self.raffinement:
             pieces = self._raffiner(capture, pieces, vue, table)
         self.durees["total"] = time.perf_counter() - t0
-        return pieces
+        yield "consolidee", pieces
 
     def _propositions_cles(self, capture, vue, table) -> List[PieceVue]:
         """Poses du reseau de points cles, en propositions pour l'affinage."""

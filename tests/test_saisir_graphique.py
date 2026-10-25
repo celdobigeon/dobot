@@ -16,6 +16,12 @@ from test_saisir_piece import Piece      # noqa: E402
 
 class FaussePerception:
     types = {"epaisse": (17.0, 19.0, 68.0)}
+    PROGRESSION = {"rapide": 0.15, "propositions": 0.6, "consolidee": 1.0}
+
+    def detecter_par_etapes(self, capture=None):
+        yield "rapide", self.detecter(capture)
+        yield "propositions", None
+        yield "consolidee", self.detecter(capture)
 
     def __init__(self):
         self.n = 0
@@ -53,6 +59,7 @@ class TestDetecteur(unittest.TestCase):
             det.join(1.0)
         finally:
             g.afficher = ancien
+        self.assertEqual(det.derniere[3], "consolidee")
         boites, cible = affiche[-1]
         self.assertEqual(cible, 0)
         self.assertAlmostEqual(boites[0]["centre"][2], 42.0 - 17.0 / 2.0)
