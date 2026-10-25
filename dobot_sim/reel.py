@@ -170,15 +170,9 @@ class PontReel:
             self.deconnecter()
             raise
         self.journal("robot reel connecte sur {} - firmware {}".format(port, version))
-        self.journal("  EndEffectorParams du controleur : xBias={:.2f} "
-                     "yBias={:.2f} zBias={:.2f} mm"
-                     .format(*self.biais))
-        ecart = self.biais[0] - self.robot.geo.l3
-        if abs(ecart) > 0.05:
-            self.journal("  NOTE : le controleur utilise xBias = {:.2f} mm la ou "
-                         "le modele a l3 = {:.2f} mm ({:+.2f} mm). La conversion "
-                         "en tient compte ; la calibration machine n'est PAS "
-                         "modifiee.".format(self.biais[0], self.robot.geo.l3, ecart))
+        # EndEffectorParams (self.biais) : pris en compte par la conversion
+        # depuis_controleur / vers_controleur, sans rien changer a la
+        # machine. Inutile de l'annoncer a chaque connexion.
         al = self.liaison.alarmes()
         for m in resume_alarmes(al):
             self.journal("  " + m)
