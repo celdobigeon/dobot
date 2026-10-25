@@ -23,6 +23,8 @@ Le Dobot reel en ligne de commande : une commande, une action.
     .venv/bin/python dobot.py origine               prise d'origine seule
                                                     (= mise-en-route --sans-posture)
     .venv/bin/python dobot.py etalonner-camera [--reprendre ...]
+    .venv/bin/python dobot.py saisir [--boucle]     essai de saisie guidee
+                                                    par la camera
                                                     etalonnage camera -> robot
 
 Les coordonnees sont celles du simulateur (x, y, z de la pointe d'outil, en
@@ -337,6 +339,17 @@ def etalonner(a) -> int:
     return ec.main(args)
 
 
+def saisir(a) -> int:
+    sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
+    import saisir_piece
+    args = ["--vitesse", str(a.vitesse)]
+    if a.longueur_outil is not None:
+        args += ["--longueur-outil", str(a.longueur_outil)]
+    if a.boucle:
+        args.append("--boucle")
+    return saisir_piece.main(args)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description="Le Dobot reel en ligne de commande",
@@ -401,6 +414,10 @@ def main(argv=None) -> int:
     p.set_defaults(f=origine)
     p = sp.add_parser("etalonner-camera", help="etalonnage camera -> robot",
                       add_help=False)
+    p2 = sp.add_parser("saisir", help="essai : saisir une piece vue par la camera, "
+                                      "la reposer ailleurs")
+    p2.add_argument("--boucle", action="store_true", help="recommencer jusqu'a Ctrl+C")
+    p2.set_defaults(f=saisir)
     # ses options (--reprendre...) sont celles de etalonner_camera_robot.py :
     # elles lui sont passees telles quelles (voir parse_known_args)
     p.set_defaults(f=etalonner, reste=[])
