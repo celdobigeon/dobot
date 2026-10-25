@@ -233,6 +233,58 @@ def amorce_par_centres(vues: Sequence[Vue], tz: float = 0.0) -> Solution:
     return Solution(th, np.array([txy[0], txy[1], tz]))
 
 
+def amorce_par_le_bas(vues: Sequence[Vue]) -> Solution:
+    """
+    Premiere estimation par le BOUT DES DOIGTS : le bas de chaque nuage (le
+    point le plus bas de la pince, a quelques mm de l'outil) suit la
+    position de l'outil. Le centre du nuage, lui, depend de ce qu'on voit du
+    bras et du tuyau.
+    """
+    bas = np.array([P[P[:, 2] < np.percentile(P[:, 2], 2) + 12.0].mean(0)
+                    for P in (v.points for v in vues)])
+    O = np.array([v.A[:3, 3] for v in vues])
+    th, txy = kabsch2(bas[:, :2], O[:, :2])
+    return Solution(th, np.array([txy[0], txy[1], float(np.median(O[:, 2] - bas[:, 2]))]))
+
+
+def amorce_globale(recaleur: "Recaleur", vues: Sequence[Vue], avancer=None,
+                   pas_deg: float = 15.0) -> Solution:
+    """
+    Premier recalage SANS a priori sur l'orientation de la camera : un
+    depart tous les `pas_deg` degres autour de la verticale (plus celui des
+    centres), chacun recale brievement ; les trois meilleurs sont affines.
+    Les centres seuls se trompaient de 75 deg quand le nuage emporte aussi
+    le bras et le tuyau : un minimum local, que les departs proches ne
+    quittaient pas.
+    """
+    C = np.array([np.median(v.points, axis=0) for v in vues])
+    O = np.array([v.A[:3, 3] for v in vues])
+    # la table : le bas du nuage est le bout des doigts, a la hauteur de l'outil
+    tz = float(np.median([v.A[2, 3] - np.percentile(v.points[:, 2], 2) for v in vues]))
+    departs = [amorce_par_centres(vues, tz), amorce_par_le_bas(vues)]
+    for a in np.arange(0.0, 360.0, pas_deg):
+        R = rot_z(a)[:2, :2]
+        txy = O[:, :2].mean(0) - R @ C[:, :2].mean(0)
+        departs.append(Solution(math.radians(a), np.array([txy[0], txy[1], tz])))
+    total = len(departs) + 3
+    essais = []
+    for k, d in enumerate(departs):
+        if avancer is not None:
+            avancer(k, total)
+        essais.append(recaleur.ajuster(vues, d, iters=40))
+    essais.sort(key=lambda r: r.distance)
+    meilleur = None
+    for k, r in enumerate(essais[:3]):
+        if avancer is not None:
+            avancer(len(departs) + k, total)
+        r = recaleur.ajuster(vues, r, iters=200)
+        if meilleur is None or r.distance < meilleur.distance:
+            meilleur = r
+    if avancer is not None:
+        avancer(total, total)
+    return meilleur
+
+
 def ecart_zone(T1: np.ndarray, T2: np.ndarray, zone=None) -> Tuple[float, float]:
     """Ecart moyen et maximal (mm) entre deux recalages camera -> robot, sur
     les points de la zone de travail."""
@@ -434,7 +486,8 @@ class EtalonnagePince:
             attendu = np.linalg.solve(self.solution.M(), np.r_[p, 1.0])[:3]
         P = self.seg.points(cap, attendu)
         nom = "v{:03d}".format(len(self.vues) + 1)
-        self._archiver(nom, cap, {"pose": [xp, yp, zp, rp], "points": int(len(P))})
+        self._archiver(nom, cap, {"pose": [xp, yp, zp, rp], "points": int(len(P)),
+                                  "etape": getattr(self, "etape", "")})
         if len(P) < 60:
             self.journal("  {}{}  x {:6.1f} y {:6.1f} z {:5.1f} r {:+5.0f}  : pince NON VUE".format(
                 getattr(self, "prefixe", ""), nom, xp, yp, zp, rp))
@@ -447,19 +500,26 @@ class EtalonnagePince:
 
     # -- etapes -------------------------------------------------------------
     def amorcer(self) -> Solution:
-        """Poses juste devant le robot (base a 0), sans tourner la base."""
+        """
+        Poses devant le robot, ETALEES en x et en y : alignees sur une seule
+        droite (y = 0), elles laissaient l'orientation de la camera mal
+        determinee (75 deg d'erreur le 26/10).
+        """
         self.journal("[etape 2/4] AMORCAGE : quelques poses devant le robot")
-        poses = [(x, 0.0, z, r) for x in (200.0, 250.0) for z in (80.0, 130.0)
-                 for r in (-45.0, 0.0, 45.0)]
+        xy = [(200.0, -60.0), (200.0, 60.0), (250.0, 0.0), (280.0, -60.0),
+              (280.0, 60.0), (230.0, 0.0)]
+        poses = [(x, y, z, (-45.0, 0.0, 45.0)[k % 3])
+                 for k, ((x, y), z) in enumerate((p, z) for p in xy for z in (80.0, 130.0))]
+        self.etape = "amorce"
         for p in poses:
             if self.permis(*p):
                 self.voir(*p)
+        self.etape = "couverture"
         if len(self.vues) < 5:
             raise ec.Arret("la camera ne voit pas la pince devant le robot ({} vue(s)) : "
                            "orientez-la vers la zone de travail".format(len(self.vues)))
-        s = amorce_par_centres(self.vues)
-        self.solution = self.recaleur.ajuster_departs(
-            self.vues, s, departs=12, ecart_angle=25, ecart_xy=80,
+        self.solution = amorce_globale(
+            self.recaleur, self.vues,
             avancer=lambda k, n: barre("premier recalage ", k, n))
         self.journal("  premier recalage : {:.2f} mm (mediane modele -> mesure)".format(
             self.solution.distance))
@@ -509,6 +569,7 @@ class EtalonnagePince:
             self.prefixe = "{:2d}/{} ".format(k + 1, len(choisis))
             self.voir(*p)
         self.prefixe = ""
+        self.verifier_amorce()
         self.solution = self.recaleur.ajuster_departs(
             self.vues, self.solution, departs=6,
             avancer=lambda k, n: barre("recalage final   ", k, n))
@@ -516,6 +577,52 @@ class EtalonnagePince:
             self.solution.distance, len(self.vues)))
         self.publier(texte="recalage final : {:.1f} mm sur {} vues".format(
             self.solution.distance, len(self.vues)))
+
+    def verifier_amorce(self) -> None:
+        """
+        Le premier recalage peut etre un minimum local. Sur un tiers des
+        vues (etalees cette fois), une recherche sur toutes les orientations
+        le confirme ou le remplace ; s'il est remplace, les vues sont
+        re-segmentees avec la nouvelle solution (depuis l'archive).
+        """
+        if len(self.vues) < 9:
+            return
+        # les vues ont ete decoupees autour de la position attendue avec ce
+        # premier recalage : s'il est faux, la pince en est en partie
+        # exclue. On les redecoupe donc SANS a priori.
+        sous = []
+        for v in self.vues[::3]:
+            P = self._points_archives(v, None)
+            sous.append(Vue(v.nom, P, v.A) if P is not None and len(P) >= 60 else v)
+        actuel = self.recaleur.ajuster(sous, self.solution, iters=40)
+        g = amorce_globale(self.recaleur, sous,
+                           avancer=lambda k, n: barre("verification      ", k, n))
+        if g.distance < actuel.distance - 0.5:
+            self.journal("  premier recalage CORRIGE : {:.1f} -> {:.1f} mm".format(
+                actuel.distance, g.distance))
+            self.solution = g
+            self.resegmenter()
+        else:
+            self.journal("  premier recalage confirme ({:.1f} mm)".format(actuel.distance))
+
+    def resegmenter(self) -> None:
+        """Les points de chaque vue, repris des captures archivees, autour de
+        la position attendue avec la solution en cours."""
+        for v in self.vues:
+            p = v.A[:3, :3] @ [0.0, 0.0, 45.0] + v.A[:3, 3]
+            attendu = np.linalg.solve(self.solution.M(), np.r_[p, 1.0])[:3]
+            P = self._points_archives(v, attendu)
+            if P is not None and len(P) >= 60:
+                v.points = P
+
+    def _points_archives(self, v: Vue, attendu) -> Optional[np.ndarray]:
+        """Les points de la vue, redecoupes depuis sa capture archivee."""
+        if self.archive is None:
+            return None
+        chemin = os.path.join(self.archive, v.nom + ".npz")
+        if not os.path.exists(chemin):
+            return None
+        return self.seg.points(dict(np.load(chemin)), attendu)
 
     def stabilite(self) -> Tuple[float, float]:
         """Recalage refait sur deux moitiees des vues : ecart sur la zone."""
@@ -595,18 +702,21 @@ def depuis_archive(dossier: str, journal=print) -> "EtalonnagePince":
         P = et.seg.points(cap, attendu)
         if len(P) >= 60:
             et.vues.append(Vue(nom, P, A))
-        # meme amorcage qu'en direct : apres les vues devant le robot
-        if solution is None and len(et.vues) >= 9 and k + 1 < len(noms) and \
-                abs(A[1, 3]) < 1.0:
-            nxt = json.load(open(os.path.join(dossier, noms[k + 1] + ".json")))["pose"]
-            if abs(nxt[1]) >= 1.0:
-                s = amorce_par_centres(et.vues)
-                solution = et.recaleur.ajuster_departs(et.vues, s, departs=12,
-                                                       ecart_angle=25, ecart_xy=80)
+        # meme amorcage qu'en direct : apres les vues d'amorcage (marquees ;
+        # les anciennes archives : celles en y = 0)
+        if solution is None and len(et.vues) >= 5 and k + 1 < len(noms):
+            nxt = json.load(open(os.path.join(dossier, noms[k + 1] + ".json")))
+            if "etape" in meta:
+                fin = meta["etape"] == "amorce" and nxt.get("etape") != "amorce"
+            else:
+                fin = abs(A[1, 3]) < 1.0 and abs(nxt["pose"][1]) >= 1.0
+            if fin:
+                solution = amorce_globale(et.recaleur, et.vues)
                 et.solution = solution
     if et.solution is None:
-        et.solution = et.recaleur.ajuster_departs(et.vues, amorce_par_centres(et.vues),
-                                                  departs=12, ecart_angle=25, ecart_xy=80)
+        et.solution = amorce_globale(et.recaleur, et.vues)
+    et.archive = dossier
+    et.verifier_amorce()
     et.solution = et.recaleur.ajuster_departs(et.vues, et.solution, departs=6)
     return et
 
@@ -647,8 +757,7 @@ def conclure(et: "EtalonnagePince", longueur, sortie) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Etalonnage camera -> robot par la pince seule")
     ap.add_argument("--longueur-outil", type=float, default=None,
-                    help="longueur mesuree de la pince, mm (defaut : celle du fichier "
-                         "d'etalonnage, sinon 107)")
+                    help="longueur mesuree de la pince, mm (107)")
     ap.add_argument("--vitesse", type=float, default=50.0, help="mm/s (50)")
     ap.add_argument("--vues", type=int, default=45, help="poses de couverture (45)")
     ap.add_argument("--port", default=None)
@@ -660,15 +769,9 @@ def main(argv=None) -> int:
                          "ou le dossier donne), SANS bouger le robot")
     a = ap.parse_args(argv)
 
-    longueur = a.longueur_outil
-    if longueur is None and os.path.exists(a.sortie):
-        try:
-            with open(a.sortie, encoding="utf-8") as f:
-                longueur = json.load(f).get("longueur_outil_mm")
-        except Exception:                              # noqa: BLE001
-            longueur = None
-    if longueur is None:
-        longueur = 107.0
+    # la pince MESUREE, et non celle du fichier : il peut venir d'un
+    # etalonnage avec une autre longueur (78 le 26/10, recalage fausse)
+    longueur = a.longueur_outil if a.longueur_outil is not None else ec.LONGUEUR_PINCE
     print("longueur d'outil : {:.1f} mm".format(longueur))
 
     if a.archive is not None:
