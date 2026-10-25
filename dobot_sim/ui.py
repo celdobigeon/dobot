@@ -4313,6 +4313,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             # dobot_sim.Commande : une commande a la fois, executee tout de
             # suite, et suivie par le script jusqu'a sa fin
             return self._recevoir_commande(charge["commande"] or {})
+        if "saisie" in charge:
+            return self._recevoir_saisie(charge["saisie"] or {})
         if "scene" in charge:
             # objets poses sur la table, vus par une camera : affichage seul
             sc = charge["scene"] or {}
@@ -4443,6 +4445,104 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self.journal("arret d'urgence impossible : {}".format(exc))
             return
         self.journal("ARRET D'URGENCE demande par le script")
+
+    # -- mode saisie : un script de saisie guidee par la camera --------------
+    #
+    # Le script (examples/perception/saisir_piece_graphique.py) remplace le
+    # panneau Programme, sans objet ici, par un panneau de boutons. Un clic
+    # est memorise ; le script vient le chercher ({"saisie": {"lire": 1}}).
+
+    def _panneau_saisie(self) -> QtWidgets.QDockWidget:
+        if getattr(self, "dock_saisie", None) is not None:
+            return self.dock_saisie
+        dock = QtWidgets.QDockWidget("Saisie", self)
+        dock.setObjectName("dock_saisie")
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        intro = QtWidgets.QLabel(
+            "La camera regarde la table en permanence. La piece <b style="
+            "'color:#e05050'>en rouge</b> dans la vue 3D est la cible : le "
+            "robot la saisit, la repose ailleurs, et revient en equerre.")
+        intro.setWordWrap(True)
+        lay.addWidget(intro)
+        self.lab_saisie_cible = QtWidgets.QLabel("en attente de la camera...")
+        self.lab_saisie_cible.setWordWrap(True)
+        self.lab_saisie_cible.setStyleSheet(
+            "QLabel { background:rgba(127,127,127,0.12); padding:6px; }")
+        lay.addWidget(self.lab_saisie_cible)
+        self.bt_saisir = QtWidgets.QPushButton("Saisir la cible")
+        self.bt_saisir.setMinimumHeight(44)
+        self.bt_saisir.clicked.connect(lambda: self._saisie_demander("saisir"))
+        lay.addWidget(self.bt_saisir)
+        self.bt_forcer = QtWidgets.QPushButton("Forcer la saisie")
+        self.bt_forcer.setToolTip(
+            "La cible a ete jugee hors d'atteinte : essayer quand meme, sans "
+            "marges de securite. Le robot peut refuser.")
+        self.bt_forcer.clicked.connect(lambda: self._saisie_demander("forcer"))
+        lay.addWidget(self.bt_forcer)
+        self.lab_saisie_etat = QtWidgets.QLabel("")
+        self.lab_saisie_etat.setWordWrap(True)
+        lay.addWidget(self.lab_saisie_etat)
+        lay.addStretch(1)
+        quitter = QtWidgets.QPushButton("Revenir au panneau Programme")
+        quitter.setToolTip("si le script de saisie est arrete")
+        quitter.clicked.connect(lambda: self._recevoir_saisie({"desactiver": True}))
+        lay.addWidget(quitter)
+        dock.setWidget(w)
+        dock.setMinimumWidth(300)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        self.dock_saisie = dock
+        self._saisie_demande = None
+        return dock
+
+    def _saisie_demander(self, quoi: str) -> None:
+        self._saisie_demande = quoi
+        self.bt_saisir.setEnabled(False)
+        self.bt_forcer.setEnabled(False)
+        self.lab_saisie_etat.setText("demande envoyee au script...")
+
+    def _recevoir_saisie(self, d: dict):
+        programme = self.findChild(QtWidgets.QDockWidget, "dock_programme")
+        if d.get("activer"):
+            dock = self._panneau_saisie()
+            if programme is not None:
+                programme.hide()
+            dock.show()
+            dock.raise_()
+            self.bt_saisir.setEnabled(False)
+            self.bt_forcer.setEnabled(False)
+            self.journal("mode saisie : panneau Programme remplace par le panneau Saisie")
+            return {}
+        if d.get("desactiver"):
+            if getattr(self, "dock_saisie", None) is not None:
+                self.dock_saisie.hide()
+            if programme is not None:
+                programme.show()
+            if hasattr(self.vue, "definir_objets"):
+                self.vue.definir_objets([])
+            return {}
+        if "etat" in d:
+            self._panneau_saisie()
+            e = d["etat"] or {}
+            if "cible" in e:
+                self.lab_saisie_cible.setText(e["cible"])
+            if "texte" in e:
+                self.lab_saisie_etat.setText(e["texte"])
+            # les boutons ne changent que si l'etat en parle : la camera,
+            # elle, ne met a jour que la cible
+            etat = getattr(self, "_saisie_etat", {"occupe": False, "saisir": True,
+                                                  "forcer": False})
+            etat.update({k: bool(e[k]) for k in ("occupe", "saisir", "forcer") if k in e})
+            self._saisie_etat = etat
+            if getattr(self, "_saisie_demande", None) is None:
+                self.bt_saisir.setEnabled(not etat["occupe"] and etat["saisir"])
+                self.bt_forcer.setEnabled(not etat["occupe"] and etat["forcer"])
+            return {}
+        if d.get("lire"):
+            quoi = getattr(self, "_saisie_demande", None)
+            self._saisie_demande = None
+            return {"demande": quoi}
+        raise RuntimeError("saisie : demande inconnue {}".format(sorted(d)))
 
     # -- commande temps reel : dobot_sim.Commande ----------------------------
     #

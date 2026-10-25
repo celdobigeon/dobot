@@ -247,7 +247,14 @@ class Essai:
         self.journal("  controle : piece vue a {:.1f} mm du point vise".format(e))
         return p
 
-    def un_tour(self, piece=None):
+    def un_tour(self, piece=None, quand_meme: bool = False, interactif: bool = True):
+        """
+        Saisir, reposer ailleurs, controler. Piece jugee hors d'atteinte :
+        en mode `interactif`, on demande (Entree : je la deplace / f :
+        essayer quand meme) ; sinon HorsAtteinte remonte a l'appelant, qui
+        relancera avec `quand_meme=True` s'il le faut.
+        """
+        from dobot_sim import ErreurExecution
         if piece is None:
             pieces = self.voir()
             piece = self.choisir(pieces)
@@ -255,20 +262,28 @@ class Essai:
                 self.journal("  la camera ne voit aucune piece saisissable")
                 return None
         try:
-            prise = self.saisir(piece)
+            prise = self.saisir(piece, quand_meme=quand_meme)
         except HorsAtteinte as exc:
+            if not interactif:
+                raise
             rep = self.demander("  piece HORS D'ATTEINTE ({}).\n  [Entree : je la deplace "
                                 "vers le milieu de la zone / f : essayer quand meme] "
                                 .format(exc))
             if not rep.strip().lower().startswith("f"):
                 return None
-            from dobot_sim import ErreurExecution
+            quand_meme = True
             try:
                 prise = self.saisir(piece, quand_meme=True)
             except ErreurExecution as exc2:
                 self.journal("  le robot a refuse : {}".format(exc2))
                 self.equerre()
                 return None
+        except ErreurExecution as exc2:
+            if not quand_meme:
+                raise
+            self.journal("  le robot a refuse : {}".format(exc2))
+            self.equerre()
+            return None
         vise = self.deposer(prise)
         return self.controler(vise)
 
