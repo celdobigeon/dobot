@@ -22,7 +22,7 @@ Le Dobot reel en ligne de commande : une commande, une action.
                                                     posture (rien ne bouge)
     .venv/bin/python dobot.py origine               prise d'origine seule
                                                     (= mise-en-route --sans-posture)
-    .venv/bin/python dobot.py etalonner [--reprendre ...]
+    .venv/bin/python dobot.py etalonner-camera [--reprendre ...]
                                                     etalonnage camera -> robot
 
 Les coordonnees sont celles du simulateur (x, y, z de la pointe d'outil, en
@@ -399,7 +399,7 @@ def main(argv=None) -> int:
     p.add_argument("--equerre", action="store_true",
                    help="amener d'abord le bras en equerre en mode manuel")
     p.set_defaults(f=origine)
-    p = sp.add_parser("etalonner", help="etalonnage camera -> robot",
+    p = sp.add_parser("etalonner-camera", help="etalonnage camera -> robot",
                       add_help=False)
     p.add_argument("reste", nargs=argparse.REMAINDER,
                    help="options de etalonner_camera_robot.py (--reprendre...)")
