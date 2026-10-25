@@ -308,14 +308,16 @@ class Limites:
     """
     Butees articulaires (degres) et limites de vitesse.
 
-    `couplage` permet d'ajouter la contrainte mecanique liant J2 et J3
-    (angle entre le bras arriere et l'avant-bras). Elle est desactivee par
-    defaut car sa valeur exacte depend du modele et du firmware : mesurez-la
-    sur votre machine avant de l'activer.
+    `couplage` : bornes de (q3 - q2), la contrainte liant J2 et J3 (angle
+    entre le bras arriere et l'avant-bras). Mesuree le 25/10/2026 sur la
+    machine du labo (firmware 3.7.0) : le controleur REFUSE une cible ou
+    q3 - q2 vaut -58,2 ou -66 deg (alarme 0x12, qui bloque ensuite sa file
+    jusqu'a l'extinction), et accepte -54,3 (le pire de 96 poses reussies).
+    D'ou -55. L'autre borne n'a pas ete atteinte (+41 deg sans souci).
     """
     q_min: Tuple[float, float, float, float] = (-135.0, 0.0, -10.0, -90.0)
     q_max: Tuple[float, float, float, float] = (135.0, 85.0, 95.0, 90.0)
-    couplage: Optional[Tuple[float, float]] = None      # bornes de (q3 - q2)
+    couplage: Optional[Tuple[float, float]] = (-55.0, 100.0)    # bornes de (q3 - q2)
 
     #: en deca de cette marge, la butee est FROLEE : la pose reste admissible
     #: pour le modele, mais une machine reelle la refuse souvent. Ses butees

@@ -263,7 +263,11 @@ class TestCinematiqueDobot(unittest.TestCase):
     def test_butees(self):
         self.assertTrue(self.robot.dans_butees([0, 10, 20, 0]))
         self.assertFalse(self.robot.dans_butees([200, 10, 20, 0]))
-        self.assertEqual(len(self.robot.depassements([200, -50, 200, 0])), 3)
+        # trois butees articulaires, et le couplage J3 - J2 (250 deg)
+        self.assertEqual(len(self.robot.depassements([200, -50, 200, 0])), 4)
+        # le couplage mesure : J2 69,3 / J3 11,1 est refuse par le controleur
+        self.assertFalse(self.robot.dans_butees([32.0, 69.3, 11.1, 60.0]))
+        self.assertTrue(self.robot.dans_butees([29.2, 38.6, 14.2, 60.0]))
         q = self.robot.saturer([200, -50, 200, 0])
         self.assertTrue(self.robot.dans_butees(q))
 

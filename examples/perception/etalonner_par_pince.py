@@ -66,7 +66,9 @@ IMAGES = 15
 SEUIL_DECOR = 0.025
 #: deg : marge aux butees de J1, J2, J3, et rotation de l'outil (J4) bornee
 MARGE_BUTEE = 8.0
-J4_MAX = 65.0
+J4_MAX = 60.0
+#: deg : marge sur l'angle bras arriere / avant-bras (Limites.couplage)
+MARGE_COUPLAGE = 4.0
 #: mm : on ne s'approche pas plus de la camera (distance horizontale)
 DISTANCE_CAMERA = 200.0
 #: deg : equerre de degagement (bras arriere a peine penche)
@@ -319,6 +321,9 @@ class EtalonnagePince:
             return False
         if float(np.min(self.modele_robot.marges(q)[:3])) < MARGE_BUTEE or abs(q[3]) > J4_MAX:
             return False
+        couplage = self.modele_robot.lim.couplage
+        if couplage is not None and (q[2] - q[1]) < couplage[0] + MARGE_COUPLAGE:
+            return False
         if self.solution is not None:
             cam = self.T_robot_camera()[:3, 3]
             if math.hypot(x - cam[0], y - cam[1]) < DISTANCE_CAMERA:
@@ -535,7 +540,9 @@ def main(argv=None) -> int:
                      longueur_outil=longueur)
     et = EtalonnagePince(robot, lambda: camera.capturer(IMAGES))
     try:
-        robot.pince(True)                # doigts fermes : la forme du modele
+        # pompe coupee : la pince n'a rien a tenir (ses doigts, fins, ne
+        # comptent presque pas dans le recalage)
+        robot.couper_pompe()
         et.relever_decor()
         et.amorcer()
         et.couvrir(a.vues)
@@ -564,7 +571,7 @@ def main(argv=None) -> int:
         print("ECHEC : {}".format(exc))
     finally:
         try:
-            robot.pince(False)
+            robot.couper_pompe()
         except Exception:                              # noqa: BLE001
             pass
         robot.fermer()
