@@ -62,6 +62,44 @@ def afficher(boites, cible=None) -> None:
     demander({"scene": {"boites": boites, "cible": cible}})
 
 
+def _jpeg(image, largeur: int = 640, qualite: int = 80) -> str:
+    import base64
+    import cv2
+    h, w = image.shape[:2]
+    if w > largeur:
+        image = cv2.resize(image, (largeur, int(round(h * largeur / w))),
+                           interpolation=cv2.INTER_AREA)
+    ok, tampon = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, qualite])
+    return base64.b64encode(tampon.tobytes()).decode("ascii") if ok else ""
+
+
+def images_camera(perception, capture, pieces, cible) -> dict:
+    """Image couleur annotee (cible entouree de rouge) et carte de
+    profondeur en fausses couleurs, en JPEG base64 pour la fenetre."""
+    import cv2
+    out = {}
+    try:
+        img = perception.dessiner(pieces) if pieces else perception.derniere_vue.image.copy()
+        if img.ndim == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        if cible is not None and getattr(cible, "contour", None) is not None:
+            cv2.polylines(img, [np.asarray(cible.contour, np.int32)], True, (40, 40, 230),
+                          4, cv2.LINE_AA)
+        out["couleur"] = _jpeg(img)
+    except Exception:                                   # noqa: BLE001
+        pass
+    z = np.asarray(capture.get("profondeur"), float)
+    if z.size:
+        valides = z > 0
+        if valides.any():
+            lo, hi = np.percentile(z[valides], (2, 98))
+            n = np.clip((z - lo) / max(hi - lo, 1e-6), 0, 1)
+            carte = cv2.applyColorMap((255 * (1 - n)).astype(np.uint8), cv2.COLORMAP_TURBO)
+            carte[~valides] = 0
+            out["profondeur"] = _jpeg(carte)
+    return out
+
+
 def panneau(**etat) -> None:
     """Met a jour le panneau Saisie de la fenetre (cible, texte, boutons)."""
     from dobot_sim.passerelle import demander
@@ -96,8 +134,12 @@ class Detecteur(threading.Thread):
     seule une detection de l'epoque courante compte.
     """
 
-    def __init__(self, perception, essai):
+    def __init__(self, perception, essai, capturer=None):
         super().__init__(daemon=True)
+        if capturer is None:
+            import camera
+            capturer = camera.capturer
+        self.capturer = capturer
         self.perception = perception
         self.essai = essai
         self.pause = threading.Event()
@@ -114,7 +156,9 @@ class Detecteur(threading.Thread):
                 continue
             ep = self.epoque
             try:
-                pieces = [p for p in self.perception.detecter() if p.T_robot is not None]
+                capture = self.capturer()
+                pieces = [p for p in self.perception.detecter(capture)
+                          if p.T_robot is not None]
             except Exception as exc:                    # noqa: BLE001
                 if str(exc) != self._erreur:
                     self._erreur = str(exc)
@@ -139,6 +183,10 @@ class Detecteur(threading.Thread):
                 texte = "{} piece(s) vue(s) ; aucune cible".format(len(pieces))
             try:
                 panneau(cible=texte, saisir=cible is not None)
+                from dobot_sim.passerelle import demander
+                demander({"saisie": {"images": images_camera(self.perception, capture,
+                                                             pieces, cible)}},
+                         attente=3000)
             except Exception:                           # noqa: BLE001
                 pass
 

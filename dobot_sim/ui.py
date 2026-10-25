@@ -4495,6 +4495,50 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._saisie_demande = None
         return dock
 
+    def _panneau_camera(self) -> QtWidgets.QDockWidget:
+        """En bas, a la place des courbes : image couleur et profondeur."""
+        if getattr(self, "dock_camera", None) is not None:
+            return self.dock_camera
+        dock = QtWidgets.QDockWidget("Camera", self)
+        dock.setObjectName("dock_camera")
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QHBoxLayout(w)
+        self.images_camera = {}
+        for cle, titre in (("couleur", "couleur, pieces detectees (cible en rouge)"),
+                           ("profondeur", "profondeur")):
+            col = QtWidgets.QVBoxLayout()
+            t = QtWidgets.QLabel(titre)
+            t.setStyleSheet("color:#9aa4b0")
+            col.addWidget(t)
+            lab = QtWidgets.QLabel("en attente de la camera...")
+            lab.setAlignment(QtCore.Qt.AlignCenter)
+            lab.setMinimumSize(320, 180)
+            lab.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
+            col.addWidget(lab, 1)
+            lay.addLayout(col, 1)
+            self.images_camera[cle] = lab
+        dock.setWidget(w)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dock)
+        courbes = self.findChild(QtWidgets.QDockWidget, "dock_courbes")
+        if courbes is not None and courbes.isVisible():
+            self.tabifyDockWidget(courbes, dock)
+        self.dock_camera = dock
+        self._pixmaps_camera = {}
+        return dock
+
+    def _afficher_images_camera(self, images: dict) -> None:
+        import base64
+        self._panneau_camera()
+        for cle, b64 in images.items():
+            lab = self.images_camera.get(cle)
+            if lab is None or not b64:
+                continue
+            pix = QtGui.QPixmap()
+            pix.loadFromData(base64.b64decode(b64))
+            self._pixmaps_camera[cle] = pix
+            lab.setPixmap(pix.scaled(lab.size(), QtCore.Qt.KeepAspectRatio,
+                                     QtCore.Qt.SmoothTransformation))
+
     def _saisie_demander(self, quoi: str) -> None:
         self._saisie_demande = quoi
         self.bt_saisir.setEnabled(False)
@@ -4513,6 +4557,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 programme.hide()
             dock.show()
             dock.raise_()
+            cam = self._panneau_camera()
+            cam.show()
+            cam.raise_()
             self.bt_saisir.setEnabled(False)
             self.bt_forcer.setEnabled(False)
             self.journal("mode saisie : panneau Programme remplace par le panneau Saisie")
@@ -4520,11 +4567,16 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         if d.get("desactiver"):
             if getattr(self, "dock_saisie", None) is not None:
                 self.dock_saisie.hide()
+            if getattr(self, "dock_camera", None) is not None:
+                self.dock_camera.hide()
             if programme is not None:
                 programme.show()
                 programme.raise_()
             if hasattr(self.vue, "definir_objets"):
                 self.vue.definir_objets([])
+            return {}
+        if "images" in d:
+            self._afficher_images_camera(d["images"] or {})
             return {}
         if "etat" in d:
             self._panneau_saisie()

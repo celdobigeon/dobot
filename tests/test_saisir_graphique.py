@@ -20,7 +20,7 @@ class FaussePerception:
     def __init__(self):
         self.n = 0
 
-    def detecter(self):
+    def detecter(self, capture=None):
         self.n += 1
         time.sleep(0.02)
         return [Piece(250.0, 0.0, 42.0, 0.0)]
@@ -38,7 +38,8 @@ class TestDetecteur(unittest.TestCase):
         ancien = g.afficher
         g.afficher = lambda b, c=None: affiche.append((b, c))
         try:
-            det = g.Detecteur(FaussePerception(), FauxEssai())
+            det = g.Detecteur(FaussePerception(), FauxEssai(),
+                              capturer=lambda: {"profondeur": []})
             det.start()
             c = det.cible_fraiche(delai=2.0)
             self.assertIsNotNone(c)
