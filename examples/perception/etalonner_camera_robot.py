@@ -350,6 +350,11 @@ class Vue:
 ARCHIVE = os.path.join(ICI, "apprentissage", "dataset", "etalonnage")
 
 
+#: m : une detection dont la profondeur n'a pas change de plus que cela
+#: depuis le releve du decor est du decor (la piece a plat fait 15 mm)
+SEUIL_IMMOBILE = 0.006
+
+
 class Camera:
     """La vraie chaine : serveur de camera + Perception (sans etalonnage)."""
 
@@ -360,6 +365,7 @@ class Camera:
         self.taille = None
         self.derniere_capture = None
         self.derniere_detection = []
+        self.decor = None
         self.archive = None
         if archive:
             self.archive = os.path.join(archive, time.strftime("%Y%m%d_%H%M%S"))
@@ -371,9 +377,43 @@ class Camera:
         self.taille = cap["profondeur"].shape[::-1]
         self.derniere_capture = cap
         pieces = self.perception.detecter(cap)
+        if self.decor is not None:
+            pieces = [p for p in pieces if not self.immobile(p, cap)]
         self.derniere_detection = pieces
         return [Vue(p.T_camera[:3, 3] * 1000.0, p.T_camera[:3, 0].copy(), p.type,
                     p.face, float(getattr(p, "confiance", 1.0))) for p in pieces]
+
+    def memoriser_decor(self) -> None:
+        """La derniere capture devient le DECOR : la profondeur de la scene
+        sans piece posee (bras en equerre)."""
+        if self.derniere_capture is not None:
+            self.decor = np.asarray(self.derniere_capture["profondeur"], float).copy()
+
+    def immobile(self, piece, cap, demi: int = 4) -> bool:
+        """
+        La detection est-elle du decor ? Au centre de sa face superieure, la
+        profondeur n'a pas change depuis le releve : rien n'y a ete pose.
+        Plus sur que la position seule, qui tremble d'une detection a
+        l'autre sur un objet du decor (plat, socle du robot, veinage).
+        """
+        z = np.asarray(cap["profondeur"], float)
+        if self.decor is None or self.decor.shape != z.shape:
+            return False
+        P = np.asarray(piece.T_camera, float)[:3, 3]
+        if P[2] <= 0:
+            return False
+        K = np.asarray(cap["K"], float)
+        u = int(round(K[0, 0] * P[0] / P[2] + K[0, 2]))
+        v = int(round(K[1, 1] * P[1] / P[2] + K[1, 2]))
+        H, W = z.shape
+        if not (0 <= u < W and 0 <= v < H):
+            return False
+        sl = (slice(max(v - demi, 0), v + demi + 1), slice(max(u - demi, 0), u + demi + 1))
+        a, b = z[sl], self.decor[sl]
+        ok = (a > 0) & (b > 0)
+        if ok.sum() < 5:
+            return False
+        return float(np.median(np.abs(a[ok] - b[ok]))) < SEUIL_IMMOBILE
 
     def archiver(self, meta: dict) -> Optional[str]:
         """Garde la derniere capture (.npz) et ce qu'on en sait (.json) : la
@@ -717,6 +757,10 @@ class Etalonnage:
             self.journal("  (decor non releve : {})".format(exc))
             return
         self.fantomes = [v.position for v in vues]
+        if hasattr(self.camera, "memoriser_decor"):
+            # en plus des positions : la profondeur du decor, pour ignorer
+            # tout ce qui n'a pas bouge depuis
+            self.camera.memoriser_decor()
         if self.fantomes:
             self.journal("  decor : {} fausse(s) piece(s) reperee(s), ignoree(s) ensuite"
                          .format(len(self.fantomes)))
