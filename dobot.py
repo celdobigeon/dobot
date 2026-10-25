@@ -17,6 +17,9 @@ Le Dobot reel en ligne de commande : une commande, une action.
     .venv/bin/python dobot.py deplacer 10 -5 0 --dr 15
     .venv/bin/python dobot.py effacer               effacer les alarmes
     .venv/bin/python dobot.py mise-en-route [--sans-posture] [--equerre]
+    .venv/bin/python dobot.py posture [equerre|butees]
+                                                    etape 1 seule : declarer la
+                                                    posture (rien ne bouge)
     .venv/bin/python dobot.py origine               prise d'origine seule
                                                     (= mise-en-route --sans-posture)
     .venv/bin/python dobot.py etalonner [--reprendre ...]
@@ -268,6 +271,54 @@ def mise_en_route(a) -> int:
     return mer.main(args)
 
 
+def posture(a) -> int:
+    """
+    Etape 1 de la mise en route SEULE : declarer la posture de reference
+    (equerre ou butees). Rien ne bouge : le controleur recale seulement les
+    capteurs d'angle du bras arriere et de l'avant-bras.
+    """
+    import re
+    from dobot_sim import DobotMagician
+    from dobot_sim.liaison import resume_alarmes
+    from dobot_sim.pilote import _fermer_liaison_directe, _liaison_directe
+    from dobot_sim.ui import DialogueMiseEnRoute
+    p = DialogueMiseEnRoute.POSTURES[a.quelle]
+    j2, j3 = p["angles"]
+    geste = re.sub(r"<[^>]+>", "", p["geste"])
+    pont = _liaison_directe(DobotMagician(), a.port)
+    try:
+        q = pont.angles_reels()
+        print("le controleur croit : J2 {:+.2f}  J3 {:+.2f} deg".format(q[1], q[2]))
+        print("POSTURE {} (J2 {:+.2f}, J3 {:+.2f}) : bouton de deverrouillage enfonce "
+              "(avant-bras),\n  {}, puis relachez le bouton.".format(
+                  p["nom"].upper(), j2, j3, geste))
+        print("  La rotation de la base ne compte pas ici. Rien ne va bouger.")
+        rep = input("Le bras est en place ? [Entree : declarer / q : annuler] ")
+        if rep.strip().lower().startswith("q"):
+            print("annule : rien n'a ete declare")
+            return 1
+        pont.liaison.redefinir_pose(j2, j3)
+        time.sleep(0.3)
+        q = pont.angles_reels()
+        if abs(q[1] - j2) > 0.5 or abs(q[2] - j3) > 0.5:
+            print("ECHEC : le controleur n'a pas retenu la posture (J2 {:+.2f}, J3 {:+.2f})"
+                  .format(q[1], q[2]))
+            return 2
+        print("posture declaree : J2 {:+.2f}  J3 {:+.2f} deg".format(q[1], q[2]))
+        if p.get("hors_course"):
+            print("  Ramenez maintenant le bras dans sa course (bras arriere vers la "
+                  "verticale,\n  avant-bras vers l'horizontale) avant la prise d'origine.")
+        alarmes = pont.liaison.alarmes()
+        if alarmes:
+            print("alarmes encore levees (la prise d'origine les efface) :")
+            for ligne in resume_alarmes(alarmes):
+                print("  " + ligne)
+        print("suite : dobot.py origine")
+    finally:
+        _fermer_liaison_directe()
+    return 0
+
+
 def origine(a) -> int:
     """La mise en route SANS declarer la posture : prise d'origine et
     verification (posture deja declaree depuis la mise sous tension)."""
@@ -339,6 +390,10 @@ def main(argv=None) -> int:
     p.add_argument("--equerre", action="store_true",
                    help="amener d'abord le bras en equerre en mode manuel")
     p.set_defaults(f=mise_en_route)
+    p = sp.add_parser("posture", help="etape 1 seule : declarer la posture (equerre ou "
+                                      "butees), rien ne bouge")
+    p.add_argument("quelle", nargs="?", default="equerre", choices=("equerre", "butees"))
+    p.set_defaults(f=posture)
     p = sp.add_parser("origine", help="prise d'origine (= mise-en-route --sans-posture) : "
                                       "efface les defauts tenaces (0x12)")
     p.add_argument("--equerre", action="store_true",

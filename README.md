@@ -1717,6 +1717,8 @@ Une commande, une action, sans ouvrir le simulateur (fenêtre fermée) :
 .venv/bin/python dobot.py deplacer 10 -5 0 --dr 15
 .venv/bin/python dobot.py effacer                effacer les alarmes
 .venv/bin/python dobot.py mise-en-route --equerre
+.venv/bin/python dobot.py posture                étape 1 seule : déclarer l'équerre (rien ne bouge)
+.venv/bin/python dobot.py posture butees         ... ou les butées arrière
 .venv/bin/python dobot.py origine                prise d'origine seule (posture déjà déclarée)
 .venv/bin/python dobot.py etalonner --reprendre  étalonnage caméra -> robot
 ```
