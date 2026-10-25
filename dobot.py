@@ -362,7 +362,7 @@ def etalonner_pince(a) -> int:
 def voir(a) -> int:
     sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
     import voir_camera
-    args = ["--images", str(a.images)]
+    args = ["--images", str(a.images), "--cadence", str(a.cadence)]
     if a.rapide:
         args.append("--rapide")
     if a.sortie:
@@ -464,6 +464,7 @@ def main(argv=None) -> int:
     p4.add_argument("--rapide", action="store_true",
                     help="detection rapide seule, sans l'affinage")
     p4.add_argument("--images", type=int, default=8, help="images par capture (8)")
+    p4.add_argument("--cadence", type=float, default=10.0, help="images/s du flux (10)")
     p4.add_argument("--sortie", default=None,
                     help="une seule capture, enregistree dans ce fichier, sans fenetre")
     p4.set_defaults(f=voir)
