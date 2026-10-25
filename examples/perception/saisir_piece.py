@@ -218,7 +218,7 @@ class Essai:
         self._remonter_en_equerre()
         return x, y, z, r
 
-    def deposer(self, depuis):
+    def deposer(self, depuis, apres_lacher=None):
         """Ailleurs : un point vu, atteint, dans le secteur, loin du depart.
         Meme hauteur de pince qu'a la saisie : la piece touche la table."""
         x0, y0, _z, r0 = depuis
@@ -239,6 +239,8 @@ class Essai:
         self.journal("  depose en x {:.1f} y {:.1f} r {:.1f}".format(x, y, r))
         self._descendre(x, y, z, r, h)
         self.robot.pince(False)
+        if apres_lacher is not None:
+            apres_lacher()
         self.robot.attendre(ec.DELAI_PINCE)
         self._remonter_en_equerre()
         return x, y, z, r
@@ -256,7 +258,8 @@ class Essai:
         self.journal("  controle : piece vue a {:.1f} mm du point vise".format(e))
         return p
 
-    def un_tour(self, piece=None, quand_meme: bool = False, interactif: bool = True):
+    def un_tour(self, piece=None, quand_meme: bool = False, interactif: bool = True,
+                apres_lacher=None, controle: bool = True):
         """
         Saisir, reposer ailleurs, controler. Piece jugee hors d'atteinte :
         en mode `interactif`, on demande (Entree : je la deplace / f :
@@ -293,7 +296,9 @@ class Essai:
             self.journal("  le robot a refuse : {}".format(exc2))
             self.equerre()
             return None
-        vise = self.deposer(prise)
+        vise = self.deposer(prise, apres_lacher)
+        if not controle:
+            return vise
         return self.controler(vise)
 
 

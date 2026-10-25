@@ -217,6 +217,9 @@ class Detecteur(threading.Thread):
         self.verrou = threading.Lock()
         self.derniere = None           # (epoque, pieces, cible, niveau)
         self.raison_cible = ""         # cible hors d'atteinte : pourquoi
+        #: point ou la piece vient d'etre reposee : la premiere detection
+        #: consolidee dit a combien de lui on la voit
+        self.controle = None
         self._erreur = ""
         # avancement de la detection en cours, pour la barre de progression
         self.etape = ""                # "", capture, rapide, propositions, consolidee
@@ -279,6 +282,16 @@ class Detecteur(threading.Thread):
             pass
         with self.verrou:
             self.derniere = (ep, pieces, cible, niveau)
+        if niveau == "consolidee" and self.controle is not None and pieces:
+            x, y = self.controle
+            e = min(np.hypot(p.T_robot[0, 3] * 1000.0 - x, p.T_robot[1, 3] * 1000.0 - y)
+                    for p in pieces)
+            self.controle = None
+            try:
+                panneau(texte="controle : piece reposee vue a {:.1f} mm du point vise"
+                        .format(e))
+            except Exception:                           # noqa: BLE001
+                pass
         quoi = "detection rapide" if niveau == "rapide" else "detection consolidee"
         if cible is not None:
             x, y, z = cible.T_robot[:3, 3] * 1000.0
@@ -435,6 +448,9 @@ def main(argv=None) -> int:
     ap.add_argument("--vitesse", type=float, default=20.0, help="mm/s (20)")
     ap.add_argument("--port", default=None, help="port serie du robot")
     ap.add_argument("--etalonnage", default=ec.FICHIER)
+    ap.add_argument("--delai-detection", type=float, default=None,
+                    help="relancer la detection N s apres l'ouverture de la pince, "
+                         "pendant la remontee (defaut : a l'arrivee en equerre)")
     a = ap.parse_args(argv)
 
     with open(a.etalonnage, encoding="utf-8") as f:
@@ -482,13 +498,32 @@ def main(argv=None) -> int:
                 continue
             det.pause.set()
             forcer = quoi == "forcer"
+            reprise = {"faite": False}
+
+            def reprendre_detection():
+                if not reprise["faite"]:
+                    reprise["faite"] = True
+                    det.epoque += 1
+                    det.pause.clear()
+
+            def apres_lacher():
+                # --delai-detection : la detection repart peu apres
+                # l'ouverture de la pince, pendant que le bras remonte (il
+                # peut encore etre dans le champ) ; sans lui, a l'arrivee
+                # en equerre
+                if a.delai_detection is not None:
+                    threading.Timer(a.delai_detection, reprendre_detection).start()
             try:
                 t0 = time.time()
                 panneau(occupe=True, texte="saisie en cours{}...".format(
                     " (forcee, sans marges)" if forcer else ""))
-                essai.un_tour(cible, quand_meme=forcer, interactif=False)
+                vise = essai.un_tour(cible, quand_meme=forcer, interactif=False,
+                                     apres_lacher=apres_lacher, controle=False)
+                if vise is not None:
+                    det.controle = (vise[0], vise[1])
                 panneau(occupe=False, forcer=False,
-                        texte="tour fait en {:.0f} s".format(time.time() - t0))
+                        texte="tour fait en {:.0f} s ; controle a la prochaine detection "
+                              "consolidee".format(time.time() - t0))
             except sp.HorsAtteinte as exc:
                 print("  piece HORS D'ATTEINTE ({})".format(exc))
                 panneau(occupe=False, forcer=True,
@@ -509,8 +544,7 @@ def main(argv=None) -> int:
                         texte="<b style='color:#e06c5a'>MOUVEMENT REFUSE</b> : {}{}"
                               .format(exc, retour))
             finally:
-                det.epoque += 1
-                det.pause.clear()
+                reprendre_detection()
     except KeyboardInterrupt:
         print("\ninterrompu (robot arrete)")
     except ec.Arret as exc:
