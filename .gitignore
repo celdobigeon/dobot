@@ -35,3 +35,4 @@ examples/perception/apprentissage/synthetique/
 # jeux RGB-H, cartes de hauteur (rgbd/exporter_rgbh.py) : regenerables
 examples/perception/apprentissage/points_cles/donnees/
 examples/perception/apprentissage/rgbd/donnees/
+examples/perception/etalonnage_camera_robot.json
