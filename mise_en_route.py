@@ -19,7 +19,10 @@ simulateur -- dans une petite fenetre a part :
 A faire apres CHAQUE mise sous tension, avant tout autre script. Pour
 une remise en route plus tard (robot en defaut, sans l'avoir eteint), la
 posture est deja declaree : `--sans-posture` commence a la prise
-d'origine (ou le bouton "Passer" de l'etape 1). La
+d'origine (ou le bouton "Passer" de l'etape 1). `--equerre` amene en
+plus le bras en equerre, en mode manuel, avant la prise d'origine : c'est
+ce qui debloque un robot dont la file ne repond plus apres un defaut de
+planification (alarme 0x12). La
 fenetre du simulateur doit etre fermee : elle garderait le port serie.
 """
 
@@ -37,6 +40,11 @@ def main(argv=None) -> int:
     ap.add_argument("--sans-posture", action="store_true",
                     help="passer l'etape 1 (posture deja declaree depuis la mise "
                          "sous tension) : prise d'origine et verification seules")
+    ap.add_argument("--equerre", action="store_true",
+                    help="amener d'abord le bras en equerre, en mode manuel (base "
+                         "immobile), avant la prise d'origine ; implique "
+                         "--sans-posture. Debloque un robot dont la file est "
+                         "bloquee par un defaut de planification (alarme 0x12)")
     a = ap.parse_args(argv)
 
     robot = DobotMagician()
@@ -56,8 +64,13 @@ def main(argv=None) -> int:
         else:
             print("aucun defaut signale ; l'assistant permet quand meme de "
                   "refaire la mise en route")
-        from dobot_sim.ui import mise_en_route_autonome
-        ok = mise_en_route_autonome(pont, robot, sans_posture=a.sans_posture)
+        from dobot_sim.ui import EQUERRE_PRISE_ORIGINE, mise_en_route_autonome
+        if a.equerre:
+            print("bras amene en equerre, en mode manuel...")
+            q = pont.amener_en_posture(EQUERRE_PRISE_ORIGINE, 0.0)
+            print("  J2 {:+.2f}  J3 {:+.2f} deg".format(q[1], q[2]))
+        ok = mise_en_route_autonome(pont, robot,
+                                    sans_posture=a.sans_posture or a.equerre)
         x, y, z, r = (float(v) for v in pont.depuis_controleur(*_pose(pont)))
         if ok:
             print("robot pret : x {:.1f}  y {:.1f}  z {:.1f}  r {:.1f}".format(x, y, z, r))

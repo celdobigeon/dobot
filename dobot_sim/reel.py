@@ -255,6 +255,42 @@ class PontReel:
         """
         return np.asarray(self._exiger().pose().angles, dtype=float)
 
+    def amener_en_posture(self, j2: float = 0.0, j3: float = 0.0,
+                          vitesse: float = 10.0, tolerance: float = 0.5,
+                          delai: float = 20.0) -> np.ndarray:
+        """
+        Amene le bras arriere a J2 et l'avant-bras a J3 (degres, convention
+        du controleur) en MODE MANUEL, articulation par articulation,
+        doucement : l'avant-bras d'abord, puis le bras arriere. La base et
+        le poignet ne bougent pas. Rend les angles obtenus.
+
+        Le mode manuel passe hors file : c'est la seule facon de bouger le
+        bras quand la file est bloquee (alarme de planification). Les
+        angles sont ceux que croit le controleur : la posture n'est vraie
+        que si les capteurs ont ete recales depuis la mise sous tension.
+        """
+        li = self._exiger()
+        li.parametres_jog_articulaire(vitesse, 3.0 * vitesse)
+        try:
+            for i, plus, moins, cible in ((2, 5, 6, float(j3)), (1, 3, 4, float(j2))):
+                fin = time.time() + delai
+                while time.time() < fin:
+                    e = float(self.angles_reels()[i]) - cible
+                    if abs(e) < tolerance:
+                        break
+                    li.jog(moins if e > 0 else plus)
+                    # impulsions plus courtes pres du but
+                    time.sleep(min(0.15, max(0.03, abs(e) / vitesse * 0.5)))
+                    li.jog(0)
+                    time.sleep(0.05)
+                li.jog(0)
+                time.sleep(0.3)
+        finally:
+            li.jog(0)
+        q = self.angles_reels()
+        self.journal("bras amene en posture : J2 {:+.2f}, J3 {:+.2f}".format(q[1], q[2]))
+        return q
+
     # -- ecriture -----------------------------------------------------------
 
     def prise_origine(self) -> int:

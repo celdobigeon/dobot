@@ -1692,6 +1692,44 @@ petite fenêtre. À lancer après chaque mise sous tension, fenêtre du
 simulateur fermée, avant les scripts qui pilotent le robot directement
 (`Commande(robot=True, simulateur=False)`, étalonnage de la caméra…).
 
+Options : `--sans-posture` passe l'étape 1 (posture déjà déclarée depuis la
+mise sous tension) ; `--equerre` amène d'abord le bras en équerre **en mode
+manuel** (base immobile), puis ouvre l'assistant à la prise d'origine. C'est
+ce qui débloque un robot dont la file ne répond plus après un défaut de
+planification (alarme 0x12) : aucun mouvement programmé ne part alors, le
+mode manuel si. Le même geste existe dans l'assistant (étape 2, « Amener
+d'abord le bras en équerre »).
+
+### Le robot en ligne de commande : `dobot.py`
+
+Une commande, une action, sans ouvrir le simulateur (fenêtre fermée) :
+
+```
+.venv/bin/python dobot.py etat                   pose, angles, alarmes (ne bouge rien)
+.venv/bin/python dobot.py pince ouvrir           ou fermer
+.venv/bin/python dobot.py ventouse on            ou off
+.venv/bin/python dobot.py pompe off              couper la pompe
+.venv/bin/python dobot.py repli                  posture de repos
+.venv/bin/python dobot.py equerre                bras arrière vertical, avant-bras horizontal
+.venv/bin/python dobot.py aller 220 0 80         MOVJ vers (x, y, z), r gardé
+.venv/bin/python dobot.py aller 220 0 80 30 --lineaire
+.venv/bin/python dobot.py deplacer 0 0 20        RELATIF : monter de 20 mm
+.venv/bin/python dobot.py deplacer 10 -5 0 --dr 15
+.venv/bin/python dobot.py effacer                effacer les alarmes
+.venv/bin/python dobot.py mise-en-route --equerre
+.venv/bin/python dobot.py etalonner --reprendre  étalonnage caméra -> robot
+```
+
+`deplacer dx dy dz` bouge la pointe d'outil de (dx, dy, dz) mm **dans le
+repère de la base**, en ligne droite (`--articulaire` pour un MOVJ) ;
+`--dr` tourne l'outil. Les coordonnées sont celles du simulateur. Options
+communes, **avant** la commande : `--longueur-outil 78`, `--vitesse 30`
+(mm/s, deg/s), `--outil pince`, `--port /dev/...`. Exemple :
+
+```
+.venv/bin/python dobot.py --longueur-outil 78 --vitesse 20 deplacer 0 0 -10
+```
+
 ### Prise d'origine
 
 > **Séquence de début de séance, validée sur la machine (firmware 3.7.0).**

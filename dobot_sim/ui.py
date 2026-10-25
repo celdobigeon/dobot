@@ -752,6 +752,11 @@ class _HoteMiseEnRoute:
         return b.exec_() == QtWidgets.QMessageBox.Ok
 
 
+#: deg : J2 de l'equerre avant la prise d'origine, juste au-dessus de sa
+#: butee (0)
+EQUERRE_PRISE_ORIGINE = 1.0
+
+
 def mise_en_route_autonome(pont, robot, sans_posture: bool = False) -> bool:
     """
     Ouvre l'assistant de mise en route hors du simulateur. Rend True si le
@@ -899,6 +904,16 @@ class DialogueMiseEnRoute(QtWidgets.QDialog):
         self.b1_passer.clicked.connect(self._passer_posture)
         self.e1.layout().insertWidget(self.e1.layout().indexOf(self.b1) + 1,
                                       self.b1_passer)
+        # la prise d'origine part de l'equerre ; un bras bloque par un defaut
+        # de planification ne bouge plus qu'en mode manuel
+        self.b2_equerre = QtWidgets.QPushButton(
+            "Amener d'abord le bras en equerre (mode manuel, base immobile)")
+        self.b2_equerre.setToolTip(
+            "Seulement si la posture a ete declaree depuis la mise sous "
+            "tension : les angles sont ceux que croit le controleur.")
+        self.b2_equerre.clicked.connect(self._equerre)
+        self.e2.layout().insertWidget(self.e2.layout().indexOf(self.b2),
+                                      self.b2_equerre)
         self.b1.clicked.connect(self._declarer)
         self.b2.clicked.connect(self._origine)
         self.b3.clicked.connect(self._verifier)
@@ -1031,6 +1046,18 @@ class DialogueMiseEnRoute(QtWidgets.QDialog):
                         "supposee deja declaree depuis la mise sous tension")
         self.fen.journal("mise en route : declaration de posture passee")
         self._activer(2)
+
+    def _equerre(self) -> None:
+        self.r2.setText("bras en route vers l'equerre...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            q = self.fen.pont.amener_en_posture(EQUERRE_PRISE_ORIGINE, 0.0)
+        except Exception as exc:
+            self.r2.setText("<b style='color:#e06c5a'>echec : {}</b>".format(exc))
+            return
+        self.r2.setText("bras en equerre (J2 {:+.1f}, J3 {:+.1f}) : lancez la prise "
+                        "d'origine".format(q[1], q[2]))
+        self._rafraichir()
 
     def _origine(self) -> None:
         if not self.fen._confirmer_mouvement(
