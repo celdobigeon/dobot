@@ -7,8 +7,18 @@ elles sont posées, où se trouve le centre de leur face supérieure, et leur
 orientation. Les positions sont rendues sous forme de **matrices homogènes
 4×4**, dans le repère de la caméra et dans celui de la table.
 
-Pas d'apprentissage, pas de YOLO : pour des pièces posées sur une table, la
-géométrie suffit.
+Trois étages, du plus simple au plus robuste :
+
+1. **la géométrie** (profondeur seule) : sans apprentissage, elle trouve
+   l'essentiel des pièces posées à plat ;
+2. **un réseau YOLO11-seg** (`modeles/pieces-seg.pt`, entraîné dans
+   `apprentissage/`) segmente les pièces dans l'image couleur ;
+3. **l'affinage de la scène** (`raffinement.py`) confronte le tout à la
+   profondeur : pièces inclinées, empilées, cachées, et pièces que le réseau
+   a manquées (fond inconnu).
+
+`Perception()` enchaîne les trois ; sans modèle entraîné, la géométrie et
+l'affinage suffisent à faire marcher la détection.
 
 ## Les fichiers
 
@@ -139,6 +149,15 @@ rendue dans l'image couleur et comparée aux masques annotés :
 | YOLO + affinage | 0,99 | 0,99 | 0,91 | 0,95 | 3,7 |
 | YOLO abîmé (masques perdus, fusionnés, faux sur le fond) | 0,66 | 0,93 | 0,87 | 0,95 | 0,5 |
 | YOLO abîmé + affinage | **0,94** | 0,95 | 0,89 | 0,93 | 3,7 |
+| **YOLO v2 + affinage** (modèle installé) | **0,99** | **0,98** | 0,91 | **0,98** | 3,2 |
+
+Les cinq premières lignes sont mesurées avec le réseau v1 (images réelles
+seules). Le modèle installé est **v2** : images réelles + 2000 images
+rendues à fonds variés (`apprentissage/synthese_images.py`). Sur la
+nappe d'entraînement, il fait jeu égal avec v1 et se trompe moins de
+classe ; sur des fonds jamais vus (synthétiques), mAP50 des masques 0,89
+contre 0,11 pour v1, et 0,96 contre 0,72 avec de vraies pièces collées sur
+ces fonds. v1 reste disponible : `Perception(modele="modeles/pieces-seg-v1.pt")`.
 
 Scènes synthétiques avec 3 pièces inclinées sur 8 (vue de dessus) :
 rappel 0,84 → 0,94, fausses 8 → 1, erreur d'inclinaison des inclinées
