@@ -904,6 +904,8 @@ class Etalonnage:
             "secteur_base_deg": None if self.secteur is None else list(self.secteur),
             "depart": None if self.depart is None else [float(v) for v in self.depart],
             "session": int(self.session),
+            "longueur_outil_mm": (None if getattr(self.robot, "longueur_outil", None) is None
+                                  else float(self.robot.longueur_outil)),
             "piece": self.piece,
             "paires": len(self.paires),
             "validation": self.validations,
@@ -1157,8 +1159,19 @@ def main(argv=None) -> int:
         if a.recommencer:
             piece = donnees.get("piece")
             donnees = {k: donnees.get(k) for k in ("z_table_mm", "secteur_base_deg",
-                                                   "depart")}
+                                                   "depart", "longueur_outil_mm")}
             donnees["piece"] = piece
+
+    # la longueur d'outil : celle demandee, sinon celle du fichier (ses
+    # hauteurs en dependent)
+    if a.longueur_outil is None and donnees and donnees.get("longueur_outil_mm"):
+        a.longueur_outil = float(donnees["longueur_outil_mm"])
+        print("longueur d'outil de l'etalonnage : {:.1f} mm".format(a.longueur_outil))
+    elif donnees and donnees.get("longueur_outil_mm") and \
+            abs(a.longueur_outil - float(donnees["longueur_outil_mm"])) > 0.5:
+        print("ATTENTION : longueur d'outil {:.1f} mm, mais le fichier a ete fait avec "
+              "{:.1f} mm : ses hauteurs seront fausses.".format(
+                  a.longueur_outil, float(donnees["longueur_outil_mm"])))
 
     from dobot_sim import Commande, ErreurExecution
     if a.simulation:

@@ -43,12 +43,11 @@ import etalonner_camera_robot as ec      # noqa: E402
 #: mm : on ne saisit qu'une piece dont la largeur passe entre les mors
 #: (ouverture ~26 mm)
 LARGEUR_MAX = 22.0
-#: mm : hauteur VISEE du bout des doigts au-dessus de la surface sur
-#: laquelle repose la piece (la table, ou la piece du dessous). La hauteur
-#: de table vient de l'accostage : on y descend jusqu'a pincer une feuille,
-#: et les moteurs pas a pas annoncent la position COMMANDEE, un peu sous la
-#: vraie table quand le bras bute. Constate : 3 mm visaient le contact.
-PIED = 6.0
+#: mm : hauteur du bout des doigts au-dessus de la surface sur laquelle
+#: repose la piece (la table, ou la piece du dessous). Juste si la longueur
+#: d'outil et la hauteur de table sont justes : le 25/10, la pince mesurait
+#: 107 mm et non 78 (29 mm d'erreur, verifies a la regle a l'equerre).
+PIED = 3.0
 #: mm : la nouvelle place est au moins a cette distance de l'ancienne
 ECART_DEPOSE = 60.0
 
@@ -311,6 +310,21 @@ class Essai:
         return self.controler(vise)
 
 
+def longueur_outil(demandee, donnees):
+    """La longueur d'outil : celle demandee, sinon celle de l'etalonnage
+    (les hauteurs du fichier en dependent). Previent d'un desaccord."""
+    du_fichier = donnees.get("longueur_outil_mm")
+    if demandee is None:
+        if du_fichier is not None:
+            print("longueur d'outil de l'etalonnage : {:.1f} mm".format(du_fichier))
+        return du_fichier
+    if du_fichier is not None and abs(float(demandee) - float(du_fichier)) > 0.5:
+        print("ATTENTION : longueur d'outil {:.1f} mm, mais l'etalonnage a ete fait avec "
+              "{:.1f} mm :\n  les hauteurs seront fausses de {:+.1f} mm.".format(
+                  demandee, du_fichier, float(du_fichier) - float(demandee)))
+    return float(demandee)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Saisie d'une piece guidee par la camera")
     ap.add_argument("--longueur-outil", type=float, default=None)
@@ -334,10 +348,11 @@ def main(argv=None) -> int:
 
     from dobot_sim import Commande, ErreurExecution
     import perception
+    longueur = longueur_outil(a.longueur_outil, donnees)
     print("chargement de la perception...")
     perc = perception.Perception(T_robot_camera=np.array(donnees["T_robot_camera"], float))
     robot = Commande(simulateur=False, robot=True, outil="pince", vitesse=a.vitesse,
-                     longueur_outil=a.longueur_outil)
+                     longueur_outil=longueur)
     essai = Essai(robot, perc, donnees, demander=ec._demander, forcer=a.forcer,
                   pied=a.hauteur_prise)
     try:

@@ -470,7 +470,8 @@ def main(argv=None) -> int:
     perc_continue = perception.Perception(T_robot_camera=T)  # le fil de detection
     print("ouverture du simulateur, relie au robot...")
     robot = Commande(simulateur=True, robot=True, lancer_simulateur=True, port=a.port,
-                     outil="pince", vitesse=a.vitesse, longueur_outil=a.longueur_outil)
+                     outil="pince", vitesse=a.vitesse,
+                     longueur_outil=sp.longueur_outil(a.longueur_outil, donnees))
     essai = sp.Essai(robot, perc_robot, donnees, demander=ec._demander,
                      pied=a.hauteur_prise)
     det = Detecteur(perc_continue, essai)

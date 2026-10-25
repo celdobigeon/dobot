@@ -434,7 +434,7 @@ def main(argv=None) -> int:
                     help="version graphique : simulateur en miroir, pieces vues et "
                          "cible affichees en continu")
     p2.add_argument("--hauteur-prise", type=float, default=None,
-                    help="mm visees entre le bout des doigts et la table (6)")
+                    help="mm visees entre le bout des doigts et la table (3)")
     p2.add_argument("--forcer", action="store_true",
                     help="sans marges de securite (plus de positions saisissables)")
     p2.set_defaults(f=saisir)
