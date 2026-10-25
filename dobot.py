@@ -248,7 +248,13 @@ def effacer(a) -> int:
         print("certaines alarmes restent :")
         for ligne in resume_alarmes(reste):
             print("  " + ligne)
-        print("  -> dobot.py mise-en-route --sans-posture (prise d'origine)")
+        if any(0x10 <= k < 0x20 for k in reste):
+            print("  Une alarme de PLANIFICATION bloque la file du controleur (firmware\n"
+                  "  3.7.0) : rien ne l'efface, pas meme la prise d'origine. Eteignez et\n"
+                  "  rallumez le robot (bras tenu, en equerre), puis :\n"
+                  "    dobot.py mise-en-route")
+        else:
+            print("  -> dobot.py origine (prise d'origine)")
         return 2
     finally:
         _fermer_liaison_directe()

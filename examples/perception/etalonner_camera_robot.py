@@ -1070,8 +1070,11 @@ def main(argv=None) -> int:
         print("\nETALONNAGE INTERROMPU : {}".format(exc))
         if et.piece.get("etat") == "tenue":
             print("  la piece est sans doute encore dans la pince (pompe en marche).")
-        print("  Le controleur reste en defaut : prise d'origine necessaire\n"
-              "    .venv/bin/python mise_en_route.py --sans-posture\n"
+        print("  Le controleur reste en defaut. Une alarme de PLANIFICATION (0x1x)\n"
+              "  bloque sa file sur ce firmware : ni l'effacement ni la prise d'origine\n"
+              "  ne partent. Il faut ETEINDRE ET RALLUMER le robot (bras tenu, mis en\n"
+              "  equerre a la main), puis la mise en route complete :\n"
+              "    .venv/bin/python dobot.py mise-en-route\n"
               "  (ATTENTION : la base tourne pendant la prise d'origine ; surveillez "
               "la camera),\n  puis --reprendre.")
     finally:
