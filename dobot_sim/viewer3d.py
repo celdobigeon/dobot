@@ -372,6 +372,8 @@ class Vue3D(gl.GLViewWidget):
                 item.setTransform(_qmat(reperes[k]))
 
         self.triedre_outil.setTransform(_qmat(reperes[-1]))
+        for item in getattr(self, "_items_tenue", []):
+            item.setTransform(_qmat(reperes[5]))
 
         pts = np.array([hg.position_de(T) for T in reperes])
         self.squelette.setData(pos=pts)
@@ -438,6 +440,11 @@ class Vue3D(gl.GLViewWidget):
         for item in self._items_objets:
             self.removeItem(item)
         self._items_objets = []
+        for k, b in enumerate(boites):
+            self._items_objets += self._items_boite(b, cible is not None and k == cible)
+
+    def _items_boite(self, b: dict, en_evidence: bool = False) -> list:
+        """Une boite (faces translucides et aretes), ajoutee a la scene."""
         signes = np.array([[sx, sy, sz] for sz in (-1, 1) for sy in (-1, 1)
                            for sx in (-1, 1)], dtype=float)
         faces = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
@@ -445,26 +452,34 @@ class Vue3D(gl.GLViewWidget):
                           [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]], dtype=np.uint32)
         aretes = [(0, 1), (1, 3), (3, 2), (2, 0), (4, 5), (5, 7), (7, 6), (6, 4),
                   (0, 4), (1, 5), (2, 6), (3, 7)]
-        for k, b in enumerate(boites):
-            c = np.asarray(b["centre"], dtype=float)
-            R = np.asarray(b["axes"], dtype=float)
-            demi = np.asarray(b["dims"], dtype=float) / 2.0
-            sommets = c + (signes * demi) @ R.T
-            est_cible = cible is not None and k == cible
-            couleur = self.COULEUR_CIBLE if est_cible else self.COULEURS_OBJETS.get(
-                b.get("type", ""), (0.75, 0.75, 0.75, 0.5))
-            md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=faces)
-            item = gl.GLMeshItem(meshdata=md, smooth=False, color=couleur,
-                                 shader="shaded", glOptions="translucent")
-            self.addItem(item)
-            self._items_objets.append(item)
-            lignes = np.array([sommets[i] for a in aretes for i in a], dtype=float)
-            bord = gl.GLLinePlotItem(pos=lignes, color=(1, 1, 1, 0.9) if est_cible
-                                     else (0.1, 0.1, 0.1, 0.6),
-                                     width=3.0 if est_cible else 1.0,
-                                     antialias=True, mode="lines")
-            self.addItem(bord)
-            self._items_objets.append(bord)
+        c = np.asarray(b["centre"], dtype=float)
+        R = np.asarray(b["axes"], dtype=float)
+        demi = np.asarray(b["dims"], dtype=float) / 2.0
+        sommets = c + (signes * demi) @ R.T
+        couleur = self.COULEUR_CIBLE if en_evidence else self.COULEURS_OBJETS.get(
+            b.get("type", ""), (0.75, 0.75, 0.75, 0.5))
+        md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=faces)
+        item = gl.GLMeshItem(meshdata=md, smooth=False, color=couleur,
+                             shader="shaded", glOptions="translucent")
+        self.addItem(item)
+        lignes = np.array([sommets[i] for a in aretes for i in a], dtype=float)
+        bord = gl.GLLinePlotItem(pos=lignes, color=(1, 1, 1, 0.9) if en_evidence
+                                 else (0.1, 0.1, 0.1, 0.6),
+                                 width=3.0 if en_evidence else 1.0,
+                                 antialias=True, mode="lines")
+        self.addItem(bord)
+        return [item, bord]
+
+    def definir_tenue(self, boite: Optional[dict]) -> None:
+        """
+        La piece tenue par la pince, dessinee comme les pieces de la scene
+        (meme boite, en evidence) mais attachee au repere de l'OUTIL : elle
+        suit le bras. `boite` est exprimee dans ce repere (mm) ; None efface.
+        """
+        for item in getattr(self, "_items_tenue", []):
+            self.removeItem(item)
+        self._items_tenue = [] if boite is None else self._items_boite(boite, True)
+        self.maj(self._q)
 
     def definir_camera(self, T: Optional[np.ndarray], K=None, taille=None,
                        portee: float = 400.0) -> None:

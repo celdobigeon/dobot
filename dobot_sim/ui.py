@@ -3212,7 +3212,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         lt = float(self.robot.geo.lt)
         tenue = getattr(self, "piece_tenue", None)
         self.vue.definir_outil(dataclasses.replace(
-            self.outil, longueur=lt, piece_tenue=tenue,
+            self.outil, longueur=lt,
             serrage=None if not tenue else float(tenue["dims"][1]))
             .pieces(self.outil_actif))
         if abs(lt - self.outil.longueur) > 0.05:
@@ -4552,6 +4552,18 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             lab.setPixmap(pix.scaled(lab.size(), QtCore.Qt.KeepAspectRatio,
                                      QtCore.Qt.SmoothTransformation))
 
+    def _boite_tenue(self, t):
+        """La piece tenue, en boite dans le repere de l'outil : dessous a
+        `pied` mm sous la pointe, grand cote tourne de `angle`."""
+        if not t:
+            return None
+        L, l, h = (float(v) for v in t["dims"])
+        a = np.radians(float(t.get("angle", 0.0)))
+        R = [[np.cos(a), -np.sin(a), 0.0], [np.sin(a), np.cos(a), 0.0], [0.0, 0.0, 1.0]]
+        z = -float(self.robot.geo.lt) - float(t.get("pied", 0.0)) + h / 2.0
+        return {"centre": [0.0, 0.0, z], "axes": R, "dims": [L, l, h],
+                "type": t.get("type", "")}
+
     def _saisie_demander(self, quoi: str) -> None:
         self._saisie_demande = quoi
         self.bt_saisir.setEnabled(False)
@@ -4598,11 +4610,15 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             if getattr(self, "piece_tenue", None):
                 self.piece_tenue = None
                 self._maj_outil()
+                if hasattr(self.vue, "definir_tenue"):
+                    self.vue.definir_tenue(None)
             return {}
         if "tenue" in d:
             # la piece que la pince va serrer (ou None : relachee)
             self.piece_tenue = d["tenue"] or None
             self._maj_outil()
+            if hasattr(self.vue, "definir_tenue"):
+                self.vue.definir_tenue(self._boite_tenue(self.piece_tenue))
             return {}
         if "images" in d:
             self._afficher_images_camera(d["images"] or {})
