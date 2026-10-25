@@ -73,19 +73,70 @@ def _jpeg(image, largeur: int = 640, qualite: int = 80) -> str:
     return base64.b64encode(tampon.tobytes()).decode("ascii") if ok else ""
 
 
+#: couleurs BGR des boites dans l'image : par type, et la cible
+COULEURS_BGR = {"epaisse": (40, 170, 255), "fine": (255, 200, 40)}
+ROUGE_BGR = (40, 40, 230)
+
+
+def dessiner_boites(image, vue, pieces, types, cible=None):
+    """
+    Chaque piece en BOITE 3D dans l'image couleur : sa pose estimee,
+    reprojetee (repere de la profondeur -> camera couleur), face superieure
+    en trait epais, et son repere (x rouge, y vert, z bleu). La cible en
+    rouge, faces teintees.
+    """
+    import cv2
+    import perception as pc
+    img = image.copy()
+    if img.ndim == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    voile = img.copy()
+
+    def proj(P):
+        P = np.c_[P, np.ones(len(P))] @ np.asarray(vue.T_cp, float).T
+        uv = P[:, :3] @ np.asarray(vue.K, float).T
+        return (uv[:, :2] / uv[:, 2:3]).astype(np.int32)
+
+    for p in pieces:
+        if p.type in types and p.face in pc.FACES:
+            L, l, h = (v / 1000.0 for v in pc.forme(types[p.type], p.face))
+        else:
+            L, l, h = (v / 1000.0 for v in p.dimensions)
+        coins = np.array([[sx * L / 2, sy * l / 2, z] for z in (0.0, -h)
+                          for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+        M = np.asarray(p.T_camera, float)
+        uv = proj(coins @ M[:3, :3].T + M[:3, 3])
+        est_cible = p is cible
+        col = ROUGE_BGR if est_cible else COULEURS_BGR.get(p.type, (200, 200, 200))
+        if est_cible:
+            for face in ((0, 1, 2, 3), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+                cv2.fillConvexPoly(voile, uv[list(face)], col)
+        for a, b in ((0, 1), (1, 2), (2, 3), (3, 0)):
+            cv2.line(img, tuple(uv[a]), tuple(uv[b]), col, 3 if est_cible else 2, cv2.LINE_AA)
+        for a, b in ((4, 5), (5, 6), (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)):
+            cv2.line(img, tuple(uv[a]), tuple(uv[b]), col, 2 if est_cible else 1, cv2.LINE_AA)
+        o = M[:3, 3]
+        ax = proj(np.array([o] + [o + 0.02 * M[:3, k] for k in range(3)]))
+        for k, c in enumerate(((0, 0, 255), (0, 200, 0), (255, 80, 0))):
+            cv2.arrowedLine(img, tuple(ax[0]), tuple(ax[k + 1]), c, 2, cv2.LINE_AA,
+                            tipLength=0.25)
+        texte = "{}{} {}".format("CIBLE : " if est_cible else "", p.type, p.face)
+        org = (int(uv[:4, 0].mean()) - 40, int(uv[:4, 1].min()) - 10)
+        cv2.putText(img, texte, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(img, texte, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
+                    cv2.LINE_AA)
+    return cv2.addWeighted(voile, 0.3, img, 0.7, 0)
+
+
 def images_camera(perception, capture, pieces, cible) -> dict:
-    """Image couleur annotee (cible entouree de rouge) et carte de
+    """Image couleur, pieces en boites 3D (cible en rouge), et carte de
     profondeur en fausses couleurs, en JPEG base64 pour la fenetre."""
     import cv2
     out = {}
     try:
-        img = perception.dessiner(pieces) if pieces else perception.derniere_vue.image.copy()
-        if img.ndim == 2:
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        if cible is not None and getattr(cible, "contour", None) is not None:
-            cv2.polylines(img, [np.asarray(cible.contour, np.int32)], True, (40, 40, 230),
-                          4, cv2.LINE_AA)
-        out["couleur"] = _jpeg(img)
+        vue = perception.derniere_vue
+        out["couleur"] = _jpeg(dessiner_boites(vue.image, vue, pieces, perception.types,
+                                               cible))
     except Exception:                                   # noqa: BLE001
         pass
     z = np.asarray(capture.get("profondeur"), float)
