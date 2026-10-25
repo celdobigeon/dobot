@@ -1,0 +1,10 @@
+realsense_d435.npz : maillage de la camera Intel RealSense D435, converti
+(sommets en mm, faces) depuis src/common/res/sources/D435.obj du depot
+librealsense (https://github.com/IntelRealSense/librealsense).
+
+Copyright Intel Corporation, sous licence Apache 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). Seule la representation a
+change (OBJ -> tableaux numpy) ; la geometrie est celle d'origine.
+
+Repere : celui de la camera, x a droite, y en bas, z vers la scene ; la
+face avant est en z = 0, le boitier en z negatif (90 x 25 x 25 mm).

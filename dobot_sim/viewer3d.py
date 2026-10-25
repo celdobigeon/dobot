@@ -9,6 +9,7 @@ la carte graphique.
 
 from __future__ import annotations
 
+import os
 from typing import List, Optional, Sequence
 
 import numpy as np
@@ -162,6 +163,36 @@ def _qmat(T) -> pg.Transform3D:
     """Matrice homogene numpy -> Transform3D de pyqtgraph."""
     T = np.asarray(T, dtype=float)
     return pg.Transform3D(*[float(v) for v in T.reshape(-1)])
+
+
+def _pointilles(a, b, trait: float = 8.0, vide: float = 6.0) -> list:
+    """Le segment [a, b] en pointilles : paires de points pour mode="lines"."""
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    L = float(np.linalg.norm(b - a))
+    if L < 1e-9:
+        return []
+    u = (b - a) / L
+    out, s = [], 0.0
+    while s < L:
+        out += [a + u * s, a + u * min(s + trait, L)]
+        s += trait + vide
+    return out
+
+
+_D435 = {}
+
+
+def _maillage_d435():
+    """(sommets mm, faces) de la camera RealSense D435, ou None."""
+    if "m" not in _D435:
+        chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "assets", "realsense_d435.npz")
+        try:
+            with np.load(chemin) as z:
+                _D435["m"] = (z["sommets"], z["faces"].astype(np.uint32))
+        except Exception:
+            _D435["m"] = None
+    return _D435["m"]
 
 
 def _trieds(taille: float = 40.0):
@@ -450,21 +481,31 @@ class Vue3D(gl.GLViewWidget):
             return
         T = np.asarray(T, dtype=float)
         R, o = T[:3, :3], T[:3, 3]
-        # boitier : 90 x 25 x 25 mm (D435), l'objectif sur sa face avant
-        signes = np.array([[sx, sy, sz] for sz in (-1, 1) for sy in (-1, 1)
-                           for sx in (-1, 1)], dtype=float)
-        demi = np.array([45.0, 12.5, 12.5])
-        centre = o - R[:, 2] * 12.5
-        sommets = centre + (signes * demi) @ R.T
-        faces = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
-                          [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
-                          [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]], dtype=np.uint32)
-        md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=faces)
-        boitier = gl.GLMeshItem(meshdata=md, smooth=False, color=(0.25, 0.27, 0.30, 1.0),
-                                shader="shaded", glOptions="opaque")
+        modele = _maillage_d435()
+        if modele is not None:
+            # le vrai boitier (modele du visualiseur Intel), deja dans le
+            # repere optique : face avant en z = 0, boitier en z negatif
+            sommets = modele[0].astype(float) @ R.T + o
+            md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=modele[1])
+            boitier = gl.GLMeshItem(meshdata=md, smooth=True,
+                                    color=(0.30, 0.32, 0.36, 1.0),
+                                    shader=NUANCEUR, glOptions="opaque")
+        else:
+            # a defaut, un pave de 90 x 25 x 25 mm
+            signes = np.array([[sx, sy, sz] for sz in (-1, 1) for sy in (-1, 1)
+                               for sx in (-1, 1)], dtype=float)
+            demi = np.array([45.0, 12.5, 12.5])
+            sommets = o - R[:, 2] * 12.5 + (signes * demi) @ R.T
+            faces = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
+                              [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+                              [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]], dtype=np.uint32)
+            md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=faces)
+            boitier = gl.GLMeshItem(meshdata=md, smooth=False,
+                                    color=(0.25, 0.27, 0.30, 1.0),
+                                    shader="shaded", glOptions="opaque")
         self.addItem(boitier)
         self._items_camera.append(boitier)
-        # champ de vision : les quatre coins de l'image, a `portee` mm
+        # champ de vision, en POINTILLES : les quatre coins de l'image
         if K is not None and taille is not None:
             K = np.asarray(K, dtype=float)
             w, h = float(taille[0]), float(taille[1])
@@ -474,11 +515,11 @@ class Vue3D(gl.GLViewWidget):
                 coins.append(o + R @ (d * portee))
             lignes = []
             for c in coins:
-                lignes += [o, c]
+                lignes += _pointilles(o, c)
             for k in range(4):
-                lignes += [coins[k], coins[(k + 1) % 4]]
+                lignes += _pointilles(coins[k], coins[(k + 1) % 4])
             champ = gl.GLLinePlotItem(pos=np.array(lignes, dtype=float),
-                                      color=(0.55, 0.85, 1.0, 0.7), width=1.5,
+                                      color=(0.55, 0.85, 1.0, 0.8), width=1.5,
                                       antialias=True, mode="lines")
             self.addItem(champ)
             self._items_camera.append(champ)

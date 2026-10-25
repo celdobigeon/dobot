@@ -448,6 +448,9 @@ def main(argv=None) -> int:
     ap.add_argument("--vitesse", type=float, default=20.0, help="mm/s (20)")
     ap.add_argument("--port", default=None, help="port serie du robot")
     ap.add_argument("--etalonnage", default=ec.FICHIER)
+    ap.add_argument("--hauteur-prise", type=float, default=sp.PIED,
+                    help="mm visees entre le bout des doigts et la table ({:.0f})"
+                    .format(sp.PIED))
     ap.add_argument("--delai-detection", type=float, default=None,
                     help="relancer la detection N s apres l'ouverture de la pince, "
                          "pendant la remontee (defaut : a l'arrivee en equerre)")
@@ -468,7 +471,8 @@ def main(argv=None) -> int:
     print("ouverture du simulateur, relie au robot...")
     robot = Commande(simulateur=True, robot=True, lancer_simulateur=True, port=a.port,
                      outil="pince", vitesse=a.vitesse, longueur_outil=a.longueur_outil)
-    essai = sp.Essai(robot, perc_robot, donnees, demander=ec._demander)
+    essai = sp.Essai(robot, perc_robot, donnees, demander=ec._demander,
+                     pied=a.hauteur_prise)
     det = Detecteur(perc_continue, essai)
     from dobot_sim.passerelle import demander
     try:

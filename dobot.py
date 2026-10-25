@@ -347,6 +347,8 @@ def saisir(a) -> int:
     args = ["--vitesse", str(a.vitesse)]
     if a.longueur_outil is not None:
         args += ["--longueur-outil", str(a.longueur_outil)]
+    if a.hauteur_prise is not None:
+        args += ["--hauteur-prise", str(a.hauteur_prise)]
     if a.visualisation:
         import saisir_piece_graphique
         if a.port:
@@ -431,6 +433,8 @@ def main(argv=None) -> int:
     p2.add_argument("--visualisation", action="store_true",
                     help="version graphique : simulateur en miroir, pieces vues et "
                          "cible affichees en continu")
+    p2.add_argument("--hauteur-prise", type=float, default=None,
+                    help="mm visees entre le bout des doigts et la table (6)")
     p2.add_argument("--forcer", action="store_true",
                     help="sans marges de securite (plus de positions saisissables)")
     p2.set_defaults(f=saisir)

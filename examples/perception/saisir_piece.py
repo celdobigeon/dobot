@@ -43,9 +43,11 @@ import etalonner_camera_robot as ec      # noqa: E402
 #: mm : on ne saisit qu'une piece dont la largeur passe entre les mors
 #: (ouverture ~26 mm)
 LARGEUR_MAX = 22.0
-#: mm : hauteur du bout des doigts au-dessus de la surface sur laquelle
-#: repose la piece (la table, ou la piece du dessous) pour la saisir
-PIED = 3.0
+#: mm : hauteur VISEE du bout des doigts au-dessus de la surface sur
+#: laquelle repose la piece (la table, ou la piece du dessous). La hauteur
+#: de table n'est mesuree qu'en un point (accostage) ; ailleurs, le bras se
+#: trompe en z de quelques mm : 3 mm visaient deja le contact, d'ou 6.
+PIED = 6.0
 #: mm : la nouvelle place est au moins a cette distance de l'ancienne
 ECART_DEPOSE = 60.0
 
@@ -57,7 +59,7 @@ class HorsAtteinte(Exception):
 class Essai:
 
     def __init__(self, robot, perception, donnees, journal=print, demander=input,
-                 graine=None, forcer: bool = False):
+                 graine=None, forcer: bool = False, pied: float = PIED):
         self.robot = robot
         self.perception = perception
         self.journal = journal
@@ -80,6 +82,7 @@ class Essai:
         #: sans marges : butees et secteur au plus juste, transit abaisse
         #: si besoin (au moins APPROCHE mm de descente verticale)
         self.forcer = bool(forcer)
+        self.pied = float(pied)
         self.modele = self.et.modele
 
     # -- atteignabilite -----------------------------------------------------
@@ -170,7 +173,7 @@ class Essai:
         # etalonnee plutot que son estimation par la camera
         if abs(dessous - self.z_table) < 5.0:
             dessous = self.z_table
-        z = dessous + PIED
+        z = dessous + self.pied
         # la pince est symetrique : r a 180 deg pres, le plus pres de 0
         r = ec._angle(lacet + self.ecart_r, 180.0)
         # hauteur de la pince au-dessus du DESSOUS de la piece : pour la
@@ -311,6 +314,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Saisie d'une piece guidee par la camera")
     ap.add_argument("--longueur-outil", type=float, default=None)
     ap.add_argument("--vitesse", type=float, default=20.0, help="mm/s (20)")
+    ap.add_argument("--hauteur-prise", type=float, default=PIED,
+                    help="mm visees entre le bout des doigts et la table ({:.0f})"
+                    .format(PIED))
     ap.add_argument("--forcer", action="store_true",
                     help="sans marges : butees et secteur au plus juste, transit "
                          "abaisse si besoin (plus de positions saisissables)")
@@ -331,7 +337,8 @@ def main(argv=None) -> int:
     perc = perception.Perception(T_robot_camera=np.array(donnees["T_robot_camera"], float))
     robot = Commande(simulateur=False, robot=True, outil="pince", vitesse=a.vitesse,
                      longueur_outil=a.longueur_outil)
-    essai = Essai(robot, perc, donnees, demander=ec._demander, forcer=a.forcer)
+    essai = Essai(robot, perc, donnees, demander=ec._demander, forcer=a.forcer,
+                  pied=a.hauteur_prise)
     try:
         robot.pince(False)
         essai.equerre()
