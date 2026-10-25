@@ -92,5 +92,27 @@ class TestHorsAtteinte(unittest.TestCase):
         self.assertTrue(any("HORS D'ATTEINTE" in m for m in messages))
 
 
+class TestForcer(unittest.TestCase):
+
+    def test_forcer_ouvre_des_positions(self):
+        donnees = {"z_table_mm": 25.0, "secteur_base_deg": [-40.0, 20.0],
+                   "ecart_r_deg": 0.0, "depart": [220.0, 0.0, 0.0], "mesures": []}
+        prudent = sp.Essai(FauxRobotAngles(), None, donnees, journal=lambda m: None)
+        force = sp.Essai(FauxRobotAngles(), None, donnees, journal=lambda m: None,
+                         forcer=True)
+        z = 30.0
+        pts = [(x, y, 0.0) for x in range(150, 340, 5) for y in range(-200, 120, 5)]
+        n_prudent = sum(not prudent.verifier(x, y, z, r)[0] for x, y, r in pts)
+        n_force = sum(not force.verifier(x, y, z, r)[0] for x, y, r in pts)
+        self.assertGreater(n_force, n_prudent)
+        # avec --forcer, le transit laisse toujours une descente verticale
+        for x, y, r in pts:
+            raison, h = force.verifier(x, y, z, r)
+            if not raison:
+                self.assertGreaterEqual(h - z, ec.APPROCHE)
+        print("\n  positions saisissables : {} prudent, {} avec --forcer".format(
+            n_prudent, n_force))
+
+
 if __name__ == "__main__":
     unittest.main()

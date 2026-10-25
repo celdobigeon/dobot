@@ -57,7 +57,7 @@ class HorsAtteinte(Exception):
 class Essai:
 
     def __init__(self, robot, perception, donnees, journal=print, demander=input,
-                 graine=None):
+                 graine=None, forcer: bool = False):
         self.robot = robot
         self.perception = perception
         self.journal = journal
@@ -77,6 +77,42 @@ class Essai:
                            ("z_table_mm", "secteur_base_deg", "depart", "mesures",
                             "camera_K", "camera_taille")} | {"piece": None})
         self.rng = np.random.default_rng(graine)
+        #: sans marges : butees et secteur au plus juste, transit abaisse
+        #: si besoin (au moins APPROCHE mm de descente verticale)
+        self.forcer = bool(forcer)
+        self.modele = self.et.modele
+
+    # -- atteignabilite -----------------------------------------------------
+    def _pose_ok(self, x, y, z, r) -> str:
+        """'' si (x, y, z, r) est permis, sinon la raison."""
+        try:
+            q = self.modele.mgi_pose(x, y, z, r)
+        except Exception:                               # noqa: BLE001
+            return "hors de portee du bras"
+        if not self.modele.dans_butees(q):
+            return "une articulation passerait sa butee"
+        if not self.forcer and float(np.min(self.modele.marges(q))) < ec.MARGE_BUTEE:
+            return "trop pres d'une butee (marge {:.0f} deg ; --forcer pour l'ignorer)"\
+                .format(ec.MARGE_BUTEE)
+        if not self.et.dans_secteur(x, y, z, r, 0.0 if self.forcer else ec.MARGE_SECTEUR):
+            return "hors du secteur de la base"
+        return ""
+
+    def verifier(self, x, y, z, r):
+        """(raison, hauteur de transit) : raison vide si la prise en z est
+        permise ET qu'un transit au-dessus l'est aussi."""
+        raison = self._pose_ok(x, y, z, r)
+        if raison:
+            return raison, None
+        hauts = [self.z_table + ec.TRANSIT]
+        if self.forcer:
+            hauts += list(np.arange(self.z_table + ec.TRANSIT - 5.0, z + ec.APPROCHE - 1e-6,
+                                    -5.0))
+        for h in hauts:
+            if h >= z + ec.APPROCHE and not self._pose_ok(x, y, h, r):
+                return "", float(h)
+        return ("pas de place au-dessus pour une descente verticale" +
+                ("" if self.forcer else " (--forcer : transit plus bas)")), None
 
     # -- mouvements ---------------------------------------------------------
     def equerre(self):
@@ -90,9 +126,16 @@ class Essai:
         m.append(("movj", dict(q=[j1, ec.EQUERRE_J2, ec.EQUERRE_J3, q[3]])))
         self.et._enchainer(m)
 
-    def _descendre(self, x, y, z, r):
-        """Au-dessus de (x, y) puis descente VERTICALE jusqu'a z."""
-        m = self.et._approche(x, y, r)[:-1]
+    def _descendre(self, x, y, z, r, h=None):
+        """Au-dessus de (x, y), a la hauteur h, puis descente VERTICALE
+        jusqu'a z."""
+        h = self.z_table + ec.TRANSIT if h is None else h
+        xa, ya, za, ra = self.robot.pose()
+        m = []
+        if za < h - 1.0:
+            m.append(("movl", dict(x=xa, y=ya, z=h, r=ra)))
+        tourne = abs(ec._angle(r - ra)) > 0.5
+        m.append(("movj" if tourne else "movl", dict(x=x, y=y, z=h, r=r)))
         m.append(("movl", dict(x=x, y=y, z=z, r=r)))
         self.et._enchainer(m)
 
@@ -133,17 +176,18 @@ class Essai:
     # -- le deroule ---------------------------------------------------------
     def saisir(self, piece):
         x, y, z, r = self.prise_de(piece)
-        if not self.et._atteignable(x, y, r):
+        raison, h = self.verifier(x, y, z, r)
+        if raison:
             r2 = ec._angle(r + 180.0)
-            if self.et._atteignable(x, y, r2):
-                r = r2
-            else:
-                raise HorsAtteinte("x {:.0f} y {:.0f}".format(x, y))
+            raison2, h2 = self.verifier(x, y, z, r2)
+            if raison2:
+                raise HorsAtteinte("x {:.0f} y {:.0f} : {}".format(x, y, raison))
+            r, h = r2, h2
         self.journal("  saisie en x {:.1f} y {:.1f} z {:.1f} r {:.1f}  ({} {}, dessus a "
                      "z {:.1f})".format(x, y, z, r, piece.type, piece.face,
                                         piece.T_robot[2, 3] * 1000.0))
         self.robot.pince(False)
-        self._descendre(x, y, z, r)
+        self._descendre(x, y, z, r, h)
         self.robot.pince(True)
         self.robot.attendre(ec.DELAI_PINCE)
         self._remonter_en_equerre()
@@ -160,12 +204,15 @@ class Essai:
             r = ec._angle(r0 + self.rng.uniform(-45.0, 45.0))
             if math.hypot(x - x0, y - y0) < ECART_DEPOSE:
                 continue
-            if self.et._atteignable(x, y, r) and self.et._visible(x, y):
+            if not self.et._visible(x, y):
+                continue
+            raison, h = self.verifier(x, y, z, r)
+            if not raison:
                 break
         else:
             raise ec.Arret("aucune place libre, vue et atteinte, pour reposer la piece")
         self.journal("  depose en x {:.1f} y {:.1f} r {:.1f}".format(x, y, r))
-        self._descendre(x, y, z, r)
+        self._descendre(x, y, z, r, h)
         self.robot.pince(False)
         self.robot.attendre(ec.DELAI_PINCE)
         self._remonter_en_equerre()
@@ -194,9 +241,8 @@ class Essai:
         try:
             prise = self.saisir(piece)
         except HorsAtteinte as exc:
-            self.journal("  piece HORS D'ATTEINTE ({}) : trop loin, trop pres, ou hors du "
-                         "secteur de la base.\n  Deplacez-la vers le milieu de la zone de "
-                         "travail.".format(exc))
+            self.journal("  piece HORS D'ATTEINTE ({}).\n  Deplacez-la vers le milieu "
+                         "de la zone de travail.".format(exc))
             return None
         vise = self.deposer(prise)
         return self.controler(vise)
@@ -206,6 +252,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Saisie d'une piece guidee par la camera")
     ap.add_argument("--longueur-outil", type=float, default=None)
     ap.add_argument("--vitesse", type=float, default=20.0, help="mm/s (20)")
+    ap.add_argument("--forcer", action="store_true",
+                    help="sans marges : butees et secteur au plus juste, transit "
+                         "abaisse si besoin (plus de positions saisissables)")
     ap.add_argument("--boucle", action="store_true",
                     help="enchainer sans attendre Entree, avec la piece deplacee")
     ap.add_argument("--etalonnage", default=ec.FICHIER)
@@ -223,7 +272,7 @@ def main(argv=None) -> int:
     perc = perception.Perception(T_robot_camera=np.array(donnees["T_robot_camera"], float))
     robot = Commande(simulateur=False, robot=True, outil="pince", vitesse=a.vitesse,
                      longueur_outil=a.longueur_outil)
-    essai = Essai(robot, perc, donnees, demander=ec._demander)
+    essai = Essai(robot, perc, donnees, demander=ec._demander, forcer=a.forcer)
     try:
         robot.pince(False)
         essai.equerre()

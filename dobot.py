@@ -347,6 +347,8 @@ def saisir(a) -> int:
         args += ["--longueur-outil", str(a.longueur_outil)]
     if a.boucle:
         args.append("--boucle")
+    if a.forcer:
+        args.append("--forcer")
     return saisir_piece.main(args)
 
 
@@ -418,6 +420,8 @@ def main(argv=None) -> int:
                                       "la reposer ailleurs")
     p2.add_argument("--boucle", action="store_true",
                     help="enchainer sans attendre Entree (jusqu'a Ctrl+C)")
+    p2.add_argument("--forcer", action="store_true",
+                    help="sans marges de securite (plus de positions saisissables)")
     p2.set_defaults(f=saisir)
     # ses options (--reprendre...) sont celles de etalonner_camera_robot.py :
     # elles lui sont passees telles quelles (voir parse_known_args)
