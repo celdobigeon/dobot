@@ -30,6 +30,7 @@ class Piece:
         self.T_robot[:3, 0] = [math.cos(a), math.sin(a), 0]
         self.T_robot[:3, 1] = [-math.sin(a), math.cos(a), 0]
         self.T_robot[:3, 3] = np.array([x, y, z]) / 1000.0
+        self.T_table = self.T_robot.copy()
         self.dimensions = dims
         self.type, self.face, self.numero = "epaisse", "a plat", 1
         self.dessus, self.support, self.hauteur_base = [], None, 0.0
