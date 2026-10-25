@@ -116,15 +116,21 @@ def _ventouse(o: Outil, actif: bool):
 
 
 def _pince(o: Outil, actif: bool):
-    """Pince pneumatique a deux doigts. `actif` = pince fermee."""
-    corps = fusion(boite(34, 26, 26, (0, 0, -13)),
-                   boite(36, 20, 12, (0, 0, -32)))
+    """
+    Pince pneumatique a deux doigts. `actif` = pince fermee.
+
+    Les doigts se ferment selon l'axe y de l'outil : a r = 0, une piece
+    allongee selon x se saisit par ses flancs. C'est ce qu'a mesure
+    l'etalonnage camera -> robot (ecart pince / piece de 1,4 deg).
+    """
+    corps = fusion(boite(26, 34, 26, (0, 0, -13)),
+                   boite(20, 36, 12, (0, 0, -32)))
     demi = (2.0 if actif else o.ouverture / 2.0 + 2.0)
     doigts = []
     for signe in (-1.0, 1.0):
-        x = signe * (demi + 3.0)
-        doigts.append(fusion(boite(6, 14, 34, (x, 0, -55)),
-                             boite(6, 14, 8, (x - signe * 3.0, 0, -74))))
+        y = signe * (demi + 3.0)
+        doigts.append(fusion(boite(14, 6, 34, (0, y, -55)),
+                             boite(14, 6, 8, (0, y - signe * 3.0, -74))))
     return [(*corps, NOIR),
             (*doigts[0], ALU), (*doigts[1], ALU)]
 

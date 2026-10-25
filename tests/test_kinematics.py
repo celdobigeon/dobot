@@ -959,7 +959,8 @@ class TestOutils(unittest.TestCase):
             V = np.vstack([p.sommets for p in o.pieces(actif)])
             doigts = V[V[:, 2] < -40.0]           # sous le corps de la pince
             self.assertGreater(len(doigts), 0)
-            return float(doigts[:, 0].max() - doigts[:, 0].min())
+            # les doigts se ferment selon y (axe de serrage mesure)
+            return float(doigts[:, 1].max() - doigts[:, 1].min())
 
         ouverte, fermee = ecartement(False), ecartement(True)
         self.assertGreater(ouverte, fermee + 10.0,
