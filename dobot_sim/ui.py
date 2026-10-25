@@ -4318,7 +4318,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         if "scene" in charge:
             # objets poses sur la table, vus par une camera : affichage seul
             sc = charge["scene"] or {}
-            if hasattr(self.vue, "definir_objets"):
+            if "camera" in sc and hasattr(self.vue, "definir_camera"):
+                cam = sc["camera"] or {}
+                self.vue.definir_camera(cam.get("T"), cam.get("K"), cam.get("taille"))
+            if "boites" in sc and hasattr(self.vue, "definir_objets"):
                 self.vue.definir_objets(sc.get("boites", []), sc.get("cible"))
             return {}
         if charge.get("etat_reel"):

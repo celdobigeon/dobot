@@ -472,6 +472,10 @@ def main(argv=None) -> int:
     det = Detecteur(perc_continue, essai)
     from dobot_sim.passerelle import demander
     try:
+        # la camera, a sa place dans la vue 3D (repere optique, mm)
+        demander({"scene": {"camera": {
+            "T": donnees["T_robot_camera_mm"], "K": donnees.get("camera_K"),
+            "taille": donnees.get("camera_taille")}}})
         if demander({"saisie": {"activer": True}}) is None:
             print("ATTENTION : la fenetre du simulateur ne connait pas le panneau Saisie "
                   "(elle a ete\n  ouverte avant cette version). Fermez-la et relancez ce "
@@ -557,6 +561,7 @@ def main(argv=None) -> int:
             flux.fin.set()
         try:
             demander({"saisie": {"desactiver": True}})
+            demander({"scene": {"camera": None}})
         except Exception:                               # noqa: BLE001
             pass
         try:

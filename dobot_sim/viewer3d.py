@@ -191,6 +191,8 @@ class Vue3D(gl.GLViewWidget):
         self._item_enveloppe: Optional[gl.GLMeshItem] = None
         #: objets poses sur la table (pieces detectees par la camera)
         self._items_objets: List[gl.GLGraphicsItem.GLGraphicsItem] = []
+        #: la camera (boitier et champ de vision), si on la connait
+        self._items_camera: List[gl.GLGraphicsItem.GLGraphicsItem] = []
         self._maillages_visibles = True
 
         self.setBackgroundColor(pg.mkColor(*FOND))
@@ -432,6 +434,60 @@ class Vue3D(gl.GLViewWidget):
                                      antialias=True, mode="lines")
             self.addItem(bord)
             self._items_objets.append(bord)
+
+    def definir_camera(self, T: Optional[np.ndarray], K=None, taille=None,
+                       portee: float = 400.0) -> None:
+        """
+        Place une camera dans la scene : `T` (4x4, mm) son repere optique
+        dans la base (x a droite, y en bas, z vers la scene) ; `K` et
+        `taille` (largeur, hauteur en pixels) donnent son champ, trace en
+        pyramide jusqu'a `portee` mm. None efface.
+        """
+        for item in self._items_camera:
+            self.removeItem(item)
+        self._items_camera = []
+        if T is None:
+            return
+        T = np.asarray(T, dtype=float)
+        R, o = T[:3, :3], T[:3, 3]
+        # boitier : 90 x 25 x 25 mm (D435), l'objectif sur sa face avant
+        signes = np.array([[sx, sy, sz] for sz in (-1, 1) for sy in (-1, 1)
+                           for sx in (-1, 1)], dtype=float)
+        demi = np.array([45.0, 12.5, 12.5])
+        centre = o - R[:, 2] * 12.5
+        sommets = centre + (signes * demi) @ R.T
+        faces = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
+                          [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+                          [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]], dtype=np.uint32)
+        md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=faces)
+        boitier = gl.GLMeshItem(meshdata=md, smooth=False, color=(0.25, 0.27, 0.30, 1.0),
+                                shader="shaded", glOptions="opaque")
+        self.addItem(boitier)
+        self._items_camera.append(boitier)
+        # champ de vision : les quatre coins de l'image, a `portee` mm
+        if K is not None and taille is not None:
+            K = np.asarray(K, dtype=float)
+            w, h = float(taille[0]), float(taille[1])
+            coins = []
+            for u, v in ((0, 0), (w, 0), (w, h), (0, h)):
+                d = np.array([(u - K[0, 2]) / K[0, 0], (v - K[1, 2]) / K[1, 1], 1.0])
+                coins.append(o + R @ (d * portee))
+            lignes = []
+            for c in coins:
+                lignes += [o, c]
+            for k in range(4):
+                lignes += [coins[k], coins[(k + 1) % 4]]
+            champ = gl.GLLinePlotItem(pos=np.array(lignes, dtype=float),
+                                      color=(0.55, 0.85, 1.0, 0.7), width=1.5,
+                                      antialias=True, mode="lines")
+            self.addItem(champ)
+            self._items_camera.append(champ)
+        pos, col = _trieds(40.0)
+        axes = gl.GLLinePlotItem(pos=pos, color=col, width=2.5, antialias=True,
+                                 mode="lines")
+        axes.setTransform(_qmat(T))
+        self.addItem(axes)
+        self._items_camera.append(axes)
 
     def afficher_reperes(self, actif: bool) -> None:
         for item in self._items_reperes:
