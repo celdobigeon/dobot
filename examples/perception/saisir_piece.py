@@ -173,6 +173,15 @@ class Essai:
         self.au_dessus_du_dessous = z - (cz - haut)
         return cx, cy, z, r
 
+    def statut(self, piece) -> str:
+        """'' si la piece est saisissable telle quelle (avec les marges),
+        sinon la raison -- sans rien bouger."""
+        x, y, z, r = self.prise_de(piece)
+        raison, _h = self.verifier(x, y, z, r)
+        if raison and not self.verifier(x, y, z, ec._angle(r + 180.0))[0]:
+            return ""
+        return raison
+
     # -- le deroule ---------------------------------------------------------
     def saisir(self, piece, quand_meme: bool = False):
         """
@@ -279,8 +288,8 @@ class Essai:
                 self.equerre()
                 return None
         except ErreurExecution as exc2:
-            if not quand_meme:
-                raise
+            if not quand_meme or not interactif:
+                raise                       # l'appelant l'affiche
             self.journal("  le robot a refuse : {}".format(exc2))
             self.equerre()
             return None

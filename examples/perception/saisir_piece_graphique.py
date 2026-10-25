@@ -82,7 +82,10 @@ COULEURS_BGR = {"epaisse": (40, 170, 255), "fine": (255, 200, 40)}
 ROUGE_BGR = (40, 40, 230)
 
 
-def dessiner_boites(image, vue, pieces, types, cible=None):
+ORANGE_BGR = (0, 140, 255)
+
+
+def dessiner_boites(image, vue, pieces, types, cible=None, hors_atteinte: str = ""):
     """
     Chaque piece en BOITE 3D dans l'image couleur : sa pose estimee,
     reprojetee (repere de la profondeur -> camera couleur), face superieure
@@ -111,7 +114,8 @@ def dessiner_boites(image, vue, pieces, types, cible=None):
         M = np.asarray(p.T_camera, float)
         uv = proj(coins @ M[:3, :3].T + M[:3, 3])
         est_cible = p is cible
-        col = ROUGE_BGR if est_cible else COULEURS_BGR.get(p.type, (200, 200, 200))
+        col = ((ORANGE_BGR if hors_atteinte else ROUGE_BGR) if est_cible
+               else COULEURS_BGR.get(p.type, (200, 200, 200)))
         if est_cible:
             for face in ((0, 1, 2, 3), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
                 cv2.fillConvexPoly(voile, uv[list(face)], col)
@@ -124,7 +128,8 @@ def dessiner_boites(image, vue, pieces, types, cible=None):
         for k, c in enumerate(((0, 0, 255), (0, 200, 0), (255, 80, 0))):
             cv2.arrowedLine(img, tuple(ax[0]), tuple(ax[k + 1]), c, 2, cv2.LINE_AA,
                             tipLength=0.25)
-        texte = "{}{} {}".format("CIBLE : " if est_cible else "", p.type, p.face)
+        texte = "{}{} {}".format(("CIBLE HORS D'ATTEINTE : " if hors_atteinte else "CIBLE : ")
+                                 if est_cible else "", p.type, p.face)
         org = (int(uv[:4, 0].mean()) - 40, int(uv[:4, 1].min()) - 10)
         cv2.putText(img, texte, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
         cv2.putText(img, texte, org, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
@@ -211,6 +216,7 @@ class Detecteur(threading.Thread):
         self.epoque = 0
         self.verrou = threading.Lock()
         self.derniere = None           # (epoque, pieces, cible, niveau)
+        self.raison_cible = ""         # cible hors d'atteinte : pourquoi
         self._erreur = ""
         # avancement de la detection en cours, pour la barre de progression
         self.etape = ""                # "", capture, rapide, propositions, consolidee
@@ -238,6 +244,13 @@ class Detecteur(threading.Thread):
             if niveau == "rapide" and d is not None and d[0] == ep and d[3] == "consolidee":
                 return
         cible = self.essai.choisir(pieces) if pieces else None
+        raison = ""
+        if cible is not None and hasattr(self.essai, "statut"):
+            try:
+                raison = self.essai.statut(cible)
+            except Exception as exc:                    # noqa: BLE001
+                raison = str(exc)
+        self.raison_cible = raison
         boites = [boite(p, self.perception.types) for p in pieces]
         try:
             afficher(boites, pieces.index(cible) if cible is not None else None)
@@ -250,10 +263,14 @@ class Detecteur(threading.Thread):
             x, y, z = cible.T_robot[:3, 3] * 1000.0
             texte = "{} : {} piece(s) ; cible : {} {} en x {:.0f} y {:.0f}".format(
                 quoi, len(pieces), cible.type, cible.face, x, y)
+            if raison:
+                texte += ("<br><b style='color:#e06c5a'>CIBLE HORS D'ATTEINTE</b> : {}."
+                          "<br>Deplacez-la, ou 'Forcer la saisie'.".format(raison))
         else:
             texte = "{} : {} piece(s) ; aucune cible".format(quoi, len(pieces))
         try:
-            panneau(cible=texte, saisir=cible is not None)
+            panneau(cible=texte, saisir=cible is not None and not raison,
+                    forcer=cible is not None and bool(raison))
         except Exception:                               # noqa: BLE001
             pass
 
@@ -334,7 +351,8 @@ class Flux(threading.Thread):
                     pieces, cible, niveau = derniere[1], derniere[2], derniere[3]
                 images = {"profondeur": carte_profondeur(capture)}
                 if vue is not None:
-                    img = dessiner_boites(vue.image, vue, pieces, self.types, cible)
+                    img = dessiner_boites(vue.image, vue, pieces, self.types, cible,
+                                          d.raison_cible if cible is not None else "")
                     images["couleur"] = _jpeg(bandeau(img, niveau, d))
                 prog = int(round(100 * d.progression()))
                 demander({"saisie": {"images": images,
@@ -453,8 +471,22 @@ def main(argv=None) -> int:
             except sp.HorsAtteinte as exc:
                 print("  piece HORS D'ATTEINTE ({})".format(exc))
                 panneau(occupe=False, forcer=True,
-                        texte="HORS D'ATTEINTE : {}.\nDeplacez la piece, ou 'Forcer la "
-                              "saisie'.".format(exc))
+                        texte="<b style='color:#e06c5a'>HORS D'ATTEINTE</b> : {}.<br>"
+                              "Deplacez la piece, ou 'Forcer la saisie'.".format(exc))
+            except ErreurExecution as exc:
+                # le robot (ou les garde-fous) a refuse : on le dit, on
+                # tente de revenir en equerre, et on continue
+                print("  MOUVEMENT REFUSE : {}".format(exc))
+                retour = ""
+                try:
+                    essai.equerre()
+                except Exception as exc2:               # noqa: BLE001
+                    retour = ("<br>Le robot ne repond plus aux mouvements ({}) : "
+                              "mise en route necessaire (eteindre et rallumer si une "
+                              "alarme de planification persiste).".format(exc2))
+                panneau(occupe=False, forcer=False,
+                        texte="<b style='color:#e06c5a'>MOUVEMENT REFUSE</b> : {}{}"
+                              .format(exc, retour))
             finally:
                 det.epoque += 1
                 det.pause.clear()
