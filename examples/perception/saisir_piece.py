@@ -318,6 +318,21 @@ class Essai:
         return self.controler(vise)
 
 
+def probleme_etalonnage(donnees) -> str:
+    """'' si l'etalonnage est utilisable ; sinon pourquoi."""
+    T = np.array(donnees["T_robot_camera_mm"], float)
+    rc = ec.Recalage(T[:3, :3], T[:3, 3], {}, 0.0, np.zeros(1), np.ones(1, bool))
+    pb = rc.invraisemblable(float(donnees.get("z_table_mm", 0.0)))
+    if pb:
+        return pb
+    rms = float(donnees.get("rms_mm", 0.0))
+    if rms > 5.0:
+        return "ecart moyen de {:.0f} mm (fausses pieces ?)".format(rms)
+    if int(donnees.get("paires_retenues", donnees.get("paires", 0))) < 8:
+        return "trop peu de poses ({})".format(donnees.get("paires_retenues"))
+    return ""
+
+
 def longueur_outil(demandee, donnees):
     """La longueur d'outil : celle demandee, sinon celle de l'etalonnage
     (les hauteurs du fichier en dependent). Previent d'un desaccord."""
@@ -352,6 +367,12 @@ def main(argv=None) -> int:
         donnees = json.load(f)
     if "T_robot_camera" not in donnees:
         print("etalonnage inacheve : lancez d'abord etalonner_camera_robot.py")
+        return 1
+    probleme = probleme_etalonnage(donnees) if "probleme_etalonnage" in globals() \
+        else sp.probleme_etalonnage(donnees)
+    if probleme:
+        print("ETALONNAGE INUTILISABLE : {}.\n  Refaites-le : dobot.py etalonner-camera "
+              "--recommencer".format(probleme))
         return 1
 
     from dobot_sim import Commande, ErreurExecution

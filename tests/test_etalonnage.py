@@ -377,6 +377,55 @@ class TestDefaut(unittest.TestCase):
         self.assertFalse(et.reprendre_apres_defaut())
 
 
+class TestFaussesPieces(unittest.TestCase):
+
+    T = ec.regarder([560.0, 30.0, 120.0], [240.0, 0.0, 0.0])
+
+    def test_ransac_ecarte_une_paire_fausse_des_4_paires(self):
+        ps = _paires(self.T, (0.0, 0.0), n=4, bruit=0.3, graine=3)
+        ps.append(_paires(self.T, (0.0, 0.0), n=1, graine=9)[0])
+        ps[1].camera = ps[1].camera + [120.0, -40.0, 10.0]     # une fausse piece
+        rc = ec.recaler(ps)
+        self.assertFalse(rc.gardees[1])
+        self.assertLess(rc.rms, 1.0)
+
+    def test_coherence_des_distances_designe_la_vraie_piece(self):
+        robot = ec.PieceSimulee(FauxRobot(x=200.0, y=0.0), decalage=(0.0, 0.0))
+        camera = ec.CameraSimulee(robot, bruit=0.3, graine=2)
+        vraie = camera.voir
+        T = camera.T
+        # un objet du decor, fixe, pris pour une piece a chaque image
+        decor = ec.Vue(T[:3, :3].T @ (np.array([330.0, -90.0, 17.0]) - T[:3, 3]),
+                       np.array([1.0, 0, 0]), ec.TYPE_PIECE, ec.FACE_PIECE, 0.95)
+        camera.voir = lambda: vraie() + [decor]
+        et = ec.Etalonnage(robot, camera, z_table=0.0, graine=4, journal=lambda m: None,
+                           demander=lambda t: "")
+        et.demarrer()
+        et.degager()
+        et.relever_decor()                     # bras en equerre : seul le decor
+        self.assertEqual(len(et.fantomes), 1)
+        for _ in range(8):
+            et.cycle()
+        self.assertGreaterEqual(len(et.paires), 7)
+        self.assertLess(et.recalage.rms, 1.5)
+
+    def test_sans_releve_du_decor_la_coherence_suffit(self):
+        robot = ec.PieceSimulee(FauxRobot(x=200.0, y=0.0), decalage=(0.0, 0.0))
+        camera = ec.CameraSimulee(robot, bruit=0.3, graine=5)
+        vraie = camera.voir
+        T = camera.T
+        decor = ec.Vue(T[:3, :3].T @ (np.array([330.0, -90.0, 17.0]) - T[:3, 3]),
+                       np.array([1.0, 0, 0]), "fine", "a plat", 0.95)
+        camera.voir = lambda: vraie() + [decor]
+        et = ec.Etalonnage(robot, camera, z_table=0.0, graine=6, journal=lambda m: None,
+                           demander=lambda t: "")
+        et.demarrer()
+        for _ in range(10):
+            et.cycle()
+        self.assertGreaterEqual(len(et.paires), 8)
+        self.assertLess(et.recalage.rms, 1.5)
+
+
 class TestSecteur(unittest.TestCase):
 
     def test_poses_dans_le_secteur(self):

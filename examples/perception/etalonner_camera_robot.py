@@ -108,7 +108,7 @@ MARGE_BUTEE = 8.0
 #: posture de degagement : l'equerre (bras arriere vertical, avant-bras
 #: horizontal), le bras arriere un peu penche pour ne pas etre SUR sa
 #: butee (0 deg)
-EQUERRE_J2, EQUERRE_J3 = 5.0, 0.0
+EQUERRE_J2, EQUERRE_J3 = 6.0, 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +181,19 @@ class Recalage:
         T[:3, 3] /= 1000.0
         return T
 
+    def invraisemblable(self, z_table: float) -> str:
+        """'' si la camera est la ou elle peut etre : au-dessus de la table,
+        et regardant vers le bas ; sinon la raison. Un recalage fait sur
+        trop peu de poses, ou sur de fausses pieces, peut la mettre sous la
+        table."""
+        hauteur = float(self.t[2] - z_table)
+        if hauteur < 20.0:
+            return "camera {:.0f} mm sous le plan de la table".format(-hauteur) \
+                if hauteur < 0 else "camera au ras de la table"
+        if float(self.R[2, 2]) > -0.05:
+            return "camera qui regarde vers le haut"
+        return ""
+
     @property
     def rms(self) -> float:
         r = self.residus[self.gardees]
@@ -214,6 +227,42 @@ def _angle(a: float, periode: float = 360.0) -> float:
     return (a + periode / 2.0) % periode - periode / 2.0
 
 
+#: mm : une paire s'accorde avec un recalage si son residu reste sous ce
+#: seuil (le decalage dans la pince, non modelise ici, fait quelques mm)
+SEUIL_COHERENCE = 8.0
+
+
+def coherentes(P: np.ndarray, G: np.ndarray, seuil: float = SEUIL_COHERENCE,
+               essais: int = 300, graine: int = 0) -> np.ndarray:
+    """
+    Le plus grand groupe de paires qu'une MEME transformation rigide
+    explique (RANSAC sur des triplets) : les paires fausses -- une fausse
+    piece prise pour la vraie -- restent dehors.
+    """
+    n = len(P)
+    if n < 4:
+        return np.ones(n, bool)
+    import itertools
+    rng = np.random.default_rng(graine)
+    tous = list(itertools.combinations(range(n), 3))
+    if len(tous) > essais:
+        tous = [tuple(rng.choice(n, 3, replace=False)) for _ in range(essais)]
+    meilleur, score = np.ones(n, bool), -1.0
+    for tri in tous:
+        idx = list(tri)
+        # triplet degenere (points presque alignes) : rotation mal definie
+        a, b, c = G[idx]
+        if np.linalg.norm(np.cross(b - a, c - a)) < 100.0:
+            continue
+        R, t = kabsch(P[idx], G[idx])
+        res = np.linalg.norm(P @ R.T + t - G, axis=1)
+        dedans = res < seuil
+        s = dedans.sum() - 1e-3 * float(res[dedans].sum())
+        if s > score:
+            meilleur, score = dedans, s
+    return meilleur if meilleur.sum() >= 3 else np.ones(n, bool)
+
+
 def recaler(paires: Sequence[Paire], decalage: bool = True,
             iterations: int = 40) -> Recalage:
     """
@@ -241,7 +290,9 @@ def recaler(paires: Sequence[Paire], decalage: bool = True,
         return G + np.array([Rz[i] @ [dec[sessions[i]][0], dec[sessions[i]][1], 0.0]
                              for i in range(n)])
 
-    gardees = np.ones(n, bool)
+    # des 4 paires : on part du plus grand groupe COHERENT (une fausse
+    # piece retenue en debut d'etalonnage ne fausse plus tout)
+    gardees = coherentes(P, G) if n >= 4 else np.ones(n, bool)
     for _passe in range(2):
         dec = {k: np.zeros(2) for k in set(sessions.tolist())}
         for _ in range(iterations):
@@ -604,9 +655,15 @@ class Etalonnage:
                 return False
         return True
 
+    def fiable(self) -> bool:
+        """Le recalage en cours peut-il guider le choix des points ?"""
+        rc = self.recalage
+        return (rc is not None and len(self.paires) >= PAIRES_MIN and rc.rms <= 5.0
+                and not rc.invraisemblable(self.z_table))
+
     def _visible(self, x, y, marge=60) -> bool:
         K, taille = getattr(self.camera, "K", None), getattr(self.camera, "taille", None)
-        if self.recalage is None or K is None or taille is None:
+        if not self.fiable() or K is None or taille is None:
             return True
         for dx, dy in ((-40, 0), (40, 0), (0, -40), (0, 40), (0, 0)):
             p = self.recalage.vers_camera([x + dx, y + dy, self._z(HAUTEUR_PIECE)])
@@ -627,7 +684,7 @@ class Etalonnage:
         deja = np.array([p.pince[:2] for p in self.paires] + [[x0, y0]])
         meilleur, score = None, -1.0
         for _ in range(400):
-            if self.recalage is None or len(self.paires) < PAIRES_MIN:
+            if not self.fiable():
                 a = self.rng.uniform(0, 2 * math.pi)
                 rho = RAYON_DEPART * math.sqrt(self.rng.uniform(0.2, 1.0))
                 x, y = x0 + rho * math.cos(a), y0 + rho * math.sin(a)
@@ -648,45 +705,75 @@ class Etalonnage:
         return meilleur
 
     # -- la camera ----------------------------------------------------------
+    def relever_decor(self) -> None:
+        """
+        Bras en equerre, AUCUNE piece sur la table : ce que la camera prend
+        alors pour des pieces est du DECOR (chaise, objet au fond, reflet).
+        Ces positions seront ignorees.
+        """
+        try:
+            vues = self.camera.voir()
+        except Exception as exc:                        # noqa: BLE001
+            self.journal("  (decor non releve : {})".format(exc))
+            return
+        self.fantomes = [v.position for v in vues]
+        if self.fantomes:
+            self.journal("  decor : {} fausse(s) piece(s) reperee(s), ignoree(s) ensuite"
+                         .format(len(self.fantomes)))
+
+    def _incoherence(self, v: Vue, g: np.ndarray) -> float:
+        """
+        Le robot connait la distance entre la piece qu'il vient de poser
+        (g) et celles des poses precedentes ; la camera doit voir la meme
+        entre la candidate v et les pieces retenues. Ecart median, mm.
+        """
+        ecarts = [abs(np.linalg.norm(v.position - p.camera) -
+                      np.linalg.norm(g - p.dessus)) for p in self.paires[-12:]]
+        return float(np.median(ecarts)) if ecarts else float("nan")
+
     def observer(self, attendu_robot=None) -> Optional[Vue]:
         """
         La piece posee, parmi ce que voit la camera ; None si on ne peut pas
         la designer (rien de vu, ou plusieurs candidates qu'on ne sait pas
         departager) : l'appelant abandonne la pose et continue. On ne
-        demande jamais rien : une detection en trop (reflet, objet au bord)
-        ne doit pas arreter l'etalonnage.
+        demande jamais rien.
+
+        Trois filtres : les doublons (meme piece vue deux fois), le DECOR
+        releve au depart (relever_decor), puis la COHERENCE des distances :
+        entre deux poses, la piece s'est deplacee d'une distance que le
+        robot connait, et que la camera doit retrouver.
         """
         vues = list(self.camera.voir())
-        # une meme piece detectee deux fois : on garde la plus sure
         vues.sort(key=lambda v: -v.confiance)
         uniques: List[Vue] = []
         for v in vues:
             if all(np.linalg.norm(v.position - u.position) > 20.0 for u in uniques):
                 uniques.append(v)
-        vues = uniques
+        fantomes = getattr(self, "fantomes", [])
+        vues = [v for v in uniques
+                if all(np.linalg.norm(v.position - f) > 20.0 for f in fantomes)]
         self.derniere_observation = len(vues)
-        if len(vues) <= 1:
-            return vues[0] if vues else None
-        if attendu_robot is not None and self.recalage is not None:
-            prevu = self.recalage.vers_camera(attendu_robot)
-            vues.sort(key=lambda v: np.linalg.norm(v.position - prevu))
-            d0 = np.linalg.norm(vues[0].position - prevu)
-            d1 = np.linalg.norm(vues[1].position - prevu)
-            return vues[0] if d0 < ECART_MAX and d1 > d0 + 20.0 else None
-        # pas encore de recalage : la bonne espece de piece...
+        self.derniere_raison = ""
+        if not vues:
+            return None
+        if attendu_robot is not None and self.paires:
+            g = np.asarray(attendu_robot, float)
+            notes = sorted(((self._incoherence(v, g), k) for k, v in enumerate(vues)))
+            meilleure, k = notes[0]
+            seconde = notes[1][0] if len(notes) > 1 else float("inf")
+            if meilleure < SEUIL_COHERENCE and seconde > meilleure + 10.0:
+                return vues[k]
+            self.derniere_raison = ("incoherente avec les poses precedentes ({:.0f} mm)"
+                                    .format(meilleure) if meilleure >= SEUIL_COHERENCE
+                                    else "{} pieces aussi coherentes".format(len(vues)))
+            return None
+        # premiere pose : une seule piece, ou une seule de la bonne espece
+        if len(vues) == 1:
+            return vues[0]
         bonnes = [v for v in vues if v.type == TYPE_PIECE and v.face == FACE_PIECE]
         if len(bonnes) == 1:
             return bonnes[0]
-        # ... sinon la plus proche de la piece vue a la pose precedente
-        # (les premieres poses restent a quelques centimetres les unes des
-        # autres)
-        if self.paires:
-            ref = self.paires[-1].camera
-            vues.sort(key=lambda v: np.linalg.norm(v.position - ref))
-            d0 = np.linalg.norm(vues[0].position - ref)
-            d1 = np.linalg.norm(vues[1].position - ref)
-            if d1 > d0 + 40.0:
-                return vues[0]
+        self.derniere_raison = "{} pieces vues".format(len(vues))
         return None
 
     # -- le deroule ---------------------------------------------------------
@@ -803,7 +890,8 @@ class Etalonnage:
                 self.interdits.append((x, y))
                 quoi = "piece NON VUE (hors champ ?) : point abandonne"
             else:
-                quoi = "{} pieces vues, impossible de savoir laquelle : pose ignoree".format(n)
+                quoi = "{} : pose ignoree".format(getattr(self, "derniere_raison", "")
+                                                  or "{} pieces vues".format(n))
             self.journal("  --  pose x {:6.1f} y {:6.1f} r {:6.1f}  | {}, on continue"
                          .format(x, y, r, quoi))
             self.saisir(x, y, r, remonter=False)
@@ -827,6 +915,9 @@ class Etalonnage:
                 ex, _angle(prevu[1] - r, 180.0))
         if self.recalage is not None:
             texte += "  | recalage : {:.2f} mm rms".format(self.recalage.rms)
+            pb = self.recalage.invraisemblable(self.z_table)
+            if pb and len(self.paires) >= PAIRES_MIN:
+                texte += "  (INVRAISEMBLABLE : {})".format(pb)
         self.journal(texte)
         self.enregistrer()
         # la remontee est faite par la pose suivante, enchainee avec le transit
@@ -1231,6 +1322,8 @@ def main(argv=None) -> int:
             print("table a z = {:.1f} mm (repere robot)".format(z_contact))
             et.demarrer()
             et.enregistrer()
+        et.degager()
+        et.relever_decor()
         print("\nETALONNAGE : {} (Ctrl+C pour arreter : la piece est reposee, tout "
               "est enregistre)".format("{} poses".format(a.points) if a.points
                                        else "poses sans fin"))

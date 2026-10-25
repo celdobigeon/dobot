@@ -1161,7 +1161,7 @@ class Commande:
         if not getattr(self, "_annonces_muettes", False):
             for a in plan.annonces:
                 _signaler(a)
-        if plan.avertissements:
+        if plan.avertissements and not getattr(self, "_annonces_muettes", False):
             _signaler("duree ou vitesse non tenable : le robot fera au mieux",
                       plan.avertissements)
         if reserves:

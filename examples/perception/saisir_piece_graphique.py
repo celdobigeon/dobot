@@ -470,6 +470,12 @@ def main(argv=None) -> int:
     if "T_robot_camera" not in donnees:
         print("etalonnage inacheve : lancez d'abord etalonner_camera_robot.py")
         return 1
+    probleme = probleme_etalonnage(donnees) if "probleme_etalonnage" in globals() \
+        else sp.probleme_etalonnage(donnees)
+    if probleme:
+        print("ETALONNAGE INUTILISABLE : {}.\n  Refaites-le : dobot.py etalonner-camera "
+              "--recommencer".format(probleme))
+        return 1
     T = np.array(donnees["T_robot_camera"], float)
 
     from dobot_sim import Commande, ErreurExecution
