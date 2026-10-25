@@ -340,6 +340,26 @@ class EtalonnagePince:
         if archive:
             self.archive = os.path.join(archive, time.strftime("%Y%m%d_%H%M%S"))
         self.decor_capture = None
+        #: fichier ou publier l'etat, pour l'apercu (apercu_pince.py)
+        self.fichier_etat: Optional[str] = None
+        self._etat: dict = {}
+
+    # -- apercu -------------------------------------------------------------
+    def publier(self, **kw) -> None:
+        """L'etat pour l'apercu : texte, pose commandee, decor, solution."""
+        if self.fichier_etat is None:
+            return
+        self._etat.update(kw)
+        if self.solution is not None and self.seg is not None:
+            self._etat["M"] = self.solution.M().tolist()
+            self._etat["T_ct"] = self.seg.T_ct.tolist()
+        try:
+            tmp = self.fichier_etat + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._etat, f)
+            os.replace(tmp, self.fichier_etat)
+        except OSError:
+            pass
 
     # -- robot --------------------------------------------------------------
     def permis(self, x, y, z, r) -> bool:
@@ -363,6 +383,7 @@ class EtalonnagePince:
 
     def equerre(self):
         q = [float(v) for v in self.robot.angles()]
+        self.publier(pose=None)
         self.robot.movj(q=[q[0], EQUERRE_J2, 0.0, q[3]])
 
     def T_robot_camera(self) -> np.ndarray:
@@ -388,10 +409,19 @@ class EtalonnagePince:
         self.decor_capture = cap
         self.seg = Segmenteur(cap)
         self._archiver("00_decor", cap, {"pose": [float(v) for v in self.robot.pose()]})
+        if self.fichier_etat is not None:
+            decor = os.path.join(os.path.dirname(self.fichier_etat), "apercu_decor.npz")
+            try:
+                np.savez(decor, profondeur=cap["profondeur"])
+                self.publier(decor=decor, seuil=SEUIL_DECOR, texte="decor releve")
+            except OSError:
+                pass
         self.journal("[etape 1/4] decor releve ; camera a {:.0f} mm au-dessus de la table, plongee {:.1f} "
                      "deg".format(self.seg.hauteur_camera, self.seg.plongee))
 
     def voir(self, x, y, z, r) -> Optional[Vue]:
+        self.publier(pose=[x, y, z, r], texte="{}vue {}".format(
+            getattr(self, "prefixe", ""), len(self.vues) + 1))
         self.robot.movj(x=x, y=y, z=z, r=r)
         time.sleep(0.3)
         cap = self.capturer()
@@ -433,6 +463,7 @@ class EtalonnagePince:
             avancer=lambda k, n: barre("premier recalage ", k, n))
         self.journal("  premier recalage : {:.2f} mm (mediane modele -> mesure)".format(
             self.solution.distance))
+        self.publier(texte="premier recalage : {:.1f} mm".format(self.solution.distance))
         return self.solution
 
     def visible(self, x, y, z, marge=45) -> bool:
@@ -482,6 +513,8 @@ class EtalonnagePince:
             self.vues, self.solution, departs=6,
             avancer=lambda k, n: barre("recalage final   ", k, n))
         self.journal("  recalage : {:.2f} mm (mediane modele -> mesure), sur {} vues".format(
+            self.solution.distance, len(self.vues)))
+        self.publier(texte="recalage final : {:.1f} mm sur {} vues".format(
             self.solution.distance, len(self.vues)))
 
     def stabilite(self) -> Tuple[float, float]:
@@ -619,6 +652,8 @@ def main(argv=None) -> int:
     ap.add_argument("--vitesse", type=float, default=50.0, help="mm/s (50)")
     ap.add_argument("--vues", type=int, default=45, help="poses de couverture (45)")
     ap.add_argument("--port", default=None)
+    ap.add_argument("--sans-apercu", action="store_true",
+                    help="pas de fenetre camera (modele de la pince en surimpression)")
     ap.add_argument("--sortie", default=ec.FICHIER)
     ap.add_argument("--archive", nargs="?", const="derniere", default=None,
                     help="recalculer a partir des vues enregistrees (la derniere serie, "
@@ -652,6 +687,7 @@ def main(argv=None) -> int:
                      vitesse=a.vitesse, vitesse_articulaire=a.vitesse,
                      longueur_outil=longueur)
     et = EtalonnagePince(robot, lambda: camera.capturer(IMAGES))
+    apercu = None if a.sans_apercu else lancer_apercu(et)
     try:
         # pompe coupee : la pince n'a rien a tenir (ses doigts, fins, ne
         # comptent presque pas dans le recalage)
@@ -673,7 +709,28 @@ def main(argv=None) -> int:
         except Exception:                              # noqa: BLE001
             pass
         robot.fermer()
+        if apercu is not None:
+            et.publier(fin=True)
+            try:
+                apercu.wait(timeout=3.0)
+            except Exception:                          # noqa: BLE001
+                apercu.terminate()
     return 0
+
+
+def lancer_apercu(et: "EtalonnagePince"):
+    """La fenetre camera (apercu_pince.py), dans un processus a part."""
+    import subprocess
+    import tempfile
+    dossier = tempfile.mkdtemp(prefix="etalonnage_pince_")
+    et.fichier_etat = os.path.join(dossier, "etat.json")
+    et.publier(texte="demarrage")
+    try:
+        return subprocess.Popen([sys.executable, os.path.join(ICI, "apercu_pince.py"),
+                                 et.fichier_etat, "--pid", str(os.getpid())])
+    except OSError as exc:
+        print("(apercu impossible : {})".format(exc))
+        return None
 
 
 if __name__ == "__main__":
