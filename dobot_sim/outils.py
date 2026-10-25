@@ -9,16 +9,19 @@ Un outil apporte trois choses :
   * un MAILLAGE, attache au repere 5 (l'axe outil, qui tourne avec J4).
   * un ETAT binaire : ventouse aspirante ou non, pince ouverte ou fermee.
 
-Les maillages sont PARAMETRIQUES et non importes de la CAO : les fichiers
+Les maillages sont PARAMETRIQUES, sauf celui de la pince : les fichiers
 STEP des outils fournis (`ventouse.stp`, `Support_outil.stp`) sont des
 B-Rep exacts, sans facettes, et les tesseller demanderait un noyau
-geometrique. Les dimensions retenues sont celles des outils Dobot, a
+geometrique. La pince, elle, a ete tesselee une fois pour toutes depuis
+la CAO officielle (assets/pince_dobot.npz) ; a defaut, on la dessine en
+boites. Les dimensions retenues sont celles des outils Dobot, a
 quelques millimetres pres ; elles restent modifiables ici meme, et la
 longueur est de toute facon la seule grandeur qui entre dans le calcul.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -126,9 +129,74 @@ def _ventouse(o: Outil, actif: bool):
             (*cuvette, ROUGE if actif else NOIR)]
 
 
+#: maillage CAO de la pince, repere de l'outil (origine au bout des doigts
+#: fermes, z vers le haut), et les numeros de piece des deux DOIGTS
+FICHIER_PINCE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "assets", "pince_dobot.npz")
+DOIGTS_CAO = (3, 4)
+#: mm : demi-ecart des faces internes des doigts, pince fermee dans la CAO
+DEMI_FERME_CAO = 1.0
+_CAO: dict = {}
+
+
+def _pince_cao():
+    """[(sommets, faces, numero de piece)] de la pince CAO, ou None."""
+    if "m" not in _CAO:
+        try:
+            with np.load(FICHIER_PINCE) as z:
+                V = np.asarray(z["sommets"], np.float32)
+                F = np.asarray(z["faces"], np.int64)
+                P = np.asarray(z["piece"])
+        except (OSError, KeyError, ValueError):
+            _CAO["m"] = None
+            return None
+        groupes = []
+        doigts = set(DOIGTS_CAO)
+        # le corps d'un seul tenant, chaque doigt a part (ils coulissent)
+        for nom, garde in (("corps", lambda k: k not in doigts),
+                           (DOIGTS_CAO[0], lambda k: k == DOIGTS_CAO[0]),
+                           (DOIGTS_CAO[1], lambda k: k == DOIGTS_CAO[1])):
+            sel = np.array([garde(int(k)) for k in P[F[:, 0]]])
+            f = F[sel]
+            idx, inv = np.unique(f, return_inverse=True)
+            groupes.append((V[idx], inv.reshape(-1, 3).astype(np.int32), nom))
+        _CAO["m"] = groupes
+    return _CAO["m"]
+
+
 def _pince(o: Outil, actif: bool):
     """
-    Pince pneumatique a deux doigts. `actif` = pince fermee.
+    Pince pneumatique, dessinee depuis la CAO officielle : le corps fixe,
+    les deux doigts qui coulissent selon y. `actif` = pince fermee ; fermee
+    sur une piece (`serrage`), les doigts s'arretent a ses flancs. La CAO
+    commence 77 mm au-dessus du bout des doigts : si la longueur d'outil est
+    plus grande, une entretoise relie la bride au haut de la pince.
+    """
+    cao = _pince_cao()
+    if cao is None:
+        return _pince_boites(o, actif)
+    if actif:
+        demi = (o.serrage / 2.0) if o.serrage else DEMI_FERME_CAO
+    else:
+        demi = o.ouverture / 2.0
+    pointe = np.array([0.0, 0.0, -o.longueur], np.float32)
+    out = []
+    for V, F, nom in cao:
+        if nom == "corps":
+            out.append((V + pointe, F, ALU))
+            continue
+        cote = 1.0 if float(V[:, 1].mean()) > 0 else -1.0
+        decale = np.array([0.0, cote * (demi - DEMI_FERME_CAO), 0.0], np.float32)
+        out.append((V + pointe + decale, F, NOIR))
+    haut = float(max(V[:, 2].max() for V, _F, _n in cao)) - o.longueur
+    if haut < -1.0:
+        out.append((*cylindre(5.0, -haut, 2, 16, (0, 0, haut / 2.0)), GRIS))
+    return out
+
+
+def _pince_boites(o: Outil, actif: bool):
+    """
+    Pince pneumatique a deux doigts, en boites (sans le fichier CAO).
 
     Les doigts se ferment selon l'axe y de l'outil : a r = 0, une piece
     allongee selon x se saisit par ses flancs. C'est ce qu'a mesure

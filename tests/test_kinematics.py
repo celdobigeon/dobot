@@ -961,7 +961,8 @@ class TestOutils(unittest.TestCase):
 
         def ecartement(actif):
             V = np.vstack([p.sommets for p in o.pieces(actif)])
-            doigts = V[V[:, 2] < -40.0]           # sous le corps de la pince
+            # le bas des doigts, sous le corps de la pince
+            doigts = V[V[:, 2] < -o.longueur + 20.0]
             self.assertGreater(len(doigts), 0)
             # les doigts se ferment selon y (axe de serrage mesure)
             return float(doigts[:, 1].max() - doigts[:, 1].min())
