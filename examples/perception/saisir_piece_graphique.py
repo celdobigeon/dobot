@@ -11,6 +11,10 @@ permanence, dans un fil a part : les pieces vues s'affichent dans la vue
 robot prendrait. Deplacez les pieces sur la table : l'affichage suit
 (une detection prend 2 a 4 s).
 
+En bas, le panneau Camera montre le flux video (une image a la fois,
+quelques fois par seconde) avec les boites de la derniere detection, et la
+carte de profondeur.
+
 Le panneau Programme, sans objet ici, est remplace par un panneau Saisie :
 "Saisir la cible" -- le robot la saisit, revient en equerre, la repose
 ailleurs, revient en equerre, comme saisir_piece.py -- et "Forcer la
@@ -234,10 +238,6 @@ class Detecteur(threading.Thread):
                 texte = "{} piece(s) vue(s) ; aucune cible".format(len(pieces))
             try:
                 panneau(cible=texte, saisir=cible is not None)
-                from dobot_sim.passerelle import demander
-                demander({"saisie": {"images": images_camera(self.perception, capture,
-                                                             pieces, cible)}},
-                         attente=3000)
             except Exception:                           # noqa: BLE001
                 pass
 
@@ -251,6 +251,66 @@ class Detecteur(threading.Thread):
                 return d[2]
             time.sleep(0.1)
         return None
+
+
+class Flux(threading.Thread):
+    """
+    Le flux video du panneau Camera : une image a la fois (pas de
+    mediane), quelques fois par seconde, avec les boites de la DERNIERE
+    detection. Pendant un mouvement du bras, les boites ne sont plus a
+    jour : on montre l'image seule.
+    """
+
+    def __init__(self, detecteur, types, capturer=None, cadence: float = 8.0):
+        super().__init__(daemon=True)
+        if capturer is None:
+            import camera
+            capturer = lambda: camera.capturer(1, delai=5.0)  # noqa: E731
+        self.capturer = capturer
+        self.detecteur = detecteur
+        self.types = types
+        self.periode = 1.0 / float(cadence)
+        self.fin = threading.Event()
+        self.images = 0
+
+    def run(self):
+        import perception
+        from dobot_sim.passerelle import demander
+        while not self.fin.is_set():
+            t0 = time.time()
+            try:
+                capture = self.capturer()
+                vue = perception.vue_couleur(capture)
+                d = self.detecteur
+                with d.verrou:
+                    derniere = d.derniere
+                pieces, cible = [], None
+                if derniere is not None and derniere[0] == d.epoque \
+                        and not d.pause.is_set():
+                    pieces, cible = derniere[1], derniere[2]
+                images = {"profondeur": carte_profondeur(capture)}
+                if vue is not None:
+                    images["couleur"] = _jpeg(dessiner_boites(vue.image, vue, pieces,
+                                                              self.types, cible))
+                demander({"saisie": {"images": images}}, attente=2000)
+                self.images += 1
+            except Exception:                           # noqa: BLE001
+                time.sleep(0.5)
+            time.sleep(max(0.0, self.periode - (time.time() - t0)))
+
+
+def carte_profondeur(capture) -> str:
+    """Profondeur en fausses couleurs (proche rouge, loin bleu), JPEG base64."""
+    import cv2
+    z = np.asarray(capture.get("profondeur"), float)
+    valides = z > 0
+    if not z.size or not valides.any():
+        return ""
+    lo, hi = np.percentile(z[valides], (2, 98))
+    n = np.clip((z - lo) / max(hi - lo, 1e-6), 0, 1)
+    carte = cv2.applyColorMap((255 * (1 - n)).astype(np.uint8), cv2.COLORMAP_TURBO)
+    carte[~valides] = 0
+    return _jpeg(carte)
 
 
 def main(argv=None) -> int:
@@ -289,6 +349,8 @@ def main(argv=None) -> int:
         robot.pince(False)
         essai.equerre()
         det.start()
+        flux = Flux(det, perc_continue.types)
+        flux.start()
         print("La detection tourne : pieces dans la vue 3D, la cible en rouge.\n"
               "Bouton 'Saisir la cible' dans la fenetre (ou Entree ici) ; Ctrl+C pour "
               "arreter.")
@@ -328,6 +390,8 @@ def main(argv=None) -> int:
         print("ECHEC : {}".format(exc))
     finally:
         det.fin.set()
+        if "flux" in locals():
+            flux.fin.set()
         try:
             demander({"saisie": {"desactiver": True}})
         except Exception:                               # noqa: BLE001

@@ -424,10 +424,13 @@ def main():
                     c = acquisition.capture(int(demande.get("images",
                                                             camera.N_IMAGES)))
                     camera.envoyer_message(self.request, camera.empaqueter(c))
-                    valides = c["profondeur"] > 0
-                    print("capture servie : {:.0f} % de pixels mesures, "
-                          "{:.1f} s".format(100 * valides.mean(),
-                                            time.time() - debut), flush=True)
+                    # une image seule, c'est un flux video : on ne le
+                    # journalise pas, il inonderait le terminal
+                    if int(demande.get("images", camera.N_IMAGES)) > 1:
+                        valides = c["profondeur"] > 0
+                        print("capture servie : {:.0f} % de pixels mesures, "
+                              "{:.1f} s".format(100 * valides.mean(),
+                                                time.time() - debut), flush=True)
                 else:
                     camera.envoyer_message(self.request, b"ERREUR demande "
                                            b"inconnue")
