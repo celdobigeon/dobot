@@ -165,22 +165,51 @@ def deplacer(a) -> int:
     p = pont.liaison.pose()
     x0, y0, z0, r0 = pont.depuis_controleur(p.x, p.y, p.z, p.r)
     cible = (x0 + a.dx, y0 + a.dy, z0 + a.dz, r0 + a.dr)
+    print("depuis  x {:7.1f}  y {:7.1f}  z {:7.1f}  r {:7.1f}".format(x0, y0, z0, r0))
     if not modele.atteignable(*cible):
-        print("HORS D'ATTEINTE : x {:.1f}  y {:.1f}  z {:.1f}  r {:.1f} (depuis z {:.1f}) ; "
-              "rien n'a bouge".format(*cible, z0))
+        # jusqu'ou peut-on aller dans cette direction ? (dichotomie)
+        bas, haut = 0.0, 1.0
+        for _ in range(30):
+            m = 0.5 * (bas + haut)
+            if modele.atteignable(x0 + m * a.dx, y0 + m * a.dy, z0 + m * a.dz, r0 + m * a.dr):
+                bas = m
+            else:
+                haut = m
+        print("HORS D'ATTEINTE : x {:.1f}  y {:.1f}  z {:.1f}  r {:.1f} sort de l'espace de "
+              "travail du bras\n  (une articulation passerait sa butee). Rien n'a bouge."
+              .format(*cible))
+        if not modele.atteignable(x0, y0, z0, r0):
+            print("  Le bras est DEJA hors de l'espace de travail du modele (une "
+                  "articulation\n  est au-dela de sa butee) : ramenez-le d'abord "
+                  "vers le centre, par exemple\n  dobot.py deplacer 0 0 -20")
+        elif bas > 0.02:
+            print("  Dans cette direction, on peut aller au plus a {:.0f} % du chemin : "
+                  "deplacer {:.0f} {:.0f} {:.0f}".format(100 * bas, bas * a.dx, bas * a.dy,
+                                                         bas * a.dz))
         _fermer_liaison_directe()
         return 1
-    manuel = a.manuel or bool(pont.liaison.alarmes())
+    alarmes = pont.liaison.alarmes()
+    manuel = a.manuel or bool(alarmes)
     if manuel:
         try:
-            if not a.manuel:
-                print("robot en defaut : deplacement en MODE MANUEL, z d'abord")
+            if alarmes:
+                from dobot_sim.liaison import resume_alarmes
+                print("Le robot est en DEFAUT :")
+                for ligne in resume_alarmes(alarmes):
+                    print("  " + ligne)
+                print("Dans cet etat, le controleur refuse tout mouvement programme. On "
+                      "deplace donc\nle bras en MODE MANUEL (comme les fleches du boitier), "
+                      "un axe apres l'autre,\nz d'abord, lentement. Ctrl+C l'arrete a tout "
+                      "moment.")
             if a.dr:
                 print("  (--dr ignore en mode manuel)")
             x, y, z, r = pont.deplacer_manuel(a.dx, a.dy, a.dz,
-                                              vitesse=min(a.vitesse, 20.0))
+                                              vitesse=min(a.vitesse, 20.0), dire=print)
             print("pose    x {:7.1f}  y {:7.1f}  z {:7.1f} mm   r {:7.1f} deg"
                   .format(x, y, z, r))
+            if alarmes:
+                print("Le defaut est toujours la : pour l'effacer, prise d'origine\n"
+                      "  .venv/bin/python mise_en_route.py --sans-posture")
         finally:
             _fermer_liaison_directe()
         return 0

@@ -293,13 +293,17 @@ class PontReel:
 
     def deplacer_manuel(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0,
                         vitesse: float = 10.0, tolerance: float = 0.5,
-                        delai: float = 30.0) -> Tuple[float, float, float, float]:
+                        delai: float = 30.0,
+                        dire: Optional[Callable[[str], None]] = None
+                        ) -> Tuple[float, float, float, float]:
         """
         Deplacement RELATIF de la pointe d'outil (mm, repere de la base) en
         MODE MANUEL, un axe apres l'autre : z d'abord (on se degage avant
         de se deplacer), puis x, puis y. Hors file : marche meme robot en
-        defaut. Rend la pose obtenue (repere du simulateur).
+        defaut. Rend la pose obtenue (repere du simulateur). `dire` recoit
+        un compte rendu lisible, axe par axe.
         """
+        dire = dire or (lambda _m: None)
         li = self._exiger()
         li.parametres_jog_cartesien(vitesse, 3.0 * vitesse)
 
@@ -314,6 +318,8 @@ class PontReel:
                 if abs(cibles[i] - depart[i]) < tolerance:
                     continue
                 plus, moins = {0: (1, 2), 1: (3, 4), 2: (5, 6)}[i]
+                nom = "xyz"[i]
+                dire("  {} : {:.1f} -> {:.1f} mm ...".format(nom, depart[i], cibles[i]))
                 fin = time.time() + delai
                 immobile, prec = 0, None
                 while time.time() < fin:
@@ -324,8 +330,8 @@ class PontReel:
                     # le bras ne bouge plus : butee atteinte, on s'arrete
                     immobile = immobile + 1 if prec is not None and abs(v - prec) < 0.05 else 0
                     if immobile >= 4:
-                        self.journal("mode manuel : le bras ne va pas plus loin "
-                                     "(butee), arrete a {:.1f} mm de la cible".format(abs(e)))
+                        dire("  {} : le bras ne va pas plus loin, une articulation est "
+                             "en butee ; arrete a {:.1f} mm de la cible".format(nom, abs(e)))
                         break
                     prec = v
                     li.jog(moins if e > 0 else plus, articulaire=False)
@@ -334,6 +340,7 @@ class PontReel:
                     time.sleep(0.05)
                 li.jog(0, articulaire=False)
                 time.sleep(0.2)
+                dire("  {} : {:.1f} mm".format(nom, float(pose()[i])))
         finally:
             li.jog(0, articulaire=False)
         return tuple(float(v) for v in pose())
