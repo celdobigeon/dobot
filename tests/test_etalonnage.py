@@ -185,6 +185,86 @@ class TestApproche(unittest.TestCase):
             self.assertGreaterEqual(t[j][2] - t[i][2], ec.APPROCHE)
 
 
+class TestReprise(unittest.TestCase):
+
+    def _session(self, chemin, graine=6):
+        robot = ec.PieceSimulee(FauxRobot(x=200.0, y=0.0), decalage=(0.0, 3.0))
+        camera = ec.CameraSimulee(robot, bruit=0.5, graine=graine)
+        reponses = []
+        et = ec.Etalonnage(robot, camera, graine=graine, journal=lambda m: None,
+                           demander=lambda t: reponses.pop(0) if reponses else "")
+        et.chemin = chemin
+        return et, robot, reponses
+
+    def test_interrompre_puis_nouvelle_piece(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            chemin = os.path.join(d, "e.json")
+            et, robot, _ = self._session(chemin)
+            et.z_table = 0.0
+            et.demarrer()
+            for _ in range(6):
+                et.cycle()
+            # Ctrl+C : la piece est en main, on la repose
+            ec.interrompu(et)
+            self.assertEqual(et.piece["etat"], "posee")
+            self.assertFalse(robot.tenue)
+            et.enregistrer()
+            with open(chemin) as f:
+                data = json.load(f)
+            self.assertEqual(data["paires"], 6)
+            # reprise avec une NOUVELLE piece, decalee autrement dans la pince
+            et2, robot2, reponses = self._session(chemin, graine=8)
+            robot2.decalage = np.array([0.0, -4.0, 0.0])
+            et2.restaurer(data)
+            reponses.append("n")
+            robot2.robot._p = [et2.depart[0], et2.depart[1], 40.0, et2.depart[2]]
+            et2.remettre_piece()
+            self.assertEqual(et2.session, 1)
+            for _ in range(6):
+                et2.cycle()
+            rc = et2.recalage
+            self.assertEqual(sorted(rc.decalages), [0, 1])
+            self.assertLess(np.linalg.norm(rc.decalages[0] - [0.0, 3.0]), 1.5)
+            self.assertLess(np.linalg.norm(rc.decalages[1] - [0.0, -4.0]), 1.5)
+            self.assertLess(rc.rms, 1.5)
+
+    def test_reprendre_la_piece_posee(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            chemin = os.path.join(d, "e.json")
+            et, robot, _ = self._session(chemin)
+            et.z_table = 0.0
+            et.demarrer()
+            for _ in range(4):
+                et.cycle()
+            x, y, r = et.point_suivant()
+            et.poser(x, y, r)
+            et.enregistrer()
+            with open(chemin) as f:
+                data = json.load(f)
+            # meme piece, toujours sur la table : la reprise va la chercher
+            et2 = ec.Etalonnage(robot, et.camera, journal=lambda m: None,
+                                demander=lambda t: "")
+            et2.restaurer(data)
+            et2.remettre_piece()
+            self.assertTrue(robot.tenue)
+            self.assertEqual(et2.session, 0)
+            self.assertEqual(len(et2.paires), 4)
+
+    def test_charger_inacheve(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            chemin = os.path.join(d, "e.json")
+            with open(chemin, "w") as f:
+                json.dump({"paires": 2, "z_table_mm": 0.0}, f)
+            with self.assertRaises(ValueError):
+                ec.charger_etalonnage(chemin)
+
+
 class TestSecteur(unittest.TestCase):
 
     def test_poses_dans_le_secteur(self):

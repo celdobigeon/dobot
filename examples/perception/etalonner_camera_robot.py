@@ -39,6 +39,13 @@ Deroule :
   5. le resultat est ecrit dans etalonnage_camera_robot.json, que
      `charger_etalonnage()` relit pour Perception(T_robot_camera=...).
 
+INTERRUPTION ET REPRISE. Ctrl+C a tout moment arrete le robot sur place ;
+si la piece est en main, le script propose de la reposer (la pompe
+s'arrete). Le fichier est tenu a jour apres chaque pose : --reprendre
+repart de la, sans refaire secteur ni accostage, en reprenant la piece
+la ou elle a ete laissee -- ou avec une NOUVELLE piece, qui a son propre
+decalage dans la pince.
+
 Avant de lancer : le serveur de camera tourne, la table est degagee (une
 seule piece en vue), le robot est mis en route (prise d'origine faite).
 Ctrl+C arrete tout ; ce qui a ete mesure est enregistre.
@@ -123,6 +130,9 @@ class Paire:
     camera: np.ndarray       # (x, y, z) mm, centre de la face superieure, camera
     lacet_camera: np.ndarray  # vecteur unitaire du grand cote, repere camera
     z_table: float           # mm, hauteur de la table (robot)
+    #: numero de la piece (une nouvelle piece, ou une piece replacee a la
+    #: main, a son propre decalage dans la pince)
+    session: int = 0
 
     @property
     def dessus(self) -> np.ndarray:
@@ -135,10 +145,15 @@ class Paire:
 class Recalage:
     R: np.ndarray                     # camera -> robot
     t: np.ndarray                     # mm
-    decalage: np.ndarray              # (dx, dy) mm, piece dans le repere pince
+    decalages: dict                   # session -> (dx, dy) mm, piece dans le repere pince
     ecart_r: float                    # deg : r de la pince - lacet piece (mod 180)
     residus: np.ndarray               # mm, par paire
     gardees: np.ndarray               # masque des paires retenues
+
+    @property
+    def decalage(self) -> np.ndarray:
+        """Decalage de la piece de la DERNIERE session."""
+        return self.decalages[max(self.decalages)] if self.decalages else np.zeros(2)
 
     @property
     def T_mm(self) -> np.ndarray:
@@ -187,39 +202,53 @@ def _angle(a: float, periode: float = 360.0) -> float:
 
 
 def recaler(paires: Sequence[Paire], decalage: bool = True,
-            iterations: int = 30) -> Recalage:
+            iterations: int = 40) -> Recalage:
     """
     T_robot_camera et decalage dans la pince, par moindres carres alternes :
-    Kabsch a decalage fixe, puis decalage a recalage fixe. Avec 6 paires et
-    plus, celles dont le residu depasse 3 fois la mediane (et 3 mm) sont
+    Kabsch a decalages fixes, puis decalages a recalage fixe. Chaque piece
+    (session) a son propre decalage, identifiable seulement si r a varie
+    pendant la session (sinon il est pris nul). Avec 6 paires et plus,
+    celles dont le residu depasse 3 fois la mediane (et 3 mm) sont
     ecartees, puis le calcul est refait.
     """
     if len(paires) < 3:
         raise ValueError("au moins 3 paires")
+    n = len(paires)
     P = np.array([p.camera for p in paires], float)
     G = np.array([p.dessus for p in paires], float)
     Rz = [rot_z(p.r) for p in paires]
-    # le decalage n'est identifiable que si r varie
-    rs = np.radians([p.r for p in paires])
-    varie = np.hypot(np.cos(rs).std(), np.sin(rs).std()) > 0.15
-    gardees = np.ones(len(paires), bool)
+    sessions = np.array([p.session for p in paires])
+    estimables = set()
+    for k in set(sessions.tolist()):
+        rs = np.radians([p.r for p in paires if p.session == k])
+        if len(rs) >= 2 and np.hypot(np.cos(rs).std(), np.sin(rs).std()) > 0.15:
+            estimables.add(k)
+
+    def decales(dec):
+        return G + np.array([Rz[i] @ [dec[sessions[i]][0], dec[sessions[i]][1], 0.0]
+                             for i in range(n)])
+
+    gardees = np.ones(n, bool)
     for _passe in range(2):
-        d = np.zeros(2)
+        dec = {k: np.zeros(2) for k in set(sessions.tolist())}
         for _ in range(iterations):
-            Q = G + np.array([Rz[i] @ [d[0], d[1], 0.0] for i in range(len(paires))])
-            R, t = kabsch(P[gardees], Q[gardees])
-            if not (decalage and varie):
+            R, t = kabsch(P[gardees], decales(dec)[gardees])
+            if not (decalage and estimables):
                 break
             e = P @ R.T + t - G
-            loc = np.array([Rz[i].T @ e[i] for i in range(len(paires))])
-            d_nouv = loc[gardees, :2].mean(axis=0)
-            if np.linalg.norm(d_nouv - d) < 1e-4:
-                d = d_nouv
+            loc = np.array([(Rz[i].T @ e[i])[:2] for i in range(n)])
+            bouge = 0.0
+            for k in estimables:
+                m = gardees & (sessions == k)
+                if m.any():
+                    nouv = loc[m].mean(axis=0)
+                    bouge = max(bouge, float(np.linalg.norm(nouv - dec[k])))
+                    dec[k] = nouv
+            if bouge < 1e-5:
                 break
-            d = d_nouv
-        Q = G + np.array([Rz[i] @ [d[0], d[1], 0.0] for i in range(len(paires))])
-        res = np.linalg.norm(P @ R.T + t - Q, axis=1)
-        if len(paires) < 6:
+        R, t = kabsch(P[gardees], decales(dec)[gardees])
+        res = np.linalg.norm(P @ R.T + t - decales(dec), axis=1)
+        if n < 6:
             break
         seuil = max(3.0 * float(np.median(res)), 3.0)
         nouv = res <= seuil
@@ -234,7 +263,7 @@ def recaler(paires: Sequence[Paire], decalage: bool = True,
     e2 = np.radians(2.0 * np.array(ecarts))[gardees]
     ecart_r = _angle(math.degrees(math.atan2(np.sin(e2).mean(), np.cos(e2).mean())) / 2.0,
                      180.0)
-    return Recalage(R, t, d, ecart_r, res, gardees)
+    return Recalage(R, t, dec, ecart_r, res, gardees)
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +434,14 @@ class Etalonnage:
         #: decalage de la piece dans la pince, une fois qu'une saisie visee
         #: au centre l'a remis a zero (None : celui du recalage)
         self.decalage_courant: Optional[np.ndarray] = None
+        #: numero de la piece en cours (chaque piece placee a la main a son
+        #: propre decalage dans la pince)
+        self.session = 0
+        #: ou est la piece : {"etat": "tenue"} ; {"etat": "posee", "x", "y",
+        #: "r"} ; {"etat": "absente"}
+        self.piece: dict = {"etat": "absente"}
+        #: fichier tenu a jour apres chaque pose (reprise apres interruption)
+        self.chemin: Optional[str] = None
         from dobot_sim import DobotMagician
         self.modele = getattr(robot, "modele", None) or DobotMagician()
 
@@ -423,6 +460,7 @@ class Etalonnage:
         self._aller(x, y, r)
         self.robot.movl(x=x, y=y, z=self._z(PRISE), r=r)
         self.robot.pince(False)
+        self.piece = {"etat": "posee", "x": float(x), "y": float(y), "r": float(r)}
         self.robot.attendre(DELAI_PINCE)
         self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
 
@@ -430,6 +468,7 @@ class Etalonnage:
         self._aller(x, y, r)
         self.robot.movl(x=x, y=y, z=self._z(PRISE), r=r)
         self.robot.pince(True)
+        self.piece = {"etat": "tenue"}
         self.robot.attendre(DELAI_PINCE)
         self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
 
@@ -534,11 +573,62 @@ class Etalonnage:
         if self.z_table is None:
             self.z_table = z - PRISE
         self.depart = (x, y, r)
+        self._placer_a_la_main(x, y, r)
+
+    def _placer_a_la_main(self, x, y, r):
+        """La pince ouverte a PRISE en (x, y) : l'utilisateur y place la
+        piece, la pince se ferme, le bras remonte."""
         self.demander("  placez une EPAISSE A PLAT entre les mors, posee sur la "
                       "table, puis Entree ")
         self.robot.pince(True)
+        self.piece = {"etat": "tenue"}
+        self.decalage_courant = None
         self.robot.attendre(DELAI_PINCE)
         self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
+
+    def nouvelle_piece(self):
+        """
+        Une NOUVELLE piece (ou la meme, replacee a la main) : nouvelle
+        session, donc nouveau decalage dans la pince. Le bras va au point
+        de depart, descend a la verticale, ouvre ; on y place la piece.
+        """
+        if self.paires:
+            self.session = max(p.session for p in self.paires) + 1
+        x, y, r = self.depart
+        self._aller(x, y, r)
+        self.robot.movl(x=x, y=y, z=self._z(PRISE), r=r)
+        self.robot.pince(False)
+        self.piece = {"etat": "absente"}
+        self.robot.attendre(DELAI_PINCE)
+        self.journal("  piece n {} : retirez l'ancienne de la table s'il y en a "
+                     "une".format(self.session + 1))
+        self._placer_a_la_main(x, y, r)
+
+    def remettre_piece(self):
+        """A la reprise : retrouver la piece, ou en prendre une nouvelle."""
+        etat = self.piece.get("etat")
+        if etat == "tenue":
+            rep = self.demander("  la pince tient-elle toujours la piece ? "
+                                "[Entree : oui / n : nouvelle piece] ")
+            if not rep.strip().lower().startswith("n"):
+                return
+        elif etat == "posee":
+            x, y, r = self.piece["x"], self.piece["y"], self.piece["r"]
+            rep = self.demander("  la piece est-elle toujours posee en x {:.0f} y {:.0f} ? "
+                                "[Entree : la reprendre / n : nouvelle piece] "
+                                .format(x, y))
+            if not rep.strip().lower().startswith("n"):
+                self.saisir(x, y, r)
+                return
+        self.nouvelle_piece()
+
+    def reposer_et_lacher(self):
+        """Apres une interruption, piece en main : la reposer sur la table
+        (la pompe s'arrete), la ou elle est, sinon au point de depart."""
+        x, y, _z, r = self.robot.pose()
+        if not self._atteignable(x, y, r):
+            x, y, r = self.depart
+        self.poser(x, y, r)
 
     def cycle(self) -> Paire:
         x, y, r = self.point_suivant()
@@ -547,7 +637,7 @@ class Etalonnage:
         attendu = np.array([x, y, self._z(HAUTEUR_PIECE)])
         vue = self.observer(attendu)
         paire = Paire(np.array([x, y, self._z(PRISE)]), r, vue.position, vue.axe,
-                      self.z_table)
+                      self.z_table, self.session)
         prevu = None
         if self.recalage is not None:
             prevu = self.recalage.prise(vue.position, vue.axe)
@@ -565,7 +655,9 @@ class Etalonnage:
         if self.recalage is not None:
             texte += "  | recalage : {:.2f} mm rms".format(self.recalage.rms)
         self.journal(texte)
+        self.enregistrer()
         self.saisir(x, y, r)
+        self.enregistrer()
         return paire
 
     def valider(self, n: int = 3) -> List[dict]:
@@ -585,8 +677,8 @@ class Etalonnage:
             if abs(_angle(pr - r)) > 90:
                 pr = _angle(pr + 180.0)
             # le centre de la piece, connu : la pince + son decalage
-            d = self.recalage.decalage if self.decalage_courant is None \
-                else self.decalage_courant
+            d = self.recalage.decalages.get(self.session, np.zeros(2)) \
+                if self.decalage_courant is None else self.decalage_courant
             cx, cy, _cz = np.array([x, y, 0.0]) + rot_z(r) @ [d[0], d[1], 0.0]
             e = float(np.hypot(px - cx, py - cy))
             de = _angle(pr - r, 180.0)
@@ -609,39 +701,74 @@ class Etalonnage:
         return self.validations
 
     def resultat(self) -> dict:
-        rc = self.recalage
-        return {
+        """Tout ce qu'il faut pour utiliser l'etalonnage, et pour le
+        REPRENDRE : mesures, secteur, hauteur de table, ou est la piece."""
+        out = {
             "date": time.strftime("%Y-%m-%d %H:%M"),
-            "T_robot_camera": rc.T_m.tolist(),
-            "unite": "metres (repere de la camera de PROFONDEUR -> repere robot "
-                     "du simulateur dobot_sim)",
-            "T_robot_camera_mm": rc.T_mm.tolist(),
-            "decalage_pince_mm": [float(v) for v in rc.decalage],
-            "ecart_r_deg": float(rc.ecart_r),
-            "z_table_mm": float(self.z_table),
-            "rms_mm": rc.rms,
+            "z_table_mm": None if self.z_table is None else float(self.z_table),
+            "secteur_base_deg": None if self.secteur is None else list(self.secteur),
+            "depart": None if self.depart is None else [float(v) for v in self.depart],
+            "session": int(self.session),
+            "piece": self.piece,
             "paires": len(self.paires),
-            "paires_retenues": int(rc.gardees.sum()),
-            "residus_mm": [float(v) for v in rc.residus],
             "validation": self.validations,
             "mesures": [{"pince": [float(v) for v in p.pince], "r": float(p.r),
                          "camera": [float(v) for v in p.camera],
-                         "axe_camera": [float(v) for v in p.lacet_camera]}
+                         "axe_camera": [float(v) for v in p.lacet_camera],
+                         "z_table": float(p.z_table), "session": int(p.session)}
                         for p in self.paires],
         }
+        rc = self.recalage
+        if rc is not None:
+            out.update({
+                "T_robot_camera": rc.T_m.tolist(),
+                "unite": "metres (repere de la camera de PROFONDEUR -> repere robot "
+                         "du simulateur dobot_sim)",
+                "T_robot_camera_mm": rc.T_mm.tolist(),
+                "decalages_pince_mm": {str(k): [float(v) for v in d]
+                                       for k, d in rc.decalages.items()},
+                "ecart_r_deg": float(rc.ecart_r),
+                "rms_mm": rc.rms,
+                "paires_retenues": int(rc.gardees.sum()),
+                "residus_mm": [float(v) for v in rc.residus],
+            })
+        return out
 
-    def enregistrer(self, chemin: str = FICHIER) -> Optional[str]:
-        if self.recalage is None:
+    def enregistrer(self, chemin: Optional[str] = None) -> Optional[str]:
+        chemin = chemin or self.chemin
+        if chemin is None or self.z_table is None:
             return None
-        with open(chemin, "w", encoding="utf-8") as f:
+        tmp = chemin + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self.resultat(), f, indent=2)
+        os.replace(tmp, chemin)
         return chemin
+
+    def restaurer(self, data: dict) -> None:
+        """Reprend un etalonnage enregistre (voir resultat())."""
+        self.z_table = data["z_table_mm"]
+        if data.get("secteur_base_deg"):
+            self.secteur = tuple(data["secteur_base_deg"])
+        if data.get("depart"):
+            self.depart = tuple(data["depart"])
+        self.paires = [Paire(np.array(m["pince"], float), float(m["r"]),
+                             np.array(m["camera"], float), np.array(m["axe_camera"], float),
+                             float(m.get("z_table", self.z_table)), int(m.get("session", 0)))
+                       for m in data.get("mesures", [])]
+        self.session = int(data.get("session", 0))
+        self.piece = dict(data.get("piece") or {"etat": "absente"})
+        self.validations = list(data.get("validation", []))
+        self.recalage = recaler(self.paires) if len(self.paires) >= 3 else None
 
 
 def charger_etalonnage(chemin: str = FICHIER) -> np.ndarray:
     """T_robot_camera (4x4, METRES) : a donner a Perception(T_robot_camera=...)."""
     with open(chemin, encoding="utf-8") as f:
-        return np.array(json.load(f)["T_robot_camera"], float)
+        data = json.load(f)
+    if "T_robot_camera" not in data:
+        raise ValueError("etalonnage inacheve ({} poses) : terminez-le avec "
+                         "etalonner_camera_robot.py --reprendre".format(data.get("paires", 0)))
+    return np.array(data["T_robot_camera"], float)
 
 
 # ---------------------------------------------------------------------------
@@ -795,8 +922,19 @@ def main(argv=None) -> int:
                     help="passer par le simulateur ouvert et connecte au robot")
     ap.add_argument("--simulation", action="store_true",
                     help="simulateur seul, piece et camera simulees : pour essayer")
+    ap.add_argument("--reprendre", action="store_true",
+                    help="reprendre l'etalonnage enregistre : secteur, table et "
+                         "mesures gardes ; la piece est reprise ou remplacee")
     ap.add_argument("--sortie", default=FICHIER)
     a = ap.parse_args(argv)
+
+    donnees = None
+    if a.reprendre:
+        if not os.path.exists(a.sortie):
+            print("rien a reprendre : {} n'existe pas".format(os.path.relpath(a.sortie)))
+            return 1
+        with open(a.sortie, encoding="utf-8") as f:
+            donnees = json.load(f)
 
     from dobot_sim import Commande
     if a.simulation:
@@ -815,24 +953,37 @@ def main(argv=None) -> int:
         camera = Camera()
 
     et = Etalonnage(robot, camera, garage=a.garage)
+    et.chemin = a.sortie
     try:
-        if a.simulation:
-            # pas de main pour guider le bras : on part d'un point connu
-            commande.movj(x=230, y=40, z=60, r=0)
-            print("simulation : la table est a z = 0 ; tournez la base avec b / B, "
-                  "descendez avec la fleche bas")
-        et.secteur = relever_secteur(robot, et.modele)
-        if a.garage is not None and not et.dans_secteur(a.garage[0], a.garage[1],
-                                                        a.garage[2], 0.0, 0.0):
-            raise Arret("le garage {} est hors du secteur".format(a.garage))
-        z_contact = accoster(robot, autorise=lambda x, y, z, r:
-                             et.dans_secteur(x, y, z, r, 0.0))
-        et.z_table = z_contact
-        x, y, _z, r = robot.pose()
-        robot.movl(x=x, y=y, z=z_contact + PRISE, r=r)
-        print("table a z = {:.1f} mm (repere robot)".format(z_contact))
-        et.demarrer()
-        print("\nETALONNAGE : {} poses".format(a.points))
+        if donnees is not None:
+            et.restaurer(donnees)
+            print("REPRISE : {} poses deja faites, table a z = {:.1f} mm, secteur de la "
+                  "base {}".format(len(et.paires), et.z_table,
+                                   "de {:.1f} a {:.1f} deg".format(*et.secteur)
+                                   if et.secteur else "libre"))
+            if et.recalage is not None:
+                print("  recalage actuel : {:.2f} mm rms".format(et.recalage.rms))
+            et.remettre_piece()
+        else:
+            if a.simulation:
+                # pas de main pour guider le bras : on part d'un point connu
+                commande.movj(x=230, y=40, z=60, r=0)
+                print("simulation : la table est a z = 0 ; tournez la base avec b / B, "
+                      "descendez avec la fleche bas")
+            et.secteur = relever_secteur(robot, et.modele)
+            if a.garage is not None and not et.dans_secteur(a.garage[0], a.garage[1],
+                                                            a.garage[2], 0.0, 0.0):
+                raise Arret("le garage {} est hors du secteur".format(a.garage))
+            z_contact = accoster(robot, autorise=lambda x, y, z, r:
+                                 et.dans_secteur(x, y, z, r, 0.0))
+            et.z_table = z_contact
+            x, y, _z, r = robot.pose()
+            robot.movl(x=x, y=y, z=z_contact + PRISE, r=r)
+            print("table a z = {:.1f} mm (repere robot)".format(z_contact))
+            et.demarrer()
+            et.enregistrer()
+        print("\nETALONNAGE : {} poses (Ctrl+C pour interrompre a tout moment)"
+              .format(a.points))
         for _ in range(a.points):
             et.cycle()
         rc = et.recalage
@@ -845,17 +996,52 @@ def main(argv=None) -> int:
         x, y, r = et.point_suivant()
         et.poser(x, y, r)
         et.degager()
-    except (Arret, KeyboardInterrupt) as exc:
-        print("\narret : {}".format(exc or "Ctrl+C"))
+    except KeyboardInterrupt:
+        interrompu(et)
+    except Arret as exc:
+        print("\narret : {}".format(exc))
     finally:
-        chemin = et.enregistrer(a.sortie)
-        if chemin:
-            print("etalonnage enregistre : {}".format(os.path.relpath(chemin)))
+        chemin = et.enregistrer()
+        if chemin and et.recalage is not None:
+            print("etalonnage enregistre : {} ({} poses, {:.2f} mm rms)".format(
+                os.path.relpath(chemin), len(et.paires), et.recalage.rms))
             print("  Perception(T_robot_camera=charger_etalonnage())")
-        else:
-            print("pas assez de mesures : rien d'enregistre")
+        elif chemin:
+            print("etat enregistre : {} ({} poses, pas encore de recalage)".format(
+                os.path.relpath(chemin), len(et.paires)))
+        if chemin:
+            print("  pour continuer : etalonner_camera_robot.py --reprendre")
         commande.fermer()
     return 0
+
+
+def interrompu(et: Etalonnage) -> None:
+    """
+    Ctrl+C : le robot s'est arrete sur place (arret d'urgence). Piece en
+    main, on propose de la reposer sur la table -- pince ouverte, la pompe
+    s'arrete -- pour que la reprise la retrouve. Un second Ctrl+C quitte
+    sans rien faire de plus.
+    """
+    print("\n\nINTERRUPTION : robot arrete. {} poses mesurees.".format(len(et.paires)))
+    try:
+        if et.piece.get("etat") == "posee":
+            print("  la piece est posee en x {:.0f} y {:.0f} : --reprendre la "
+                  "reprendra".format(et.piece["x"], et.piece["y"]))
+            return
+        if et.piece.get("etat") != "tenue" or et.z_table is None:
+            return
+        rep = et.demander("  la piece est dans la pince. [Entree : la reposer sur la table "
+                          "(la pompe s'arrete) / g : la garder en main] ")
+        if rep.strip().lower().startswith("g"):
+            print("  piece gardee en main : la pompe continue de tourner")
+            return
+        et.reposer_et_lacher()
+        print("  piece reposee en x {:.0f} y {:.0f}".format(et.piece["x"], et.piece["y"]))
+    except KeyboardInterrupt:
+        print("\n  arret immediat")
+    except Exception as exc:                            # noqa: BLE001
+        print("  le robot n'a pas pu reposer la piece : {}".format(
+            str(exc).splitlines()[0] if str(exc) else exc))
 
 
 if __name__ == "__main__":
