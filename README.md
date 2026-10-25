@@ -1720,6 +1720,7 @@ Une commande, une action, sans ouvrir le simulateur (fenêtre fermée) :
 .venv/bin/python dobot.py posture                étape 1 seule : déclarer l'équerre (rien ne bouge)
 .venv/bin/python dobot.py posture butees         ... ou les butées arrière
 .venv/bin/python dobot.py origine                prise d'origine seule (posture déjà déclarée)
+.venv/bin/python dobot.py voir                   vue caméra, pièces détectées en surimpression
 .venv/bin/python dobot.py etalonner-avec-pieces --reprendre   étalonnage caméra -> robot (pièces posées)
 ```
 

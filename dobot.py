@@ -27,6 +27,8 @@ Le Dobot reel en ligne de commande : une commande, une action.
                                                     par poses d'une piece
     .venv/bin/python dobot.py etalonner-pince       etalonnage camera -> robot
                                                     par la pince seule
+    .venv/bin/python dobot.py voir [--rapide]       vue camera, detections en
+                                                    surimpression (q : quitter)
     .venv/bin/python dobot.py saisir [--boucle]     essai de saisie guidee
                                                     par la camera
     .venv/bin/python dobot.py saisir --visualisation
@@ -357,6 +359,17 @@ def etalonner_pince(a) -> int:
     return etalonner_par_pince.main(args)
 
 
+def voir(a) -> int:
+    sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
+    import voir_camera
+    args = ["--images", str(a.images)]
+    if a.rapide:
+        args.append("--rapide")
+    if a.sortie:
+        args += ["--sortie", a.sortie]
+    return voir_camera.main(args)
+
+
 def saisir(a) -> int:
     sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
     args = ["--vitesse", str(a.vitesse)]
@@ -446,6 +459,14 @@ def main(argv=None) -> int:
     p3 = sp.add_parser("etalonner-pince", help="etalonnage camera -> robot par la pince "
                                                "seule (aucune piece a poser)")
     p3.set_defaults(f=etalonner_pince, reste=[])
+    p4 = sp.add_parser("voir", help="vue camera, pieces detectees en surimpression "
+                                    "(controle de la perception ; robot non utilise)")
+    p4.add_argument("--rapide", action="store_true",
+                    help="detection rapide seule, sans l'affinage")
+    p4.add_argument("--images", type=int, default=8, help="images par capture (8)")
+    p4.add_argument("--sortie", default=None,
+                    help="une seule capture, enregistree dans ce fichier, sans fenetre")
+    p4.set_defaults(f=voir)
     p2 = sp.add_parser("saisir", help="essai : saisir une piece vue par la camera, "
                                       "la reposer ailleurs")
     p2.add_argument("--boucle", action="store_true",
