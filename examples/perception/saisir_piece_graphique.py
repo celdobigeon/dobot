@@ -166,11 +166,16 @@ def panneau(**etat) -> None:
     demander({"saisie": {"etat": etat}})
 
 
-def lire_bouton():
-    """'saisir', 'forcer' ou None : le dernier clic dans le panneau Saisie."""
+def lire_bouton(robot=None):
+    """'saisir', 'forcer' ou None : le dernier clic dans le panneau Saisie.
+    La vitesse du panneau est appliquee au passage a `robot`."""
     from dobot_sim.passerelle import demander
-    rep = demander({"saisie": {"lire": True}})
-    return (rep or {}).get("demande")
+    rep = demander({"saisie": {"lire": True}}) or {}
+    v = rep.get("vitesse")
+    if robot is not None and v and abs(float(v) - robot.vitesse) > 1e-9:
+        robot.regler(vitesse=float(v))
+        print("  vitesse : {:.0f} mm/s".format(float(v)))
+    return rep.get("demande")
 
 
 def lire_clavier():
@@ -520,7 +525,7 @@ def main(argv=None) -> int:
         demander({"scene": {"camera": {
             "T": donnees["T_robot_camera_mm"], "K": donnees.get("camera_K"),
             "taille": donnees.get("camera_taille")}}})
-        if demander({"saisie": {"activer": True}}) is None:
+        if demander({"saisie": {"activer": True, "vitesse": a.vitesse}}) is None:
             print("ATTENTION : la fenetre du simulateur ne connait pas le panneau Saisie "
                   "(elle a ete\n  ouverte avant cette version). Fermez-la et relancez ce "
                   "script : il en ouvrira une\n  a jour. En attendant : Entree ici pour "
@@ -534,7 +539,7 @@ def main(argv=None) -> int:
               "Bouton 'Saisir la cible' dans la fenetre (ou Entree ici) ; Ctrl+C pour "
               "arreter.")
         while True:
-            quoi = lire_bouton() or lire_clavier()
+            quoi = lire_bouton(robot) or lire_clavier()
             if quoi is None:
                 time.sleep(0.2)
                 continue

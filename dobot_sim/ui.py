@@ -4493,6 +4493,14 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             "marges de securite. Le robot peut refuser.")
         self.bt_forcer.clicked.connect(lambda: self._saisie_demander("forcer"))
         lay.addWidget(self.bt_forcer)
+        ligne = QtWidgets.QHBoxLayout()
+        ligne.addWidget(QtWidgets.QLabel("Vitesse"))
+        self.sp_saisie_vitesse = _spin(5.0, 120.0, 5.0, "mm/s", 0, 20.0)
+        self.sp_saisie_vitesse.setToolTip(
+            "vitesse cartesienne des mouvements de saisie, prise en compte "
+            "a la saisie suivante")
+        ligne.addWidget(self.sp_saisie_vitesse, 1)
+        lay.addLayout(ligne)
         self.lab_saisie_etat = QtWidgets.QLabel("")
         self.lab_saisie_etat.setWordWrap(True)
         lay.addWidget(self.lab_saisie_etat)
@@ -4574,6 +4582,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         programme = self.findChild(QtWidgets.QDockWidget, "dock_programme")
         if d.get("activer"):
             dock = self._panneau_saisie()
+            if d.get("vitesse"):
+                self.sp_saisie_vitesse.setValue(float(d["vitesse"]))
             if programme is not None:
                 # a la place exacte du panneau Programme (meme groupe
                 # d'onglets que Robot reel), puis on masque celui-ci
@@ -4647,7 +4657,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         if d.get("lire"):
             quoi = getattr(self, "_saisie_demande", None)
             self._saisie_demande = None
-            return {"demande": quoi}
+            return {"demande": quoi,
+                    "vitesse": float(self.sp_saisie_vitesse.value())}
         raise RuntimeError("saisie : demande inconnue {}".format(sorted(d)))
 
     # -- commande temps reel : dobot_sim.Commande ----------------------------
