@@ -3210,8 +3210,11 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         # (Pilote.regler_longueur_outil), et l'affichage comme le dessin
         # doivent la suivre.
         lt = float(self.robot.geo.lt)
-        self.vue.definir_outil(dataclasses.replace(self.outil, longueur=lt)
-                               .pieces(self.outil_actif))
+        tenue = getattr(self, "piece_tenue", None)
+        self.vue.definir_outil(dataclasses.replace(
+            self.outil, longueur=lt, piece_tenue=tenue,
+            serrage=None if not tenue else float(tenue["dims"][1]))
+            .pieces(self.outil_actif))
         if abs(lt - self.outil.longueur) > 0.05:
             self.lab_longueur.setText(
                 "<b>{:.1f} mm</b>  (mesuree ; catalogue {:.0f} mm)"
@@ -4592,6 +4595,14 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 programme.raise_()
             if hasattr(self.vue, "definir_objets"):
                 self.vue.definir_objets([])
+            if getattr(self, "piece_tenue", None):
+                self.piece_tenue = None
+                self._maj_outil()
+            return {}
+        if "tenue" in d:
+            # la piece que la pince va serrer (ou None : relachee)
+            self.piece_tenue = d["tenue"] or None
+            self._maj_outil()
             return {}
         if "images" in d:
             self._afficher_images_camera(d["images"] or {})

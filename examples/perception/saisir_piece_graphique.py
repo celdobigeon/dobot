@@ -476,6 +476,30 @@ def main(argv=None) -> int:
                      pied=a.hauteur_prise)
     det = Detecteur(perc_continue, essai)
     from dobot_sim.passerelle import demander
+
+    def quand_saisie(piece, x, y, z, r):
+        # la piece passe de la table a la pince : sa boite quitte la scene,
+        # la pince se ferme sur ses flancs et l'emporte
+        lacet = np.degrees(np.arctan2(piece.T_robot[1, 0], piece.T_robot[0, 0]))
+        dims = boite(piece, perc_continue.types)["dims"]
+        dessous = float(piece.T_robot[2, 3] * 1000.0 - dims[2])
+        try:
+            demander({"saisie": {"tenue": {"dims": dims, "type": piece.type,
+                                           "angle": float(ec._angle(lacet - r, 180.0)),
+                                           "pied": float(z - dessous)}}})
+            with det.verrou:
+                autres = [p for p in (det.derniere[1] if det.derniere else [])
+                          if p is not piece]
+            afficher([boite(p, perc_continue.types) for p in autres])
+        except Exception:                               # noqa: BLE001
+            pass
+
+    def quand_lache():
+        try:
+            demander({"saisie": {"tenue": None}})
+        except Exception:                               # noqa: BLE001
+            pass
+    essai.quand_saisie, essai.quand_lache = quand_saisie, quand_lache
     try:
         # la camera, a sa place dans la vue 3D (repere optique, mm)
         demander({"scene": {"camera": {

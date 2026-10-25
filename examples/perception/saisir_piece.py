@@ -83,6 +83,10 @@ class Essai:
         #: si besoin (au moins APPROCHE mm de descente verticale)
         self.forcer = bool(forcer)
         self.pied = float(pied)
+        #: rappels pour un affichage : quand_saisie(piece, x, y, z, r) juste
+        #: avant de fermer la pince ; quand_lache() juste apres l'ouverture
+        self.quand_saisie = None
+        self.quand_lache = None
         self.modele = self.et.modele
 
     # -- atteignabilite -----------------------------------------------------
@@ -221,6 +225,8 @@ class Essai:
                                         piece.T_robot[2, 3] * 1000.0))
         self.robot.pince(False)
         self._descendre(x, y, z, r, h)
+        if self.quand_saisie is not None:
+            self.quand_saisie(piece, x, y, z, r)
         self.robot.pince(True)
         self.robot.attendre(ec.DELAI_PINCE)
         self._remonter_en_equerre()
@@ -247,6 +253,8 @@ class Essai:
         self.journal("  depose en x {:.1f} y {:.1f} r {:.1f}".format(x, y, r))
         self._descendre(x, y, z, r, h)
         self.robot.pince(False)
+        if self.quand_lache is not None:
+            self.quand_lache()
         if apres_lacher is not None:
             apres_lacher()
         self.robot.attendre(ec.DELAI_PINCE)

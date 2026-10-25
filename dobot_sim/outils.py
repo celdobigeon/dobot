@@ -20,7 +20,7 @@ longueur est de toute facon la seule grandeur qui entre dans le calcul.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -76,12 +76,23 @@ class Outil:
     libelle_inactif: str = "inactif"
     ouverture: float = 0.0            # ecartement des doigts, pince seulement
     description: str = ""
+    #: pince fermee SUR une piece : ecart des doigts (mm), la largeur de la
+    #: piece ; None : fermee a vide
+    serrage: Optional[float] = None
+    #: piece tenue, dessinee avec l'outil : {"dims": (L, l, h) mm,
+    #: "angle": deg (grand cote / axe x de l'outil), "pied": mm (dessous de
+    #: la piece sous la pointe), "type": nom}
+    piece_tenue: Optional[dict] = None
 
     def pieces(self, actif: bool = False) -> List[Piece]:
         """Maillages de l'outil, exprimes dans le repere 5 (axe outil)."""
         out = []
         for i, (V, F, couleur) in enumerate(self.fabrique(self, actif)):
             out.append(Piece("outil.{}.{}".format(self.nom, i), 5, V, F,
+                             couleur=couleur))
+        if actif and self.piece_tenue:
+            V, F, couleur = _piece_tenue(self)
+            out.append(Piece("outil.{}.piece".format(self.nom), 5, V, F,
                              couleur=couleur))
         return out
 
@@ -121,18 +132,44 @@ def _pince(o: Outil, actif: bool):
 
     Les doigts se ferment selon l'axe y de l'outil : a r = 0, une piece
     allongee selon x se saisit par ses flancs. C'est ce qu'a mesure
-    l'etalonnage camera -> robot (ecart pince / piece de 1,4 deg).
+    l'etalonnage camera -> robot (ecart pince / piece de 1,4 deg). Ils
+    descendent jusqu'a la pointe (`longueur`) ; fermes sur une piece
+    (`serrage`), ils s'arretent a ses flancs.
     """
     corps = fusion(boite(26, 34, 26, (0, 0, -13)),
                    boite(20, 36, 12, (0, 0, -32)))
-    demi = (2.0 if actif else o.ouverture / 2.0 + 2.0)
+    if actif:
+        demi = (o.serrage / 2.0) if o.serrage else 1.0
+    else:
+        demi = o.ouverture / 2.0
+    bas = max(o.longueur, 50.0)
+    haut = 38.0
     doigts = []
     for signe in (-1.0, 1.0):
-        y = signe * (demi + 3.0)
-        doigts.append(fusion(boite(14, 6, 34, (0, y, -55)),
-                             boite(14, 6, 8, (0, y - signe * 3.0, -74))))
+        # face interne des doigts a +/- demi de l'axe
+        y = signe * (demi + 4.0)
+        tige = boite(14, 6, bas - haut - 8.0, (0, y + signe * 1.0, -(haut + bas - 8.0) / 2.0))
+        bout = boite(14, 8, 8, (0, y, -bas + 4.0))
+        doigts.append(fusion(tige, bout))
     return [(*corps, NOIR),
             (*doigts[0], ALU), (*doigts[1], ALU)]
+
+
+#: couleurs des pieces tenues, par type
+COULEURS_PIECES = {"epaisse": (0.95, 0.65, 0.15, 1.0), "fine": (0.20, 0.70, 0.95, 1.0)}
+
+
+def _piece_tenue(o: Outil):
+    """La piece entre les doigts : dessous a `pied` mm sous la pointe,
+    grand cote tourne de `angle` par rapport a l'axe x de l'outil."""
+    t = o.piece_tenue
+    L, l, h = (float(v) for v in t["dims"])
+    V, F = boite(L, l, h, (0.0, 0.0, 0.0))
+    a = np.radians(float(t.get("angle", 0.0)))
+    R = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+    centre = np.array([0.0, 0.0, -o.longueur - float(t.get("pied", 0.0)) + h / 2.0])
+    V = (np.asarray(V, float) @ R.T + centre).astype(np.float32)
+    return V, F, COULEURS_PIECES.get(t.get("type", ""), (0.8, 0.8, 0.8, 1.0))
 
 
 def _stylo(o: Outil, actif: bool):
