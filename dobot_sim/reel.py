@@ -315,10 +315,19 @@ class PontReel:
                     continue
                 plus, moins = {0: (1, 2), 1: (3, 4), 2: (5, 6)}[i]
                 fin = time.time() + delai
+                immobile, prec = 0, None
                 while time.time() < fin:
-                    e = float(pose()[i]) - cibles[i]
+                    v = float(pose()[i])
+                    e = v - cibles[i]
                     if abs(e) < tolerance:
                         break
+                    # le bras ne bouge plus : butee atteinte, on s'arrete
+                    immobile = immobile + 1 if prec is not None and abs(v - prec) < 0.05 else 0
+                    if immobile >= 4:
+                        self.journal("mode manuel : le bras ne va pas plus loin "
+                                     "(butee), arrete a {:.1f} mm de la cible".format(abs(e)))
+                        break
+                    prec = v
                     li.jog(moins if e > 0 else plus, articulaire=False)
                     time.sleep(min(0.3, max(0.03, abs(e) / vitesse * 0.5)))
                     li.jog(0, articulaire=False)

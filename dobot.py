@@ -162,6 +162,14 @@ def deplacer(a) -> int:
     modele.geo.lt = float(a.longueur_outil if a.longueur_outil is not None
                           else outil(a.outil).longueur)
     pont = _liaison_directe(modele, a.port)
+    p = pont.liaison.pose()
+    x0, y0, z0, r0 = pont.depuis_controleur(p.x, p.y, p.z, p.r)
+    cible = (x0 + a.dx, y0 + a.dy, z0 + a.dz, r0 + a.dr)
+    if not modele.atteignable(*cible):
+        print("HORS D'ATTEINTE : x {:.1f}  y {:.1f}  z {:.1f}  r {:.1f} (depuis z {:.1f}) ; "
+              "rien n'a bouge".format(*cible, z0))
+        _fermer_liaison_directe()
+        return 1
     manuel = a.manuel or bool(pont.liaison.alarmes())
     if manuel:
         try:
