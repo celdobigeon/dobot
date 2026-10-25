@@ -25,7 +25,8 @@ Le Dobot reel en ligne de commande : une commande, une action.
     .venv/bin/python dobot.py etalonner-camera [--reprendre ...]
     .venv/bin/python dobot.py saisir [--boucle]     essai de saisie guidee
                                                     par la camera
-    .venv/bin/python dobot.py saisir --fenetre      la meme, dans le simulateur
+    .venv/bin/python dobot.py saisir --visualisation
+                                                    la meme, dans le simulateur
                                                     (miroir, pieces affichees)
                                                     etalonnage camera -> robot
 
@@ -346,7 +347,7 @@ def saisir(a) -> int:
     args = ["--vitesse", str(a.vitesse)]
     if a.longueur_outil is not None:
         args += ["--longueur-outil", str(a.longueur_outil)]
-    if a.fenetre:
+    if a.visualisation:
         import saisir_piece_graphique
         if a.port:
             args += ["--port", a.port]
@@ -427,7 +428,7 @@ def main(argv=None) -> int:
                                       "la reposer ailleurs")
     p2.add_argument("--boucle", action="store_true",
                     help="enchainer sans attendre Entree (jusqu'a Ctrl+C)")
-    p2.add_argument("--fenetre", action="store_true",
+    p2.add_argument("--visualisation", action="store_true",
                     help="version graphique : simulateur en miroir, pieces vues et "
                          "cible affichees en continu")
     p2.add_argument("--forcer", action="store_true",
