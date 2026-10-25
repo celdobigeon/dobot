@@ -57,8 +57,12 @@ plus que proposer.
        - MASQUES DU RESEAU (si presents) : desaccord entre la partie visible
          rendue de la piece et le masque qui lui est associe (et l'effet
          de son occultation sur les autres), plus un cout si le type
-         contredit la classe du masque. Ils FACONNENT la pose et le type
-         mais ne peuvent JAMAIS imposer une piece : une piece sans masque ne
+         contredit la classe du masque. Ils FACONNENT la pose ; le TYPE
+         d'une piece associee a un masque est celui que lui donnait le
+         reseau (Affinage.type_impose : la profondeur, lissee et vue de
+         biais, confond une fine sur la tranche et une epaisse a plat, de
+         meme hauteur) ; seule la face reste libre. Mais ils ne peuvent
+         JAMAIS imposer une piece : une piece sans masque ne
          paie rien, et une piece n'est gardee que si la PROFONDEUR la
          soutient (un masque net abaisse seulement l'exigence) ; une piece
          a travers laquelle la profondeur voit la table est retiree, quel
@@ -119,8 +123,9 @@ inchange (1.00, 0.4 mm). Vue reculee, inclinees : 0.75 -> 0.91 (12 -> 3
 fausses). Vue rasante (1 m) : inclinees 0.62 -> 0.72, piles 0.50 -> 0.67,
 erreurs de position toujours 2.5 a 3.5 mm. Jeu reel annote (40 images de
 validation, rendu compare aux masques) : geometrie seule 0.79 / 0.85
-(rappel / precision) -> 0.90 / 0.94 ; YOLO 0.98 / 0.98 -> 0.99 / 0.97 ;
-YOLO abime 0.66 / 0.93 -> 0.94 / 0.92. Sans chaque terme (--ablation,
+(rappel / precision) -> 0.90 / 0.94 ; YOLO 0.98 / 0.98 -> 0.99 / 0.99
+(classe 0.94 -> 0.95, le type venant du reseau, voir type_impose) ; YOLO
+abime 0.66 / 0.93 -> 0.94 / 0.95. Sans chaque terme (--ablation,
 dessus et rasante) : sans lissage, position 0.6 -> 1.1 mm ; sans
 physique, 3 fausses au lieu de 1 et inclinaison 0.3 -> 0.5 deg ; sans a
 priori d'inclinaison, fausses inclinaisons en rasante (0.04 -> 1.5 deg sur
@@ -295,6 +300,8 @@ class Boite:
     iou_masque: float = 0.0
     debord: float = 0.0           # part du pourtour ou la surface continue
     bord: bool = False            # proposee au bord de la table
+    source: int = -1              # masque du reseau dont elle est nee
+    type_source: str = ""         # le type que lui donnait l'ajustement a ce masque
     confiance: float = 0.0
 
     @property
@@ -309,7 +316,7 @@ class Boite:
 
     def copie(self) -> "Boite":
         return Boite(self.type, self.face, np.array(self.dims, float), np.array(self.p, float),
-                     self.origine)
+                     self.origine, source=self.source, type_source=self.type_source)
 
 
 def dims_m(types, nom, face) -> np.ndarray:
@@ -618,6 +625,8 @@ class Reglages:
     flou_auto: bool = True        # choisir ce nombre (0 a 3) sur la capture
     masques: float = 0.5          # par pixel en desaccord avec le masque associe
     classe: float = 40.0          # type contraire a la classe du masque (x confiance)
+    iou_classe: float = 0.35      # masque assez net et confiant : il impose le type
+    conf_classe: float = 0.3      # (voir Affinage.type_impose ; iou_classe > 1 : jamais)
     aretes: float = 0.0           # par pixel de contour (chanfrein, infrarouge) ; 0 : non
     aretes_densite_max: float = 0.06  # au-dela (texture, points du projecteur) : ignorees
     k_penetration: float = 60.0   # par mm^2 de penetration (au-dela de 0.3 mm)
@@ -632,6 +641,8 @@ class Reglages:
     part_min: float = 0.35        # part de ses pixels visibles qu'elle doit expliquer
     part_min_masque: float = 0.15  # ... si un masque du reseau la recouvre bien
     part_min_bord: float = 0.6    # ... si elle est proposee au bord de la table
+    part_min_sans_masque: float = 0.45  # ... si le reseau ne voit rien a sa place
+    air_residu: float = 0.020     # m : piece du residu en l'air plus haut : rejetee
     confiance_min: float = 0.15   # en dessous, la piece n'est pas rendue
     contredit_max: float = 0.35   # part maximale de pixels "vus a travers"
     debord: bool = True           # rejeter une piece taillee dans une surface plus grande
@@ -1480,14 +1491,18 @@ class Affinage:
             union = (obs.M | V[None]).sum(axis=(1, 2))
             iou = inter / np.maximum(union, 1)
             for k in np.nonzero(iou >= 0.25)[0]:
-                paires.append((iou[k], i, k))
+                # le masque SOURCE de la piece passe avant un voisin qui la
+                # recouvrirait un peu mieux (piece en partie cachee)
+                bonus = 0.3 if k == sc.boites[i].source else 0.0
+                paires.append((iou[k] + bonus, i, k))
         pris_i, pris_k = set(), set()
         for iou, i, k in sorted(paires, reverse=True):
             if i in pris_i or k in pris_k:
                 continue
             pris_i.add(i)
             pris_k.add(k)
-            sc.boites[i].masque, sc.boites[i].iou_masque = int(k), float(iou)
+            sc.boites[i].masque = int(k)
+            sc.boites[i].iou_masque = float(iou) - (0.3 if k == sc.boites[i].source else 0.0)
 
     def balayer(self, fin=False):
         sc = self.scene
@@ -1502,16 +1517,27 @@ class Affinage:
                 sc.optimiser(i, sauts=True, fin=(0.0008, 0.0008, 0.0006, np.radians(1.5),
                                                  np.radians(1), np.radians(1)))
 
-    def variantes(self):
+    def variantes(self, seulement_imposes: bool = False):
         """Choix discret du type et de la face : chaque variante est posee au
-        meme endroit (meme dessous, ou meme dessus), affinee, et comparee."""
+        meme endroit (meme dessous, ou meme dessus), affinee, et comparee.
+        `seulement_imposes` : seulement les pieces dont le type contredit
+        celui qu'impose leur masque (type_impose)."""
         sc = self.scene
         for i in range(len(sc.boites)):
+            if seulement_imposes:
+                t_ = self.type_impose(sc.boites[i])
+                if t_ is None or t_ == sc.boites[i].type:
+                    continue
             b = sc.boites[i]
+            impose = self.type_impose(b)
             e0 = float(sc.energie(i, b.p[None], b.dims)[0])
+            if impose is not None and b.type != impose:
+                e0 = np.inf                      # la lecture actuelle n'est pas admise
             essais = []
             for nom, face, dims in variantes_dims(self.obs.types, self.r.debout):
                 if nom == b.type and face == b.face:
+                    continue
+                if impose is not None and nom != impose:
                     continue
                 if face == "debout" and b.face != "debout" and b.p[2] + b.dims[2] / 2 < 0.04:
                     continue
@@ -1533,15 +1559,44 @@ class Affinage:
                                     np.radians(1)), (0, 1, 2, 3, 4, 5), 30, type_=nom)
                 meilleurs.append((e2, nom, face, dims, p))
             meilleurs.sort(key=lambda t: t[0])
-            if meilleurs and meilleurs[0][0] < e0 - max(5.0, 0.02 * abs(e0)):
+            if meilleurs and (not np.isfinite(e0) or meilleurs[0][0] < e0 - max(5.0, 0.02 * abs(e0))):
                 e2, nom, face, dims, p = meilleurs[0]
                 self._log("piece {} : {} {} -> {} {} ({:.0f} -> {:.0f})".format(
                     i, b.type, b.face, nom, face, e0, e2))
                 b.type, b.face, b.dims, b.p = nom, face, np.array(dims), p
                 sc.maj(i)
-                b.marge = e0 - e2 if len(meilleurs) < 2 else meilleurs[1][0] - e2
+                b.marge = (e0 - e2 if np.isfinite(e0) else 100.0) if len(meilleurs) < 2 \
+                    else meilleurs[1][0] - e2
             else:
                 b.marge = (meilleurs[0][0] - e0) if meilleurs else 100.0
+
+    def type_impose(self, b: Boite) -> Optional[str]:
+        """
+        Le TYPE d'une piece associee a un masque du reseau est impose :
+        celui de l'ajustement a ce masque si la piece en est nee, sinon la
+        classe du masque s'il la recouvre assez (IoU >= Reglages.iou_classe)
+        et s'il est confiant (>= Reglages.conf_classe) ; seule la face reste
+        a choisir. Pourquoi : la
+        largeur d'une piece est ce qui separe une fine sur la tranche (8 x
+        17) d'une epaisse a plat (19 x 17), a la meme hauteur ; la
+        profondeur, lissee et vue de biais, l'elargit et prefere l'epaisse
+        (mesure sur le jeu reel : la classe passait de 0.99 a 0.80 sur les
+        images ou cela arrive), alors que le reseau voit l'image couleur,
+        nette. Sans masque, ou avec un masque douteux (fond inconnu, deux
+        pieces fusionnees : IoU faible), la profondeur decide seule.
+        """
+        obs, r = self.obs, self.r
+        if not obs.avec_masques or b.masque < 0 or r.iou_classe > 1.0:
+            return None
+        if b.masque == b.source and b.type_source in obs.types:
+            # la piece est nee de ce masque : le type que lui donnait
+            # l'ajustement au masque (classe du reseau ET silhouette, voir
+            # perception.ajuster_masque), qui est le plus sur
+            return b.type_source
+        if b.iou_masque < r.iou_classe or obs.conf_masques[b.masque] < r.conf_classe:
+            return None
+        c = obs.classes[b.masque]
+        return c if c in obs.types else None
 
     def garder(self, i: int) -> Tuple[bool, Dict[str, float]]:
         """La piece i est-elle justifiee (voir l'en-tete, parcimonie) ?"""
@@ -1560,6 +1615,14 @@ class Affinage:
             b.debord, n_cotes, deux_bouts = sc.debord(i)
             if n_cotes >= 3 or deux_bouts:
                 return False, d
+        if b.origine == "residu":
+            # une piece INVENTEE a partir du residu, en l'air a plus de 20 mm
+            # (plus haut qu'une porteuse cachee), sans rien de la scene sous
+            # elle : c'est un autre objet (chaise derriere la table, main...)
+            bas_, lat = sc.appuis(i)
+            Q = coins(b.p[None, :3], b.R()[None], b.demi)[0]
+            if not bas_ and not lat and Q[:, 2].min() > r.air_residu:
+                return False, d
         if vis >= 25 or gain >= r.gain_min:
             # la profondeur doit soutenir la piece ; un masque du reseau qui
             # la recouvre bien abaisse l'exigence (la profondeur, lissee ou
@@ -1568,6 +1631,10 @@ class Affinage:
             part = r.part_min if b.iou_masque < 0.6 else r.part_min_masque
             if b.bord:
                 part = max(part, r.part_min_bord)
+            if self.obs.avec_masques and b.masque < 0:
+                # le reseau ne voit RIEN la : sans le croire sur parole (fond
+                # inconnu), on demande a la profondeur une preuve plus nette
+                part = max(part, r.part_min_sans_masque)
             ok = gain >= r.gain_min and gain >= part * vis
             return ok, d
         # presque rien de mesure sous la piece (bois sature, ou cachee) : seul
@@ -1879,6 +1946,8 @@ class Affinage:
             self.elaguer()
         self.durees["repropositions"] = time.perf_counter() - t0
         self.durees["ev_repropositions"] = self.scene.evaluations - ev
+        self.associer_masques()
+        self.variantes(seulement_imposes=True)
         self.balayer(fin=True)
         self.poser()
         self.elaguer()
@@ -2017,6 +2086,13 @@ def raffiner(capture, propositions: Sequence, types, masques=None,
     for p in propositions:
         b = boite_de_piece(p, obs.T_tc, types)
         if b is not None:
+            # le masque du reseau dont la piece est nee (sa SOURCE) : associe
+            # en priorite (voir Affinage.associer_masques)
+            m = getattr(p, "masque", None)
+            if m is not None and getattr(p, "origine", "") == "reseau":
+                b.source = next((k for k, mk in enumerate(obs.masques_img)
+                                 if mk.shape == m.shape and np.array_equal(mk, m)), -1)
+                b.type_source = p.type
             boites.append(b)
     aff = Affinage(obs, boites, reglages, trace)
     res = aff.executer()

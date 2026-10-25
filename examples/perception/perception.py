@@ -646,6 +646,9 @@ class Perception:
                     avec le reseau, ajouter aussi les pieces de la detection
                     geometrique (vision_modele) aux propositions : la scene
                     ne depend plus du reseau seul (fond inconnu)
+    points_cles     True (ou chemin de poids) : ajouter aux propositions de
+                    l'affinage les poses du reseau de points cles
+                    (apprentissage/points_cles, modeles/pieces-cles.pt)
     reglages        raffinement.Reglages (poids, seuils), ou None
     """
 
@@ -655,7 +658,7 @@ class Perception:
                  confiance_min: float = 0.35, iou_min: float = 0.45,
                  device: Optional[str] = None, imgsz: Optional[int] = None,
                  raffinement: bool = True, propositions_geometriques: bool = True,
-                 reglages=None):
+                 points_cles: Union[str, bool] = False, reglages=None):
         self.types = {k: tuple(float(x) for x in v) for k, v in (types or TYPES).items()}
         self.T_robot_camera = None if T_robot_camera is None else np.asarray(T_robot_camera, float)
         self.confiance_min, self.iou_min = confiance_min, iou_min
@@ -681,6 +684,8 @@ class Perception:
         self.durees: Dict[str, float] = {}
         self.raffinement = raffinement
         self.propositions_geometriques = propositions_geometriques
+        self.points_cles = points_cles
+        self._proposeur = None
         self.reglages = reglages
         self.derniers_masques: Optional[list] = None
         self.dernier_affinage = None
@@ -725,10 +730,36 @@ class Perception:
                 # manque (fond inconnu) n'est pas perdue
                 pieces = list(pieces) + self._geometrie(capture, vue)
                 self.derniere_vue = vue
+        if self.raffinement and self.points_cles and vue is not None:
+            pieces = list(pieces) + self._propositions_cles(capture, vue, table)
         if self.raffinement:
             pieces = self._raffiner(capture, pieces, vue, table)
         self.durees["total"] = time.perf_counter() - t0
         return pieces
+
+    def _propositions_cles(self, capture, vue, table) -> List[PieceVue]:
+        """Poses du reseau de points cles, en propositions pour l'affinage."""
+        t = time.perf_counter()
+        if self._proposeur is None:
+            dossier = os.path.join(ICI, "apprentissage", "points_cles")
+            if dossier not in sys.path:
+                sys.path.insert(0, dossier)
+            from proposer import POIDS, ProposeurCles
+            chemin = self.points_cles if isinstance(self.points_cles, str) else POIDS
+            self._proposeur = ProposeurCles(chemin, types=self.types, device=self.device)
+        K = np.asarray(capture["K"], float)
+        if table is None:
+            table = analyser_table(capture["profondeur"], K)
+        proj = projeter_profondeur(capture["profondeur"], K, vue)
+        hyps = self._proposeur.proposer(vue.image, vue=vue, table=table, proj=proj)
+        out = []
+        for k, h in enumerate(hyps):
+            try:
+                out.append(h.piece(k + 1, table=table, vue=vue))
+            except ValueError:
+                pass
+        self.durees["points_cles"] = time.perf_counter() - t
+        return out
 
     def _raffiner(self, capture, pieces, vue, table) -> List[PieceVue]:
         """Etape finale : raffinement.raffiner (voir son en-tete)."""

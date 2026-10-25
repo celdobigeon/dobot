@@ -135,10 +135,10 @@ rendue dans l'image couleur et comparée aux masques annotés :
 |---|---|---|---|---|---|
 | géométrie seule | 0,79 | 0,85 | 0,82 | 0,86 | 2,3 |
 | géométrie + affinage | **0,90** | **0,94** | 0,86 | 0,93 | 3,2 |
-| YOLO | 0,98 | 0,98 | 0,90 | 0,94 | 0,6 |
-| YOLO + affinage | 0,99 | 0,97 | 0,91 | 0,96 | 3,6 |
+| YOLO | 0,98 | 0,98 | 0,90 | 0,94 | 0,7 |
+| YOLO + affinage | 0,99 | 0,99 | 0,91 | 0,95 | 3,7 |
 | YOLO abîmé (masques perdus, fusionnés, faux sur le fond) | 0,66 | 0,93 | 0,87 | 0,95 | 0,5 |
-| YOLO abîmé + affinage | **0,94** | 0,92 | 0,89 | 0,95 | 3,9 |
+| YOLO abîmé + affinage | **0,94** | 0,95 | 0,89 | 0,93 | 3,7 |
 
 Scènes synthétiques avec 3 pièces inclinées sur 8 (vue de dessus) :
 rappel 0,84 → 0,94, fausses 8 → 1, erreur d'inclinaison des inclinées
