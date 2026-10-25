@@ -478,7 +478,7 @@ def main(argv=None) -> int:
     probleme = probleme_etalonnage(donnees) if "probleme_etalonnage" in globals() \
         else sp.probleme_etalonnage(donnees)
     if probleme:
-        print("ETALONNAGE INUTILISABLE : {}.\n  Refaites-le : dobot.py etalonner-camera "
+        print("ETALONNAGE INUTILISABLE : {}.\n  Refaites-le : dobot.py etalonner-avec-pieces "
               "--recommencer".format(probleme))
         return 1
     T = np.array(donnees["T_robot_camera"], float)

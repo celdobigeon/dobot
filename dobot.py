@@ -22,7 +22,9 @@ Le Dobot reel en ligne de commande : une commande, une action.
                                                     posture (rien ne bouge)
     .venv/bin/python dobot.py origine               prise d'origine seule
                                                     (= mise-en-route --sans-posture)
-    .venv/bin/python dobot.py etalonner-camera [--reprendre ...]
+    .venv/bin/python dobot.py etalonner-avec-pieces [--reprendre ...]
+                                                    etalonnage camera -> robot
+                                                    par poses d'une piece
     .venv/bin/python dobot.py etalonner-pince       etalonnage camera -> robot
                                                     par la pince seule
     .venv/bin/python dobot.py saisir [--boucle]     essai de saisie guidee
@@ -437,7 +439,9 @@ def main(argv=None) -> int:
     p.add_argument("--equerre", action="store_true",
                    help="amener d'abord le bras en equerre en mode manuel")
     p.set_defaults(f=origine)
-    p = sp.add_parser("etalonner-camera", help="etalonnage camera -> robot",
+    # ancien nom garde en alias : etalonner-camera
+    p = sp.add_parser("etalonner-avec-pieces", aliases=["etalonner-camera"],
+                      help="etalonnage camera -> robot par poses d'une piece",
                       add_help=False)
     p3 = sp.add_parser("etalonner-pince", help="etalonnage camera -> robot par la pince "
                                                "seule (aucune piece a poser)")
