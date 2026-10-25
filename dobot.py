@@ -401,11 +401,15 @@ def main(argv=None) -> int:
     p.set_defaults(f=origine)
     p = sp.add_parser("etalonner-camera", help="etalonnage camera -> robot",
                       add_help=False)
-    p.add_argument("reste", nargs=argparse.REMAINDER,
-                   help="options de etalonner_camera_robot.py (--reprendre...)")
-    p.set_defaults(f=etalonner)
+    # ses options (--reprendre...) sont celles de etalonner_camera_robot.py :
+    # elles lui sont passees telles quelles (voir parse_known_args)
+    p.set_defaults(f=etalonner, reste=[])
 
-    a = ap.parse_args(argv)
+    a, inconnus = ap.parse_known_args(argv)
+    if inconnus:
+        if a.f is not etalonner:
+            ap.error("arguments inconnus : {}".format(" ".join(inconnus)))
+        a.reste = inconnus
     try:
         return a.f(a)
     except KeyboardInterrupt:
