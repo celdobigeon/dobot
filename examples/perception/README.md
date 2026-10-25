@@ -17,6 +17,9 @@ géométrie suffit.
 | `serveur_camera.py` | ouvre la caméra **une fois** et la garde ouverte ; le **seul** script qui demande `sudo` sous macOS |
 | `camera.py` | réglages communs de la caméra, et le client : `camera.capturer()` demande une capture au serveur |
 | `vision.py` | la reconnaissance : plan de la table, objets, face d'appui, position, orientation |
+| `perception.py` | la bibliothèque à utiliser : réseau (s'il est entraîné) + géométrie + affinage |
+| `raffinement.py` | affinage de la scène entière « rendre et comparer » : pièces inclinées, occultations, physique |
+| `evaluer_detection.py` | mesures chiffrées (scènes synthétiques, jeu réel annoté, captures) |
 | `detecter_pieces.py` | détection sur un fichier, ou en direct (`--direct`) ; écrit une image annotée |
 | `capture_realsense.py` | enregistre une capture dans `captures/` (par le serveur s'il tourne) |
 | `diagnostic_realsense.py` | teste la caméra étape par étape |
@@ -76,14 +79,82 @@ for piece in ordre_de_prise(p.detecter()):     # les libres d'abord, du haut ver
     print(piece.numero, piece.type, piece.face, piece.support, piece.dessus)
 ```
 
-**Limites.** Seules les pièces **horizontales** sont décrites : une pièce
-qui s'appuie d'un bout sur la table et de l'autre sur une pièce (inclinée,
-cas fréquent dans un tas) est mal lue. Deux fines sur la tranche accolées
+**Limites.** Sans l'affinage (`Perception(raffinement=False)`), seules les
+pièces **horizontales** sont décrites : une pièce qui s'appuie d'un bout
+sur la table et de l'autre sur une pièce (inclinée, cas fréquent dans un
+tas) est mal lue ; voir la section suivante. Deux fines sur la tranche accolées
 et une fine à plat sur une fine à plat se ressemblent beaucoup vu de
 dessus. En vue rasante, la pièce du dessus cache sa porteuse et projette
 une grande ombre : les piles y sont souvent manquées. Chiffres et
 méthode : `evaluer_detection.py --empilement` et l'en-tête de
 `vision_modele.py`.
+
+## Pièces inclinées, tas : l'affinage de la scène
+
+Dans un vrai tas, beaucoup de pièces sont **inclinées** (un bout sur la
+table, l'autre sur l'arête ou contre le flanc d'une pièce), et se cachent
+les unes les autres. `perception.py` termine donc par un **affinage de la
+scène entière** (`raffinement.py`, actif par défaut) : les détections (le
+réseau s'il est entraîné, la géométrie de `vision_modele.py`) ne sont plus
+que des *propositions* ; une scène 3D de boîtes de dimensions connues est
+**rendue** dans les vues de la caméra (lancer de rayons, occultations
+comprises) et **corrigée** jusqu'à expliquer la profondeur mesurée, sous
+des contraintes physiques (pas d'interpénétration, appui sur la table ou
+sur une pièce, centre de gravité entre les appuis). Une pièce qui
+n'explique rien est retirée ; une zone que rien n'explique devient une
+nouvelle pièce, éventuellement inclinée.
+
+Le réseau n'est qu'un indice : il ne peut pas imposer une pièce que la
+profondeur contredit, et une pièce qu'il manque (fond inconnu, autre
+éclairage) est retrouvée par la géométrie seule.
+
+Chaque pièce porte en plus :
+
+| Champ | Sens |
+|---|---|
+| `inclinaison` | angle du grand côté avec la table, en degrés (0 : à plat) |
+| `appuis` | numéros de **toutes** les pièces sur lesquelles elle s'appuie (`support` : la principale) |
+| `confiance` | part de ses pixels expliqués, marge avec la meilleure autre lecture (type, face), physique |
+
+`T_table` et `T_camera` décrivent alors la face supérieure **inclinée**.
+Une pièce inclinée sur une autre est prise **avant** elle
+(`ordre_de_prise`).
+
+```python
+p = Perception()                         # affinage compris
+p = Perception(raffinement=False)        # les détections telles quelles
+for piece in ordre_de_prise(p.detecter()):
+    print(piece.numero, piece.type, piece.face, round(piece.inclinaison), piece.support)
+```
+
+**Mesures** (`evaluer_detection.py --raffinement`). Jeu réel annoté, les
+40 images de validation (que le réseau n'a pas apprises), scène estimée
+rendue dans l'image couleur et comparée aux masques annotés :
+
+| Méthode | Rappel | Précision | IoU | Classe | s/image |
+|---|---|---|---|---|---|
+| géométrie seule | 0,79 | 0,85 | 0,82 | 0,86 | 2,3 |
+| géométrie + affinage | **0,90** | **0,94** | 0,86 | 0,93 | 3,2 |
+| YOLO | 0,98 | 0,98 | 0,90 | 0,94 | 0,6 |
+| YOLO + affinage | 0,99 | 0,97 | 0,91 | 0,96 | 3,6 |
+| YOLO abîmé (masques perdus, fusionnés, faux sur le fond) | 0,66 | 0,93 | 0,87 | 0,95 | 0,5 |
+| YOLO abîmé + affinage | **0,94** | 0,92 | 0,89 | 0,95 | 3,9 |
+
+Scènes synthétiques avec 3 pièces inclinées sur 8 (vue de dessus) :
+rappel 0,84 → 0,94, fausses 8 → 1, erreur d'inclinaison des inclinées
+11° → 0,3°, leur support juste 0,17 → 0,68, position 1,5 → 0,5 mm. Les
+scènes à plat ne changent presque pas (rappel 1,00, 0,4 mm). En vue
+rasante (caméra à 1 m), le gain demeure (rappel 0,62 → 0,72 avec les
+inclinées) mais les erreurs restent de 2 à 4 mm.
+
+**Limites.** L'affinage ajoute 1 à 3 s par image (8 pièces) ; avec le
+réseau, la détection géométrique, qui le rend robuste au fond, coûte
+encore 2 à 3 s. Une épaisse à plat et une fine sur la tranche accolées
+(même hauteur, 19 + 8 mm de large) restent ambiguës pour la profondeur :
+seul le réseau (la couleur) tranche. Les pièces très lointaines au bord
+de la table, en vue rasante, sont souvent manquées. Une surface plane
+étrangère (livre, planche) n'est pas pavée de pièces, mais une pièce
+posée dessus peut être manquée.
 
 ## Installation
 

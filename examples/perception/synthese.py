@@ -26,9 +26,13 @@ Les pieces peuvent etre EMPILEES (placer(..., empilees=k), poser_sur) :
 une piece posee a plat sur la face superieure d'une autre, en travers,
 dans le meme sens, decalee de cote, ou en tas de trois. Elle reste
 horizontale (son centre est au-dessus de sa porteuse : elle ne bascule
-pas) ; une piece qui s'appuie d'un bout sur la table et de l'autre sur une
-piece, donc inclinee, n'est pas simulee. La verite dit, pour chaque piece,
-la hauteur de sa base et l'indice de sa porteuse (None : la table).
+pas). Elles peuvent aussi etre INCLINEES (placer(..., inclinees=k),
+incliner) : un bout sur la table, l'autre en appui sur l'arete d'une
+piece ("sur"), ou contre son flanc ("contre") ; c'est le cas courant d'un
+tas reel. La verite dit, pour chaque piece, la hauteur de sa base (0 pour
+une inclinee : son bout bas est sur la table), l'indice de sa porteuse
+(None : la table ; pour une inclinee, la piece ou elle s'appuie) et son
+inclinaison (tangage, degres).
 
 Les images infrarouge et couleur sont grossieres (des aplats ombres) : elles
 servent a exercer le code, pas a juger un indice de couleur fin.
@@ -78,10 +82,48 @@ class PieceVraie:
     contact: bool = False   # touche une autre piece
     z: float = 0.0          # mm, hauteur de la face d'appui (0 : sur la table)
     support: Optional[int] = None   # indice de la piece porteuse, None : la table
+    # INCLINEE : tangage (deg, le bout +x leve), et hauteur du CENTRE de la
+    # boite (mm) ; x, y sont alors la projection de ce centre
+    tangage: float = 0.0
+    centre_z: Optional[float] = None
+
+    @property
+    def inclinee(self) -> bool:
+        return self.tangage != 0.0
+
+    def rotation(self) -> np.ndarray:
+        """Boite -> monde : lacet autour de z, puis tangage (x leve vers z)."""
+        c, s = np.cos(np.radians(self.lacet)), np.sin(np.radians(self.lacet))
+        Rz = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+        if not self.inclinee:
+            return Rz
+        a = np.radians(self.tangage)
+        Ry = np.array([[np.cos(a), 0, -np.sin(a)], [0, 1, 0], [np.sin(a), 0, np.cos(a)]])
+        return Rz @ Ry
+
+    def centre(self) -> np.ndarray:
+        """Centre de la boite (mm, monde)."""
+        if self.inclinee:
+            return np.array([self.x, self.y, self.centre_z])
+        return np.array([self.x, self.y, self.z + self.dims[2] / 2.0])
+
+    def centre_dessus(self) -> np.ndarray:
+        """Centre de la face superieure (mm, monde)."""
+        return self.centre() + self.rotation()[:, 2] * self.dims[2] / 2.0
+
+    def coins3d(self) -> np.ndarray:
+        """Les 8 coins de la boite (mm, monde)."""
+        L, l, h = self.dims
+        a = np.array([[sx * L / 2, sy * l / 2, sz * h / 2] for sx in (-1, 1)
+                      for sy in (-1, 1) for sz in (-1, 1)])
+        return a @ self.rotation().T + self.centre()
 
     @property
     def sommet(self) -> float:
-        """Hauteur de la face superieure au-dessus de la table (mm)."""
+        """Hauteur de la face superieure au-dessus de la table (mm) ; pour une
+        piece inclinee, celle du centre de cette face."""
+        if self.inclinee:
+            return float(self.centre_dessus()[2])
         return self.z + self.dims[2]
 
     def coins(self) -> np.ndarray:
@@ -168,13 +210,21 @@ def rendre(K: np.ndarray, taille: Tuple[int, int], R_cw: np.ndarray,
         normale[m] = [0, 0, 1]
     for i, pc in enumerate(pieces):
         L, l, h = (x / 1000.0 for x in pc.dims)
-        c, s = np.cos(np.radians(pc.lacet)), np.sin(np.radians(pc.lacet))
-        Rb = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])   # boite -> monde
-        o = Rb.T @ (C - [pc.x / 1000.0, pc.y / 1000.0, 0.0])
-        d = d_w @ Rb                                          # Rb^T d
-        z0 = pc.z / 1000.0
-        bas = np.array([-L / 2, -l / 2, z0])
-        haut = np.array([L / 2, l / 2, z0 + h])
+        if getattr(pc, "inclinee", False):
+            # boite quelconque : repere centre sur la boite
+            Rb = pc.rotation()
+            o = Rb.T @ (C - pc.centre() / 1000.0)
+            d = d_w @ Rb
+            bas = np.array([-L / 2, -l / 2, -h / 2])
+            haut = -bas
+        else:
+            c, s = np.cos(np.radians(pc.lacet)), np.sin(np.radians(pc.lacet))
+            Rb = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])   # boite -> monde
+            o = Rb.T @ (C - [pc.x / 1000.0, pc.y / 1000.0, 0.0])
+            d = d_w @ Rb                                          # Rb^T d
+            z0 = pc.z / 1000.0
+            bas = np.array([-L / 2, -l / 2, z0])
+            haut = np.array([L / 2, l / 2, z0 + h])
         with np.errstate(divide="ignore", invalid="ignore"):
             t1 = (bas - o) / d
             t2 = (haut - o) / d
@@ -313,16 +363,18 @@ def placer(rng: np.random.Generator, n: int, types: Dict[str, Sequence[float]],
            zone: Tuple[float, float, float, float] = (-110, 110, -80, 80),
            touchantes: int = 0, faces: Sequence[str] = ("a plat", "sur la tranche"),
            essais: int = 400, empilees: int = 0,
-           modes: Sequence[str] = MODES_PILE) -> List[PieceVraie]:
+           modes: Sequence[str] = MODES_PILE, inclinees: int = 0,
+           modes_inclines: Sequence[str] = ("sur", "contre")) -> List[PieceVraie]:
     """
     `n` pieces au hasard dans `zone` (mm, repere monde), sans chevauchement ;
     `touchantes` d'entre elles sont posees CONTRE une piece deja placee (cote
     a cote, bout a bout, ou en T), sans jeu. `empilees` d'entre elles sont
     posees SUR une autre (voir empiler) : les n - empilees premieres sont
     tirees exactement comme sans empilement, une scene sans empilement ne
-    change donc pas.
+    change donc pas. `inclinees` d'entre elles, tirees en dernier (meme
+    principe), sont INCLINEES contre une piece deja posee (voir incliner).
     """
-    n_table = n - empilees
+    n_table = n - empilees - inclinees
     noms = sorted(types)
     pieces: List[PieceVraie] = []
     occupe = np.zeros((int(zone[3] - zone[2]) + 80, int(zone[1] - zone[0]) + 80),
@@ -387,6 +439,8 @@ def placer(rng: np.random.Generator, n: int, types: Dict[str, Sequence[float]],
         pieces.append(p)
     if empilees > 0:
         empiler(rng, pieces, empilees, types, zone, modes, faces, essais)
+    if inclinees > 0:
+        incliner(rng, pieces, inclinees, types, zone, modes_inclines, faces, essais)
     return pieces
 
 
@@ -487,6 +541,142 @@ def empiler(rng: np.random.Generator, pieces: List[PieceVraie], nombre: int,
     return pose
 
 
+#: facons d'incliner (voir incliner)
+MODES_INCLINES = ("sur", "contre")
+
+
+def _boite_m(p: PieceVraie):
+    """(centre, rotation, demi-dimensions) en metres, pour le test SAT."""
+    return p.centre() / 1000.0, p.rotation(), np.asarray(p.dims, float) / 2000.0
+
+
+def _penetre(p: PieceVraie, q: PieceVraie) -> float:
+    """Profondeur d'interpenetration (mm) des boites p et q (0 : disjointes)."""
+    from raffinement import penetration
+    c1, R1, h1 = _boite_m(p)
+    c2, R2, h2 = _boite_m(q)
+    return 1000.0 * float(penetration(c1[None], R1[None], h1, c2, R2, h2)[0])
+
+
+def _inclinee(t, f, dims, E, u, alpha, support) -> PieceVraie:
+    """La piece dont l'arete basse du bout bas est en E (mm, sur la table),
+    l'axe horizontal u (unitaire), inclinee de alpha (rad)."""
+    L, _, h = dims
+    a1 = np.array([u[0] * np.cos(alpha), u[1] * np.cos(alpha), np.sin(alpha)])
+    n1 = np.array([-u[0] * np.sin(alpha), -u[1] * np.sin(alpha), np.cos(alpha)])
+    c = np.array([E[0], E[1], 0.0]) + a1 * L / 2 + n1 * h / 2
+    lac = float(np.degrees(np.arctan2(u[1], u[0])))
+    return PieceVraie(t, f, float(c[0]), float(c[1]), lac, dims, z=0.0,
+                      support=support, tangage=float(np.degrees(alpha)),
+                      centre_z=float(c[2]))
+
+
+def incliner(rng: np.random.Generator, pieces: List[PieceVraie], nombre: int,
+             types: Dict[str, Sequence[float]],
+             zone: Tuple[float, float, float, float] = (-110, 110, -80, 80),
+             modes: Sequence[str] = MODES_INCLINES,
+             faces: Sequence[str] = ("a plat", "sur la tranche"),
+             essais: int = 400) -> int:
+    """
+    Pose `nombre` pieces INCLINEES (ajoutees a `pieces`), le bout bas sur la
+    table. Modes :
+      sur    : le dessous de la piece s'appuie sur l'arete superieure d'une
+               piece couchee (en travers, ou sur son bout) ; l'inclinaison
+               est la plus petite sans interpenetration (elle repose) ;
+      contre : le bout haut s'appuie contre le FLANC d'une piece assez haute
+               (le bout reste sous son sommet) ; la piece glisse vers la
+               porteuse jusqu'au contact.
+    Stabilite : le centre de gravite est entre les deux appuis (mode sur :
+    le contact est au-dela de 55 % de la longueur). Pas d'interpenetration
+    (test SAT entre boites). Rend le nombre de pieces posees.
+    """
+    noms = sorted(types)
+    pose = 0
+    for _ in range(essais):
+        if pose >= nombre:
+            break
+        mode = modes[int(rng.integers(len(modes)))]
+        porteuses = [k for k, p in enumerate(pieces) if not p.inclinee
+                     and p.face != "debout" and p.sommet >= 7.5]
+        if mode == "contre":
+            porteuses = [k for k in porteuses if pieces[k].sommet >= 16.5]
+        if not porteuses:
+            continue
+        i = porteuses[int(rng.integers(len(porteuses)))]
+        a = pieces[i]
+        t = noms[int(rng.integers(len(noms)))]
+        f = faces[int(rng.integers(len(faces)))]
+        dims = forme(types[t], f)
+        L, l, h = dims
+        ca, sa = np.cos(np.radians(a.lacet)), np.sin(np.radians(a.lacet))
+        ax, no = np.array([ca, sa]), np.array([-sa, ca])
+        signe = 1 if rng.random() < 0.5 else -1
+        bout = mode == "sur" and rng.random() < 0.25
+        if bout:
+            # sur le BOUT de la porteuse, a peu pres dans son axe
+            lac = np.radians(a.lacet + rng.uniform(-20, 20))
+            u = -signe * np.array([np.cos(lac), np.sin(lac)])
+            Q = np.array([a.x, a.y]) + signe * ax * a.dims[0] / 2
+        else:
+            lac = np.radians(a.lacet + 90.0 + rng.uniform(-30, 30))
+            u = -signe * np.array([np.cos(lac), np.sin(lac)])
+            Q = (np.array([a.x, a.y]) + signe * no * a.dims[1] / 2
+                 + ax * rng.uniform(-0.3, 0.3) * a.dims[0])
+        H = a.sommet
+        if mode == "sur":
+            s_c = rng.uniform(0.6, 0.85) * L
+            alpha0 = np.arcsin(min(H / s_c, 0.95))
+            E = Q - u * s_c * np.cos(alpha0)
+            # plus petite inclinaison sans interpenetration : la piece repose
+            lo, hi = np.radians(1.0), np.radians(65.0)
+            if _penetre(_inclinee(t, f, dims, E, u, hi, i), a) > 0.05:
+                continue
+            for _ in range(30):
+                mid = 0.5 * (lo + hi)
+                if _penetre(_inclinee(t, f, dims, E, u, mid, i), a) > 0.05:
+                    lo = mid
+                else:
+                    hi = mid
+            alpha = hi
+            if alpha < np.radians(3.0):
+                continue
+            # contact a la hauteur H le long du dessous : au-dela du milieu
+            if H / np.sin(alpha) < 0.55 * L:
+                continue
+        else:
+            amax = np.arcsin(min((H - 2.0) / L, 0.95))
+            if amax < np.radians(5.0):
+                continue
+            alpha = rng.uniform(np.radians(5.0), 0.9 * amax)
+            # le bout haut glisse vers le flanc jusqu'au contact
+            lo, hi = 0.0, L
+            # depart : le bout haut 6 mm DANS la porteuse
+            E0 = Q - u * (L * np.cos(alpha) - 6.0)
+            if _penetre(_inclinee(t, f, dims, E0 - u * hi, u, alpha, i), a) > 0.05:
+                continue
+            for _ in range(30):
+                mid = 0.5 * (lo + hi)
+                if _penetre(_inclinee(t, f, dims, E0 - u * mid, u, alpha, i), a) > 0.05:
+                    lo = mid
+                else:
+                    hi = mid
+            E = E0 - u * hi
+            if hi < 0.5:
+                continue
+        p = _inclinee(t, f, dims, E, u, alpha, i)
+        c = p.coins3d()
+        if not ((c[:, 0] >= zone[0]).all() and (c[:, 0] <= zone[1]).all()
+                and (c[:, 1] >= zone[2]).all() and (c[:, 1] <= zone[3]).all()):
+            continue
+        if c[:, 2].min() < -0.05:
+            continue
+        if any(_penetre(p, q) > 0.05 for q in pieces):
+            continue
+        pieces.append(p)
+        pose += 1
+    return pose
+
+
 def scene(pieces: Sequence[PieceVraie], cam: Optional[Camera] = None,
           bruit: Optional[Bruit] = None, graine: int = 0,
           couleur: bool = False, motif: bool = False,
@@ -510,10 +700,14 @@ def scene(pieces: Sequence[PieceVraie], cam: Optional[Camera] = None,
         ir[tache > 0] = 255
     centres, axes = [], []
     for p in pieces:
-        pw = np.array([p.x / 1000.0, p.y / 1000.0, p.sommet / 1000.0])
+        if getattr(p, "inclinee", False):
+            pw = p.centre_dessus() / 1000.0
+            axes.append(R_cw @ p.rotation()[:, 0])
+        else:
+            pw = np.array([p.x / 1000.0, p.y / 1000.0, p.sommet / 1000.0])
+            a = np.radians(p.lacet)
+            axes.append(R_cw @ np.array([np.cos(a), np.sin(a), 0.0]))
         centres.append(R_cw @ (pw - C))
-        a = np.radians(p.lacet)
-        axes.append(R_cw @ np.array([np.cos(a), np.sin(a), 0.0]))
     sc = vision.Scene(profondeur=Z.astype(np.float64), K=cam.K.copy(),
                       infrarouge=ir, couleur=img)
     return sc, Verite(list(pieces), np.array(centres).reshape(-1, 3),
@@ -551,6 +745,15 @@ class Bilan:
     scenes: int = 0
     ordre_ok: int = 0           # scenes ou l'ordre de prise respecte les piles
     premiere_libre: int = 0     # scenes ou la premiere piece a prendre est libre
+    # pieces INCLINEES, et angles separes (lacet autour de la verticale,
+    # inclinaison du grand cote sur la table)
+    vrais_inclinees: int = 0
+    trouves_inclinees: int = 0
+    bon_support_inclinees: int = 0
+    err_lacet: List[float] = field(default_factory=list)       # deg
+    err_incl: List[float] = field(default_factory=list)        # deg
+    err_incl_inclinees: List[float] = field(default_factory=list)
+    err_pos_inclinees: List[float] = field(default_factory=list)
 
     def ajouter(self, b: "Bilan") -> None:
         self.vrais += b.vrais
@@ -567,10 +770,15 @@ class Bilan:
         self.bonne_face += b.bonne_face
         for nom in ("vrais_empilees", "trouves_empilees", "vrais_porteuses",
                     "trouves_porteuses", "bon_support", "bon_support_empilees",
-                    "bon_type_face_empilees", "scenes", "ordre_ok", "premiere_libre"):
+                    "bon_type_face_empilees", "scenes", "ordre_ok", "premiere_libre",
+                    "vrais_inclinees", "trouves_inclinees", "bon_support_inclinees"):
             setattr(self, nom, getattr(self, nom) + getattr(b, nom))
         self.err_pos_empilees += b.err_pos_empilees
         self.err_pos_porteuses += b.err_pos_porteuses
+        self.err_lacet += b.err_lacet
+        self.err_incl += b.err_incl
+        self.err_incl_inclinees += b.err_incl_inclinees
+        self.err_pos_inclinees += b.err_pos_inclinees
 
     def resume(self) -> Dict[str, float]:
         t = max(self.trouves, 1)
@@ -594,7 +802,15 @@ class Bilan:
                 "pos_med_porteuses": (float(np.median(self.err_pos_porteuses))
                                       if self.err_pos_porteuses else np.nan),
                 "ordre_ok": self.ordre_ok / max(self.scenes, 1),
-                "premiere_libre": self.premiere_libre / max(self.scenes, 1)}
+                "premiere_libre": self.premiere_libre / max(self.scenes, 1),
+                "rappel_inclinees": self.trouves_inclinees / max(self.vrais_inclinees, 1),
+                "support_inclinees": self.bon_support_inclinees / max(self.trouves_inclinees, 1),
+                "lacet_med": float(np.median(self.err_lacet)) if self.err_lacet else np.nan,
+                "incl_med": float(np.median(self.err_incl)) if self.err_incl else np.nan,
+                "incl_med_inclinees": (float(np.median(self.err_incl_inclinees))
+                                       if self.err_incl_inclinees else np.nan),
+                "pos_med_inclinees": (float(np.median(self.err_pos_inclinees))
+                                      if self.err_pos_inclinees else np.nan)}
 
 
 def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
@@ -611,8 +827,10 @@ def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
     b.vrais_fines = sum(etroite)
     b.vrais_contact = sum(p.contact for p in verite.pieces)
     porteuses = {p.support for p in verite.pieces if p.support is not None}
-    b.vrais_empilees = sum(p.support is not None for p in verite.pieces)
+    b.vrais_empilees = sum(p.support is not None and not getattr(p, "inclinee", False)
+                           for p in verite.pieces)
     b.vrais_porteuses = len(porteuses)
+    b.vrais_inclinees = sum(bool(getattr(p, "inclinee", False)) for p in verite.pieces)
     if not pieces:
         b.ordre_ok = b.premiere_libre = int(not verite.pieces)
         return b
@@ -641,10 +859,23 @@ def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
         b.trouves_contact += int(verite.pieces[j].contact)
         cosang = abs(float(axe_det[i] @ verite.axes_camera[j]))
         b.err_ang.append(float(np.degrees(np.arccos(min(1.0, cosang)))))
+        # lacet (axes projetes sur la table) et inclinaison, separement
+        a_d, a_v = axe_det[i], verite.axes_camera[j]
+        incl_d = np.degrees(np.arcsin(min(1.0, abs(float(a_d @ n)))))
+        incl_v = np.degrees(np.arcsin(min(1.0, abs(float(a_v @ n)))))
+        b.err_incl.append(float(abs(incl_d - incl_v)))
+        h_d, h_v = a_d - (a_d @ n) * n, a_v - (a_v @ n) * n
+        if np.linalg.norm(h_d) > 1e-6 and np.linalg.norm(h_v) > 1e-6:
+            c = abs(float(h_d @ h_v)) / (np.linalg.norm(h_d) * np.linalg.norm(h_v))
+            b.err_lacet.append(float(np.degrees(np.arccos(min(1.0, c)))))
         pv = verite.pieces[j]
+        if getattr(pv, "inclinee", False):
+            b.trouves_inclinees += 1
+            b.err_incl_inclinees.append(b.err_incl[-1])
+            b.err_pos_inclinees.append(b.err_pos[-1])
         b.bon_type += int(pieces[i].type == pv.type)
         b.bonne_face += int(pieces[i].face == pv.face)
-        if pv.support is not None:
+        if pv.support is not None and not getattr(pv, "inclinee", False):
             b.trouves_empilees += 1
             b.err_pos_empilees.append(b.err_pos[-1])
             b.bon_type_face_empilees += int(pieces[i].type == pv.type
@@ -668,7 +899,10 @@ def comparer(pieces, verite: Verite, distance_max: float = 15.0) -> Bilan:
             juste = k is not None and apparie.get(k) == pv.support
         b.bon_support += int(juste)
         if pv.support is not None:
-            b.bon_support_empilees += int(juste)
+            if getattr(pv, "inclinee", False):
+                b.bon_support_inclinees += int(juste)
+            else:
+                b.bon_support_empilees += int(juste)
 
     # ORDRE DE PRISE : chaque vraie piece portee doit etre prise avant sa
     # porteuse ; une porteuse prise alors que la piece qu'elle porte n'a pas

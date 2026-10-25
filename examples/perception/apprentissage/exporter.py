@@ -23,6 +23,11 @@ COPIER-COLLER (--copies N, voir copier_coller.py) : N images synthetiques
 par image d'entrainement, faites de pieces decoupees dans les images
 d'ENTRAINEMENT seulement, collees sur ces images et sur les fonds
 (dataset/fonds/). La validation reste faite d'images reelles intactes.
+
+IMAGES RENDUES (--synthetiques DOSSIER [--n-synth N], voir
+synthese_images.py) : N images d'un jeu genere par randomisation de domaine
+sont ajoutees a l'ENTRAINEMENT seulement (prefixe sy_) ; la validation
+reste faite d'images reelles. Sans cette option, rien ne change.
 """
 
 from __future__ import annotations
@@ -80,8 +85,32 @@ def ecrire(dossier_img, dossier_lab, nom, image, polys_classes, noms_classes):
     return len(lignes)
 
 
+def ajouter_rendues(dossier_synth, n, dirs_train, graine=0) -> tuple:
+    """Copie n images rendues (et leurs etiquettes) de dossier_synth/images
+    et /labels dans l'entrainement ; n <= 0 : toutes. Tirage reproductible
+    (graine). Rend (images, pieces)."""
+    images = sorted(glob.glob(os.path.join(dossier_synth, "images", "*.jpg"))
+                    + glob.glob(os.path.join(dossier_synth, "images", "*.png")))
+    if not images:
+        raise SystemExit("aucune image rendue dans {} (synthese_images.py)".format(dossier_synth))
+    if 0 < n < len(images):
+        rng = np.random.default_rng(graine)
+        images = [images[i] for i in sorted(rng.choice(len(images), n, replace=False))]
+    pieces = 0
+    for f in images:
+        base = os.path.splitext(os.path.basename(f))[0]
+        lab = os.path.join(dossier_synth, "labels", base + ".txt")
+        if not os.path.exists(lab):
+            continue
+        shutil.copy2(f, os.path.join(dirs_train[0], "sy_" + os.path.basename(f)))
+        shutil.copy2(lab, os.path.join(dirs_train[1], "sy_" + base + ".txt"))
+        with open(lab) as fl:
+            pieces += sum(1 for ligne in fl if ligne.strip())
+    return len(images), pieces
+
+
 def exporter(racine=commun.DATASET, sortie=None, tout=False, val=0.2, copies=0,
-             graine=0, collages=(2, 6)) -> dict:
+             graine=0, collages=(2, 6), synthetiques=None, n_synth=0) -> dict:
     sortie = sortie or os.path.join(racine, "yolo")
     types = commun.charger_types(racine)
     classes = list(types)
@@ -150,6 +179,11 @@ def exporter(racine=commun.DATASET, sortie=None, tout=False, val=0.2, copies=0,
                 stats["instances_train"] += ecrire(*dirs["train"], "cc_{}_{}".format(n, c),
                                                    img2, polys, classes)
                 stats["synthetiques"] += 1
+    stats["rendues"] = 0
+    if synthetiques:
+        k, p = ajouter_rendues(synthetiques, n_synth, dirs["train"], graine)
+        stats["rendues"] = k
+        stats["instances_train"] += p
     with open(os.path.join(sortie, "data.yaml"), "w", encoding="utf-8") as f:
         f.write("# genere par exporter.py : ne pas modifier a la main\n")
         f.write("path: {}\ntrain: images/train\nval: images/val\n".format(os.path.abspath(sortie)))
@@ -170,11 +204,17 @@ def main():
     ap.add_argument("--copies", type=int, default=2,
                     help="images copier-coller par image d'entrainement (0 : aucune)")
     ap.add_argument("--graine", type=int, default=0)
+    ap.add_argument("--synthetiques", default=None,
+                    help="dossier d'images rendues (synthese_images.py) a ajouter a "
+                    "l'entrainement (defaut : aucune)")
+    ap.add_argument("--n-synth", type=int, default=0,
+                    help="nombre d'images rendues a prendre (0 : toutes)")
     a = ap.parse_args()
-    s = exporter(a.dataset, a.sortie, a.tout, a.val, a.copies, a.graine)
-    print("entrainement : {} images reelles + {} synthetiques, {} pieces ; validation : "
-          "{} images, {} pieces ; classes {}\n-> {}".format(
-              s["train"], s["synthetiques"], s["instances_train"], s["val"],
+    s = exporter(a.dataset, a.sortie, a.tout, a.val, a.copies, a.graine,
+                 synthetiques=a.synthetiques, n_synth=a.n_synth)
+    print("entrainement : {} images reelles + {} copier-coller + {} rendues, {} pieces ; "
+          "validation : {} images, {} pieces ; classes {}\n-> {}".format(
+              s["train"], s["synthetiques"], s["rendues"], s["instances_train"], s["val"],
               s["instances_val"], s["classes"], s["data"]))
 
 

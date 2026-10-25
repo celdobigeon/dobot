@@ -50,8 +50,20 @@ verifie.
      la piece est reposee sur la table (pas de pile fantome). support,
      hauteur_base, dessus ; ordre_de_prise(pieces).
 
+  8. AFFINAGE DE LA SCENE (raffinement.py, actif par defaut ;
+     Perception(raffinement=False) pour s'en passer). Les pieces trouvees
+     ci-dessus, celles de la detection geometrique (vision_modele : elle
+     ne depend pas du fond) et les masques du reseau ne sont plus que des
+     PROPOSITIONS : une scene 3D de boites (a plat, empilees ou INCLINEES,
+     sans interpenetration, posees de facon stable) est rendue dans les
+     vues de la camera et corrigee jusqu'a expliquer la profondeur
+     mesuree ; les pieces qui n'expliquent rien sont retirees, les zones
+     inexpliquees deviennent de nouvelles pieces. Le reseau ne peut pas
+     imposer une piece que la profondeur contredit. Chaque piece porte en
+     plus `inclinaison` (deg) et `appuis`.
+
 Sans modele entraine (ou sans image couleur), repli sur la detection
-geometrique seule (vision_modele si present, sinon vision).
+geometrique seule (vision_modele si present, sinon vision), puis affinage.
 
 Les reperes sont ceux de vision.py : T_camera dans le repere de la camera de
 PROFONDEUR, T_table dans le repere table (z vers le haut). Avec un
@@ -64,7 +76,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -595,7 +607,12 @@ class PieceVue(vision.Piece):
     masque: Optional[np.ndarray] = None
     T_robot: Optional[np.ndarray] = None
     iou: float = float("nan")
-    origine: str = ""                   # "reseau" ou "geometrie"
+    origine: str = ""                   # "reseau", "geometrie", "raffinement:..."
+    # remplis par l'affinage (raffinement.py) : inclinaison du grand cote
+    # sur la table (deg ; 0 : a plat), et numeros de TOUTES les pieces sur
+    # lesquelles elle s'appuie (`support` : la principale)
+    inclinaison: float = 0.0
+    appuis: List[int] = field(default_factory=list)
 
     @property
     def position_robot(self) -> Optional[np.ndarray]:
@@ -622,13 +639,23 @@ class Perception:
     modele          chemin d'un autre poids YOLO-seg ; False : jamais de reseau
     T_robot_camera  4x4 (m), repere de la camera de profondeur -> robot
     confiance_min   seuil du reseau ; iou_min : seuil de la verification
+    raffinement     etape finale "rendre et comparer" de toute la scene
+                    (raffinement.py : pieces inclinees, occultations,
+                    physique) ; False : les detections telles quelles
+    propositions_geometriques
+                    avec le reseau, ajouter aussi les pieces de la detection
+                    geometrique (vision_modele) aux propositions : la scene
+                    ne depend plus du reseau seul (fond inconnu)
+    reglages        raffinement.Reglages (poids, seuils), ou None
     """
 
     def __init__(self, types: Optional[Dict[str, Sequence[float]]] = None,
                  modele: Union[str, bool, None] = None,
                  T_robot_camera: Optional[np.ndarray] = None,
                  confiance_min: float = 0.35, iou_min: float = 0.45,
-                 device: Optional[str] = None, imgsz: Optional[int] = None):
+                 device: Optional[str] = None, imgsz: Optional[int] = None,
+                 raffinement: bool = True, propositions_geometriques: bool = True,
+                 reglages=None):
         self.types = {k: tuple(float(x) for x in v) for k, v in (types or TYPES).items()}
         self.T_robot_camera = None if T_robot_camera is None else np.asarray(T_robot_camera, float)
         self.confiance_min, self.iou_min = confiance_min, iou_min
@@ -652,6 +679,11 @@ class Perception:
         self.derniere_vue: Optional[VueCouleur] = None
         self.derniere_table: Optional[Table] = None
         self.durees: Dict[str, float] = {}
+        self.raffinement = raffinement
+        self.propositions_geometriques = propositions_geometriques
+        self.reglages = reglages
+        self.derniers_masques: Optional[list] = None
+        self.dernier_affinage = None
 
     @property
     def mode(self) -> str:
@@ -681,12 +713,36 @@ class Perception:
         t1 = time.perf_counter()
         vue = vue_couleur(capture)
         self.durees = {"capture": t1 - t0}
+        self.derniers_masques = None
         if self.reseau is None or vue is None:
             pieces = self._geometrie(capture, vue)
+            table = None
         else:
             pieces = self._reseau(capture, vue)
+            table = self.derniere_table
+            if self.raffinement and self.propositions_geometriques:
+                # la geometrie propose aussi : une piece que le reseau
+                # manque (fond inconnu) n'est pas perdue
+                pieces = list(pieces) + self._geometrie(capture, vue)
+                self.derniere_vue = vue
+        if self.raffinement:
+            pieces = self._raffiner(capture, pieces, vue, table)
         self.durees["total"] = time.perf_counter() - t0
         return pieces
+
+    def _raffiner(self, capture, pieces, vue, table) -> List[PieceVue]:
+        """Etape finale : raffinement.raffiner (voir son en-tete)."""
+        import raffinement as rf
+        t = time.perf_counter()
+        vue = vue or vue_couleur(capture, infrarouge=True)
+        res, aff = rf.raffiner(capture, pieces, self.types, masques=self.derniers_masques,
+                               vue=vue, reglages=self.reglages,
+                               T_robot_camera=self.T_robot_camera, table=table,
+                               rendre_affinage=True)
+        self.dernier_affinage = aff
+        self.derniere_vue = vue
+        self.durees["raffinement"] = time.perf_counter() - t
+        return res
 
     # -- avec le reseau ---------------------------------------------------
     def _reseau(self, capture, vue: VueCouleur) -> List[PieceVue]:
@@ -708,6 +764,8 @@ class Perception:
             return []
         classes = [self.reseau.names[int(c)] for c in res.boxes.cls.cpu().numpy()]
         confs = res.boxes.conf.cpu().numpy()
+        self.derniers_masques = [(masques[i], classes[i], float(confs[i]))
+                                 for i in range(len(masques)) if classes[i] in self.types]
         ordre = np.argsort(-confs)
         pieces: List[PieceVue] = []
         ajustements = []

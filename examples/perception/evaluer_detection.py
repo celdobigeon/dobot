@@ -30,6 +30,22 @@ des masques parfaits tires de la verite (OracleMasques).
 Reel : pas de verite au millimetre, seulement le nombre de pieces trouvees
 (compare au nombre de pieces posees, compte a l'oeil) et l'ecart moyen des
 dimensions mesurees aux dimensions du modele.
+
+Affinage de la scene (--raffinement, raffinement.py) : avant / apres, sur
+  - des scenes synthetiques de 8 pieces (en contact ; avec 3 piles ; avec
+    3 pieces INCLINEES et une pile), pour chaque camera : geometrie seule,
+    masques parfaits (OracleMasques), masques ABIMES (ReseauDegrade :
+    masques perdus, fusionnes, faux masques sur le fond) ; rappel, faux,
+    position, lacet, inclinaison, type et face, support, ordre de prise ;
+  - les images de VALIDATION du jeu reel annote (apprentissage/dataset,
+    celles que le reseau n'a pas apprises) : la scene estimee est rendue
+    dans l'image couleur et comparee aux masques annotes (rappel,
+    precision, IoU, classe), sans reseau, avec YOLO, avec YOLO abime ;
+  - les captures de captures/ (centres releves a l'oeil).
+--ablation : l'affinage sans chacun des termes de son cout.
+
+    .venv/bin/python examples/perception/evaluer_detection.py --raffinement --scenes 8
+    .venv/bin/python examples/perception/evaluer_detection.py --raffinement --sans-synthese
 """
 
 import argparse
@@ -229,7 +245,7 @@ def evaluer_masques(nombre: int, configs, empilees: int = 3):
             gris = np.full(sc.profondeur.shape + (3,), 128, np.uint8)
             capture = {"profondeur": sc.profondeur.astype(np.float32), "K": sc.K,
                        "couleur": gris}
-            p = perception.Perception(types=sy.TYPES, modele=False)
+            p = perception.Perception(types=sy.TYPES, modele=False, raffinement=False)
             p.reseau, p.imgsz = OracleMasques(verite, sy.TYPES), 864
             bilan.ajouter(sy.comparer(p.detecter(capture), verite))
         r = bilan.resume()
@@ -239,6 +255,330 @@ def evaluer_masques(nombre: int, configs, empilees: int = 3):
                                        r["type_face_empilees"], r["support"],
                                        r["support_empilees"], r["pos_med"], r["ordre_ok"],
                                        r["premiere_libre"]))
+
+
+class ReseauDegrade:
+    """
+    Un reseau de segmentation ABIME, pour mesurer ce que la geometrie
+    garantit quand le reseau se trompe (fond inconnu, eclairage) : autour
+    d'un vrai reseau (YOLO) ou d'OracleMasques, chaque masque est perdu
+    avec la probabilite `manque`, deux masques voisins sont FUSIONNES avec
+    la probabilite `fusion` (deux pieces qui se touchent vues comme une),
+    et `faux` masques sont ajoutes sur le FOND (taches de la taille d'une
+    piece, au hasard dans le bas de l'image : nappe, motif, ombre).
+    """
+
+    def __init__(self, reseau, manque=0.3, fusion=0.3, faux=2, graine=0):
+        self.reseau = reseau
+        self.names = reseau.names
+        self.manque, self.fusion, self.faux = manque, fusion, faux
+        self.rng = np.random.default_rng(graine)
+
+    def predict(self, image, **kw):
+        import types as _t
+        import cv2
+        r = self.reseau.predict(image, **kw)[0]
+        H, W = image.shape[:2]
+        if r.masks is None:
+            m = np.zeros((0, H, W), bool)
+            cls = np.zeros(0)
+            conf = np.zeros(0)
+        else:
+            m = r.masks.data.cpu().numpy() > 0.5
+            cls = r.boxes.cls.cpu().numpy().astype(float)
+            conf = r.boxes.conf.cpu().numpy().astype(float)
+            if m.shape[1:] != (H, W):
+                m = np.array([cv2.resize(x.astype(np.uint8), (W, H)) > 0 for x in m]).reshape(-1, H, W)
+        garde = self.rng.random(len(m)) >= self.manque
+        m, cls, conf = m[garde], cls[garde], conf[garde]
+        # fusions de masques voisins
+        m = list(m)
+        cls, conf = list(cls), list(conf)
+        i = 0
+        while i < len(m):
+            if self.rng.random() < self.fusion:
+                gros = cv2.dilate(m[i].astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+                for j in range(i + 1, len(m)):
+                    if (gros & m[j]).any():
+                        m[i] = m[i] | m[j]
+                        del m[j], cls[j], conf[j]
+                        break
+            i += 1
+        for _ in range(self.faux):
+            f = np.zeros((H, W), np.uint8)
+            c = (int(self.rng.uniform(0.1, 0.9) * W), int(self.rng.uniform(0.5, 0.95) * H))
+            cv2.ellipse(f, c, (int(self.rng.uniform(20, 50)), int(self.rng.uniform(6, 15))),
+                        float(self.rng.uniform(0, 180)), 0, 360, 1, -1)
+            m.append(f > 0)
+            cls.append(float(self.rng.integers(len(self.names))))
+            conf.append(0.6)
+
+        class T:
+            def __init__(self, a):
+                self.a = a
+
+            def cpu(self):
+                return self
+
+            def numpy(self):
+                return self.a
+
+        n = len(m)
+        data = np.array(m, np.float32).reshape(n, H, W)
+        return [_t.SimpleNamespace(
+            masks=_t.SimpleNamespace(data=T(data)) if n else None,
+            boxes=_t.SimpleNamespace(cls=T(np.array(cls, float)), conf=T(np.array(conf, float))))]
+
+
+#: scenes de l'evaluation de l'affinage : (nom, arguments de synthese.placer)
+SCENES_RAFFINEMENT = {
+    "contact": dict(touchantes=3),
+    "piles": dict(touchantes=1, empilees=3),
+    "inclinees": dict(touchantes=1, empilees=1, inclinees=3),
+}
+
+#: methodes comparees : (nom, masques, affinage)
+METHODES_RAFFINEMENT = (("geometrie", None, False), ("geometrie+raff", None, True),
+                        ("masques", "oracle", False), ("masques+raff", "oracle", True),
+                        ("degrades", "degrade", False), ("degrades+raff", "degrade", True))
+
+
+def _perception_synthetique(sc, verite, masques, affinage, reglages=None):
+    """Perception sur une scene synthetique : geometrie seule, ou un reseau
+    remplace par les masques exacts (oracle) ou abimes (degrade)."""
+    import perception
+    capture = {"profondeur": sc.profondeur.astype(np.float32), "K": sc.K}
+    if sc.infrarouge is not None:
+        capture["infrarouge"] = sc.infrarouge
+    if masques is not None:
+        capture["couleur"] = np.full(sc.profondeur.shape + (3,), 128, np.uint8)
+    p = perception.Perception(types=sy.TYPES, modele=False, raffinement=affinage,
+                              reglages=reglages)
+    if masques == "oracle":
+        p.reseau, p.imgsz = OracleMasques(verite, sy.TYPES), 864
+    elif masques == "degrade":
+        p.reseau, p.imgsz = ReseauDegrade(OracleMasques(verite, sy.TYPES), graine=7), 864
+    t = time.perf_counter()
+    pieces = p.detecter(capture)
+    return pieces, time.perf_counter() - t, p.durees.get("raffinement", 0.0)
+
+
+def evaluer_raffinement(nombre: int, configs, types_scenes=None, methodes=None,
+                        reglages=None, titre=""):
+    """Avant / apres l'affinage (raffinement.py), sur des scenes synthetiques
+    de 8 pieces : en contact, avec piles, avec pieces inclinees ; geometrie
+    seule, masques parfaits, masques abimes (ReseauDegrade)."""
+    methodes = [m for m in METHODES_RAFFINEMENT if methodes is None or m[0] in methodes]
+    types_scenes = types_scenes or list(SCENES_RAFFINEMENT)
+    print("\nAFFINAGE DE LA SCENE {}({} scenes de 8 pieces par cas)".format(titre, nombre))
+    print("{:8s} {:9s} {:15s} {:>5s} {:>4s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} {:>5s} "
+          "{:>5s} {:>5s} {:>5s} {:>5s} {:>5s}".format(
+              "config", "scenes", "methode", "rapp", "faux", "pos", "lacet", "incl", "tf",
+              "supp", "r_inc", "i_inc", "s_inc", "r_emp", "ordre", "t", "t_raf"))
+    lignes = []
+    for config in configs:
+        c = CONFIGS[config]
+        for ts in types_scenes:
+            bilans = {m[0]: sy.Bilan() for m in methodes}
+            temps = {m[0]: [0.0, 0.0] for m in methodes}
+            for k in range(nombre):
+                rng = np.random.default_rng(900 + k)
+                pcs = sy.placer(rng, 8, sy.TYPES, zone=c["zone"], **SCENES_RAFFINEMENT[ts])
+                bruit = sy.Bruit(reflet=c.get("reflet", False), lissage=c.get("lissage", 5))
+                sc, verite = sy.scene(pcs, c["cam"], bruit, graine=k, couleur=c["couleur"],
+                                      motif=c["motif"], table=c["table"])
+                for nom, masques, aff in methodes:
+                    pieces, dt, dt_r = _perception_synthetique(sc, verite, masques, aff, reglages)
+                    bilans[nom].ajouter(sy.comparer(pieces, verite))
+                    temps[nom][0] += dt
+                    temps[nom][1] += dt_r
+            for nom, _, _ in methodes:
+                r = bilans[nom].resume()
+                lignes.append((config, ts, nom, r, temps[nom][0] / nombre))
+                print("{:8s} {:9s} {:15s} {:5.2f} {:4d} {:5.2f} {:5.2f} {:5.2f} {:5.2f} {:5.2f} "
+                      "{:5.2f} {:5.2f} {:5.2f} {:5.2f} {:5.2f} {:5.1f} {:5.1f}".format(
+                          config, ts, nom, r["rappel"], r["faux"], r["pos_med"], r["lacet_med"],
+                          r["incl_med"], min(r["type"], r["face"]), r["support"],
+                          r["rappel_inclinees"], r["incl_med_inclinees"], r["support_inclinees"],
+                          r["rappel_empilees"], r["ordre_ok"], temps[nom][0] / nombre,
+                          temps[nom][1] / nombre), flush=True)
+    print("  (rapp : rappel ; pos : erreur de position mediane, mm ; lacet, incl : erreurs "
+          "medianes, deg ;\n   tf : type et face justes ; supp : support juste ; r_inc, i_inc, "
+          "s_inc : rappel, erreur\n   d'inclinaison (deg) et support juste des pieces inclinees ; "
+          "r_emp : rappel des pieces\n   empilees ; ordre : scenes sans porteuse prise avant sa "
+          "piece ; t, t_raf : s par scene,\n   total et affinage seul)")
+    return lignes
+
+
+#: images du jeu de donnees reel annote (apprentissage/dataset) : celles de
+#: VALIDATION (exporter.en_validation, 20 %), que le reseau n'a pas apprises
+DATASET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "apprentissage", "dataset")
+
+
+def images_validation(dataset=DATASET):
+    import json
+    import zlib
+    noms = []
+    dossier = os.path.join(dataset, "annotations")
+    if not os.path.isdir(dossier):
+        return noms
+    for f in sorted(os.listdir(dossier)):
+        n = f[:-5]
+        with open(os.path.join(dossier, f)) as fi:
+            a = json.load(fi)
+        if a.get("statut") == "valide" and (zlib.crc32(n.encode()) % 1000) / 1000.0 < 0.2:
+            noms.append(n)
+    return noms
+
+
+def comparer_masques(pieces, T_ct, vue, annotation, types):
+    """Projette la scene estimee dans l'image couleur (rendu z-buffer :
+    partie VISIBLE de chaque piece) et l'apparie aux masques annotes (IoU
+    >= 0.5, glouton) : (annotees, predites, appariees, IoU des paires,
+    classes justes)."""
+    import raffinement as rf
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "apprentissage"))
+    import commun
+    T_tc = np.linalg.inv(T_ct)
+    bs = [b for b in (rf.boite_de_piece(p, T_tc, types) for p in pieces) if b is not None]
+    lab = rf.masque_visible(bs, T_ct, vue)
+    W, H = annotation["taille"]
+    vrais = [commun.polygones_vers_masque(i["polygones"], (W, H)) for i in annotation["instances"]]
+    cls = [i["classe"] for i in annotation["instances"]]
+    preds = [lab == k for k in range(len(bs))]
+    paires = []
+    for i, m in enumerate(preds):
+        if not m.any():
+            continue
+        for j, v in enumerate(vrais):
+            inter = np.count_nonzero(m & v)
+            if inter:
+                paires.append((inter / np.count_nonzero(m | v), i, j))
+    pi, pj, ious, bon = set(), set(), [], 0
+    for iou, i, j in sorted(paires, reverse=True):
+        if iou < 0.5:
+            break
+        if i in pi or j in pj:
+            continue
+        pi.add(i)
+        pj.add(j)
+        ious.append(iou)
+        bon += int(bs[i].type == cls[j])
+    return len(vrais), sum(1 for m in preds if m.any()), len(pi), ious, bon
+
+
+#: methodes sur les images reelles : (nom, reseau, affinage)
+METHODES_REEL = (("geometrie", "aucun", False), ("geometrie+raff", "aucun", True),
+                 ("yolo", "yolo", False), ("yolo+raff", "yolo", True),
+                 ("yolo_degrade", "degrade", False), ("yolo_degrade+raff", "degrade", True))
+
+
+def evaluer_reel_annote(nombre=None, methodes=None, reglages=None):
+    """Les images de validation du jeu reel annote : rappel, precision, IoU
+    des masques (scene estimee projetee dans l'image couleur), classe."""
+    import json
+    import perception
+    noms = images_validation()
+    if nombre:
+        noms = noms[:nombre]
+    if not noms:
+        print("\n(pas de jeu reel annote)")
+        return
+    methodes = [m for m in METHODES_REEL if methodes is None or m[0] in methodes]
+    if not os.path.exists(perception.MODELE):
+        methodes = [m for m in methodes if m[1] == "aucun"]
+    res = {m[0]: [0, 0, 0, [], 0, 0.0] for m in methodes}
+    print("\nJEU REEL ANNOTE ({} images de validation)".format(len(noms)))
+    for n in noms:
+        cap = perception.charger_capture(os.path.join(DATASET, "brut", n + ".npz"))
+        with open(os.path.join(DATASET, "annotations", n + ".json")) as f:
+            ann = json.load(f)
+        vue = perception.vue_couleur(cap)
+        T_ct = perception.analyser_table(np.asarray(cap["profondeur"], float),
+                                         np.asarray(cap["K"], float)).T_ct
+        for nom, reseau, aff in methodes:
+            p = perception.Perception(modele=None if reseau != "aucun" else False,
+                                      raffinement=aff, reglages=reglages)
+            if reseau == "degrade":
+                p.reseau = ReseauDegrade(p.reseau, graine=int(n))
+            t = time.perf_counter()
+            pieces = p.detecter(cap)
+            dt = time.perf_counter() - t
+            v, npred, tp, ious, bon = comparer_masques(pieces, T_ct, vue, ann, p.types)
+            r = res[nom]
+            r[0] += v
+            r[1] += npred
+            r[2] += tp
+            r[3] += ious
+            r[4] += bon
+            r[5] += dt
+    print("{:20s} {:>7s} {:>9s} {:>6s} {:>7s} {:>7s}".format(
+        "methode", "rappel", "precision", "IoU", "classe", "s/img"))
+    for nom, (v, npred, tp, ious, bon, dt) in res.items():
+        print("{:20s} {:7.2f} {:9.2f} {:6.2f} {:7.2f} {:7.1f}".format(
+            nom, tp / max(v, 1), tp / max(npred, 1), float(np.mean(ious)) if ious else np.nan,
+            bon / max(tp, 1), dt / len(noms)), flush=True)
+    return res
+
+
+def evaluer_captures_raffinement(reglages=None):
+    """Les captures de captures/ (centres releves a l'oeil) : perception sans
+    reseau, avant / apres l'affinage."""
+    import perception
+    dossier = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captures")
+    print("\nCAPTURES (centres releves a l'oeil) : geometrie, avant / apres l'affinage")
+    tot = {False: [0, 0, 0], True: [0, 0, 0]}
+    for nom, centres in ANNOTATIONS.items():
+        chemin = os.path.join(dossier, nom + ".npz")
+        if not os.path.exists(chemin):
+            continue
+        types = {"": (16, 30, 68)} if nom == "scene4" else sy.TYPES
+        cases = []
+        for aff in (False, True):
+            p = perception.Perception(types=types, modele=False, raffinement=aff,
+                                      reglages=reglages)
+            t = time.perf_counter()
+            pieces = p.detecter(chemin)
+            dt = time.perf_counter() - t
+            # centres dans l'image de PROFONDEUR (celle des releves)
+            pts = []
+            for q in pieces:
+                c = q.T_camera[:3, 3]
+                K = perception.charger_capture(chemin)["K"]
+                pts.append(np.array([[K[0, 0] * c[0] / c[2] + K[0, 2], K[1, 1] * c[1] / c[2] + K[1, 2]]]))
+            faux_pieces = [type("P", (), {"contour": x})() for x in pts]
+            vp, fp = apparier_image(faux_pieces, centres)
+            tot[aff][0] += vp
+            tot[aff][1] += fp
+            tot[aff][2] += len(centres)
+            cases.append("{}: {} justes, {} fausses ({:.1f} s)".format(
+                "apres" if aff else "avant", vp, fp, dt))
+        print("  {:12s} {} posees   {}".format(nom, len(centres), "   ".join(cases)))
+    for aff in (False, True):
+        print("  total {} : {} justes sur {}, {} fausses".format(
+            "apres" if aff else "avant", tot[aff][0], tot[aff][2], tot[aff][1]))
+
+
+#: ablations : (nom, reglages modifies)
+ABLATIONS = (("complet", {}),
+             ("sans lissage", {"flou": False, "flou_auto": False}),
+             ("sans physique", {"k_penetration": 0.0, "k_air": 0.0, "k_stabilite": 0.0}),
+             ("sans a priori incl.", {"k_inclinaison": 0.0}),
+             ("sans variantes", {"variantes": False}),
+             ("sans repropositions", {"repropositions": 0}),
+             ("sans masques", {"masques": 0.0, "classe": 0.0}))
+
+
+def evaluer_ablation(nombre, configs, types_scenes=("inclinees", "piles")):
+    """L'affinage sans chacun de ses termes (masques parfaits ou geometrie)."""
+    import raffinement as rf
+    for nom, kw in ABLATIONS:
+        reg = rf.Reglages(**kw)
+        meth = ["geometrie+raff"] if nom != "sans masques" else ["masques+raff"]
+        if nom == "complet":
+            meth = ["geometrie+raff", "masques+raff"]
+        evaluer_raffinement(nombre, configs, list(types_scenes), meth, reg,
+                            titre="- {} ".format(nom.upper()))
 
 
 def evaluer_reel(params: dict, methodes):
@@ -282,7 +622,24 @@ def main():
     ap.add_argument("--sans-synthese", action="store_true")
     ap.add_argument("--param", action="append", default=[], metavar="NOM=VALEUR",
                     help="parametre de vision_modele.detecter, ex. seuil_score=0.6")
+    ap.add_argument("--raffinement", action="store_true",
+                    help="avant / apres l'affinage de la scene (raffinement.py) : synthese, "
+                    "jeu reel annote, captures")
+    ap.add_argument("--images", type=int, default=0,
+                    help="avec --raffinement : nombre d'images reelles annotees (0 : toutes)")
+    ap.add_argument("--ablation", action="store_true",
+                    help="avec --raffinement : l'affinage sans chacun des termes du cout")
     args = ap.parse_args()
+    if args.raffinement:
+        configs = args.config or list(CONFIGS)
+        if not args.sans_synthese:
+            evaluer_raffinement(args.scenes, configs)
+            if args.ablation:
+                evaluer_ablation(args.scenes, configs)
+        if not args.sans_reel:
+            evaluer_reel_annote(args.images or None)
+            evaluer_captures_raffinement()
+        return
     params = {}
     for p in args.param:
         k, v = p.split("=")

@@ -28,6 +28,15 @@ Pourquoi ces reglages (petit jeu, petits objets allonges, camera fixe) :
   - patience 30 : arret si la validation ne progresse plus ; cos_lr.
   - yolo11s-seg par defaut : bon compromis ; yolo11n-seg est 3 fois plus
     rapide, un peu moins precis.
+
+Options pour les images RENDUES (synthese_images.py), sans effet par defaut :
+  --synthetiques DOSSIER [--n-synth N] : ajoutees a l'entrainement seulement
+    (la validation reste reelle) ;
+  --export DOSSIER : ou ecrire l'export YOLO (defaut dataset/yolo) ; pour
+    entrainer en parallele ou comparer sans ecraser l'export d'un autre ;
+  --test DATA.yaml (repetable) : evaluation supplementaire du meilleur
+    poids, par ex. sur synthetique/test_fonds/data.yaml (fonds jamais vus) ;
+    les mAP vont dans rapport.json, cle "tests".
 """
 
 from __future__ import annotations
@@ -51,12 +60,16 @@ os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 def entrainer(modele="yolo11s-seg.pt", epochs=100, imgsz=864, batch=8, device=None,
               patience=30, copies=2, tout=False, nom=None, racine=commun.DATASET,
               workers=2, installer=True, fraction_val=0.2,
-              nom_installe="pieces-seg.pt") -> dict:
+              nom_installe="pieces-seg.pt", synthetiques=None, n_synth=0,
+              sortie_export=None, tests=()) -> dict:
     from ultralytics import YOLO
     debut = time.time()
-    stats = exporter.exporter(racine, tout=tout, copies=copies, val=fraction_val)
-    print("export : {} images reelles + {} synthetiques en entrainement, {} en "
-          "validation".format(stats["train"], stats["synthetiques"], stats["val"]), flush=True)
+    stats = exporter.exporter(racine, sortie=sortie_export, tout=tout, copies=copies,
+                              val=fraction_val, synthetiques=synthetiques, n_synth=n_synth)
+    print("export : {} images reelles + {} synthetiques{} en entrainement, {} en "
+          "validation".format(stats["train"], stats["synthetiques"],
+                              " + {} rendues".format(stats["rendues"]) if stats["rendues"] else "",
+                              stats["val"]), flush=True)
     poids = modele if os.path.exists(modele) else os.path.join(commun.MODELES, modele)
     device = device or commun.device_auto()
     nom = nom or time.strftime("pieces_%Y%m%d_%H%M%S")
@@ -91,6 +104,19 @@ def entrainer(modele="yolo11s-seg.pt", epochs=100, imgsz=864, batch=8, device=No
         "duree_min": round((time.time() - debut) / 60, 1),
         "poids": meilleur,
     }
+    if stats.get("rendues"):
+        rapport["images_rendues"] = stats["rendues"]
+        rapport["synthetiques_dossier"] = synthetiques
+    for data_test in tests or ():
+        # evaluation supplementaire (ex. fonds jamais vus) : jeu "val" du yaml
+        nom_test = os.path.basename(os.path.dirname(os.path.abspath(data_test)))
+        t = YOLO(meilleur).val(data=data_test, split="val", imgsz=imgsz, device=device,
+                               batch=batch, plots=False, verbose=False,
+                               project=RUNS, name=nom + "_test_" + nom_test, exist_ok=True)
+        rapport.setdefault("tests", {})[nom_test] = {
+            "masque_mAP50": round(float(t.seg.map50), 4),
+            "masque_mAP50_95": round(float(t.seg.map), 4),
+            "boite_mAP50": round(float(t.box.map50), 4)}
     if installer:
         cible = os.path.join(commun.MODELES, nom_installe)
         if os.path.exists(cible):
@@ -118,12 +144,23 @@ def main():
     ap.add_argument("--demo", action="store_true",
                     help="entrainement court de verification (15 epoques, --tout) ; "
                     "installe dans modeles/pieces-seg.demo.pt, PAS pieces-seg.pt")
+    ap.add_argument("--synthetiques", default=None,
+                    help="dossier d'images rendues (synthese_images.py) ajoutees a "
+                    "l'entrainement (defaut : aucune)")
+    ap.add_argument("--n-synth", type=int, default=0,
+                    help="nombre d'images rendues a prendre (0 : toutes)")
+    ap.add_argument("--export", default=None,
+                    help="dossier de l'export YOLO (defaut : dataset/yolo)")
+    ap.add_argument("--test", action="append", default=[],
+                    help="data.yaml d'un jeu de test supplementaire (repetable)")
     a = ap.parse_args()
     if a.demo:
         a.epochs, a.tout, a.patience = 15, True, 15
     r = entrainer(a.modele, a.epochs, a.imgsz, a.batch, a.device, a.patience, a.copies,
                   a.tout, a.nom, installer=not a.sans_installer,
-                  nom_installe="pieces-seg.demo.pt" if a.demo else "pieces-seg.pt")
+                  nom_installe="pieces-seg.demo.pt" if a.demo else "pieces-seg.pt",
+                  synthetiques=a.synthetiques, n_synth=a.n_synth, sortie_export=a.export,
+                  tests=a.test)
     print("\nRAPPORT")
     for k, v in r.items():
         print("  {:28s} {}".format(k, v))

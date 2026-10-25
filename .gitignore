@@ -29,3 +29,9 @@ examples/perception/modeles/
 # et entrainements (examples/perception/apprentissage/)
 examples/perception/apprentissage/dataset/
 examples/perception/apprentissage/runs/
+# images rendues par synthese_images.py (regenerables)
+examples/perception/apprentissage/synthetique/
+# etiquettes de coins, exports YOLO-pose (points_cles/etiquettes.py) et
+# jeux RGB-H, cartes de hauteur (rgbd/exporter_rgbh.py) : regenerables
+examples/perception/apprentissage/points_cles/donnees/
+examples/perception/apprentissage/rgbd/donnees/

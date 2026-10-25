@@ -23,6 +23,7 @@ collecter.py ──► pre_annoter.py ──► annoter.py ──► entrainer.p
 | `annoter.py` | revue et correction rapides (clics, SAM), statut « à revoir » / « validée » |
 | `exporter.py` | export YOLO-seg (polygones, `data.yaml`, découpage stable) |
 | `copier_coller.py` | augmentation par copier-coller de pièces découpées |
+| `synthese_images.py` | images **rendues** par randomisation de domaine (pièces 3D, fonds variés), étiquettes exactes |
 | `entrainer.py` | fine-tuning, validation, installation de `modeles/pieces-seg.pt` |
 | `commun.py` | dossiers, format des annotations, SAM |
 | `../perception.py` | **la bibliothèque** pour les programmes (et les étudiants) |
@@ -162,6 +163,103 @@ désormais), revoyez, réentraînez.
 `entrainer.py --demo` fait un entraînement court (15 époques, images non
 validées comprises) pour vérifier que la chaîne tourne ; il installe
 `pieces-seg.demo.pt`, que la bibliothèque **n'utilise pas** par défaut.
+
+## 4 bis. Images synthétiques : randomisation de domaine
+
+Le jeu réel n'a qu'**une nappe**, un éclairage, une pose de caméra : un
+réseau entraîné dessus risque d'apprendre le **fond** (« une pièce, c'est ce
+qui n'est pas une fleur rose sur du blanc ») et d'échouer sur une autre
+table. `synthese_images.py` rend des milliers de scènes où **tout varie
+sauf ce qui définit une pièce** — un parallélépipède de dimensions connues,
+en bois clair — et dont les étiquettes sont exactes par construction.
+
+```sh
+# une fois (≈ 1 min) : textures de bois tirées des pièces annotées
+.venv/bin/python examples/perception/apprentissage/synthese_images.py --textures
+# 3000 images d'entraînement (≈ 0,07 s par image sur 6 processus)
+.venv/bin/python examples/perception/apprentissage/synthese_images.py --n 3000
+# un coup d'œil : synthetique/entrainement/controle.jpg (images + masques)
+```
+
+**Ce qui est tiré au hasard, image par image :**
+
+- **la caméra** : la vraie (un fond réel de `dataset/fonds/`, avec le plan
+  de la table mesuré par la profondeur), ou une pose voisine, ou une pose
+  très différente (10 à 45 cm de haut, de 8 à 70° de plongée, roulis) ;
+- **la table** (le point central) : le fond réel tel quel ; la **même pièce
+  avec une autre nappe** (la zone de table est retexturée, l'éclairage réel
+  gardé) ; ou une table entièrement synthétique devant un décor. Les
+  textures viennent de **familles** : `uni` (dont des teintes de bois clair,
+  le cas difficile), `bruit` (marbre, béton, granit), `tissu` (rayures,
+  vichy, tissage), `motifs` (fleurs, pois, feuillages), `papier`, `bois`
+  (planches, y compris claires), `carrelage`, `nappe` (la vraie, redressée
+  vue de dessus, parfois recolorée), `photo` (morceaux de la pièce) ;
+- **les pièces** : 0 à 10, posées à plat, sur la tranche, debout, **en
+  contact**, **empilées**, **inclinées** (un bout sur la table, l'autre
+  appuyé sur une pièce : l'angle est celui où la face inférieure touche
+  l'obstacle le plus haut), jamais interpénétrées (test des axes
+  séparateurs) ; plus des **intrus** non étiquetés (règle, crayon, gomme,
+  feuille, cube, trousse) ;
+- **le rendu** : lancer de rayons par face avec z-buffer, sur-échantillonné
+  2 × 2 ; textures de bois **réelles** (faces des pièces annotées, ajustées
+  par la géométrie puis redressées par homographie) ou procédurales ; bois
+  de bout plus sombre ; ombrage de Lambert ; **ombres portées** exactes
+  (rayon vers la lumière) adoucies, assombrissement de contact ;
+- **la caméra encore** : flou, bougé, exposition, gamma, balance des blancs,
+  vignettage, bruit de capteur, compression JPEG.
+
+Chaque image a son masque **visible** par pièce (occultations comprises),
+au format YOLO-seg, et dans `meta/` la pose de chaque pièce et les **coins
+de sa face supérieure** dans l'image (pour un futur modèle de points clés ;
+`--profondeur` écrit aussi la profondeur rendue).
+
+**Entraîner avec** (les images rendues vont à l'entraînement seulement ; la
+validation reste faite d'images réelles) :
+
+```sh
+.venv/bin/python examples/perception/apprentissage/entrainer.py --nom v2 \
+    --synthetiques examples/perception/apprentissage/synthetique/entrainement --n-synth 2000 \
+    --test examples/perception/apprentissage/synthetique/test_fonds/data.yaml \
+    --test examples/perception/apprentissage/synthetique/test_collage/data.yaml
+```
+
+`--export DOSSIER` écrit l'export ailleurs que dans `dataset/yolo` (pour
+ne pas écraser celui d'un entraînement en cours). `--test` évalue en plus le
+meilleur poids sur un autre jeu ; les mAP vont dans `rapport.json`
+(clé `tests`).
+
+**Mesurer la robustesse au fond sans autres vraies images.** Les familles
+`bois` et `carrelage` servent de « fonds jamais vus » :
+
+```sh
+synthese_images.py --test-fonds --n 300      # pièces rendues sur bois/carrelage
+synthese_images.py --test-collage --n 300    # pièces RÉELLES (validation) collées sur bois/carrelage
+synthese_images.py --nom cmp_entrainement --exclure bois,carrelage --n 1500
+```
+
+puis on compare un entraînement réel seul et un entraînement réel +
+`cmp_entrainement` sur ces deux jeux. Le jeu « collage » ne pénalise pas le
+réseau entraîné sur le réel seul par l'aspect des pièces rendues ; aucun des
+deux ne remplace de **vraies** photos d'autres tables : une cinquantaine de
+scènes par nouveau fond (table nue, autre nappe, bois clair) restent le
+meilleur test, et le meilleur complément à l'entraînement.
+
+**Résultat de la comparaison** (octobre 2026, `yolo11n-seg`, 30 époques,
+même validation réelle de 40 images ; `cmp_synth` = réel + copier-coller +
+1000 images rendues **sans** les familles `bois` et `carrelage`) :
+
+| mAP masque (50 / 50-95) | validation réelle | fonds jamais vus, pièces rendues | fonds jamais vus, pièces réelles collées |
+|---|---|---|---|
+| réel seul (`runs/cmp_reel`) | 0,978 / 0,872 | 0,185 / 0,109 | 0,661 / 0,541 |
+| réel + rendues (`runs/cmp_synth`) | 0,984 / 0,860 | **0,790 / 0,604** | **0,923 / 0,776** |
+| pour mémoire, `v1` (`yolo11s`, 100 époques, réel seul) | 0,979 / 0,860 | 0,110 / 0,063 | 0,720 / 0,591 |
+
+Sur la nappe connue, rien ne change (l'écart est dans le bruit de 40
+images). Sur une table jamais vue, le réseau entraîné sur le réel seul perd
+un tiers de ses détections même avec de vraies pièces : il a bien appris le
+fond. Les images rendues comblent l'essentiel de l'écart. Entraînement
+conseillé (« v2 ») : la commande plus haut, avec `synthetique/entrainement`
+(toutes les familles).
 
 ## 5. Utilisation : la bibliothèque `perception.py`
 
