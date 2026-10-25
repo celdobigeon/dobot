@@ -31,7 +31,8 @@ Deroule :
      table dans le repere du robot ;
   2. le bras remonte de 5 mm ; on place la piece entre les mors, posee sur
      la table ; Entree : la pince se ferme ;
-  3. boucle : poser, s'ecarter, voir, reprendre. Les premiers points
+  3. boucle : poser (approche et depart VERTICAUX), remonter en posture
+     d'equerre pour degager la vue, voir, reprendre. Les premiers points
      restent pres du depart ; des que le recalage existe, ils couvrent la
      partie de la table que la camera voit et que le bras atteint ;
   4. VALIDATION : quelques saisies guidees par la camera seule ;
@@ -71,8 +72,13 @@ TYPE_PIECE, FACE_PIECE, HAUTEUR_PIECE = "epaisse", "a plat", 17.0
 #: et poser. La piece repose sur la table pendant que la pince se ferme ou
 #: s'ouvre : elle ne tombe jamais.
 PRISE = 5.0
-#: mm : hauteur des deplacements au-dessus de la table
+#: mm : hauteur des deplacements au-dessus de la table. On y monte et on en
+#: descend a la VERTICALE (MOVL), au-dessus du point de pose : l'approche
+#: et le depart sont verticaux sur TRANSIT - PRISE = 65 mm, bien plus que
+#: les APPROCHE mm exiges.
 TRANSIT = 70.0
+APPROCHE = 20.0
+assert TRANSIT - PRISE >= APPROCHE
 #: les premiers points restent a cette distance du depart (mm)...
 RAYON_DEPART = 30.0
 #: ...tant qu'il n'y a pas assez de paires pour un recalage
@@ -428,18 +434,19 @@ class Etalonnage:
         self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
 
     def degager(self):
-        """Ecarte le bras du champ de la camera (sans quitter le secteur)."""
+        """
+        Ecarte le bras du champ de la camera : il remonte a la verticale
+        (deja fait par poser), puis prend la posture d'EQUERRE -- bras
+        arriere vertical, avant-bras horizontal -- sans tourner la base,
+        donc sans quitter le secteur. Ou la place de garage donnee.
+        """
+        xa, ya, za, ra = self.robot.pose()
         if self.garage is not None:
             x, y, z = self.garage
-            xa, ya, za, ra = self.robot.pose()
             self.robot.movj(x=x, y=y, z=z, r=ra)
-        elif self.secteur is None or self.secteur[0] <= 0.0 <= self.secteur[1]:
-            self.robot.repli()
-        else:
-            # la posture de repli, base tournee au milieu du secteur
-            q = list(self.modele.q_home)
-            q[0] = 0.5 * (self.secteur[0] + self.secteur[1])
-            self.robot.movj(q=q)
+            return
+        q = [float(v) for v in self.modele.mgi_pose(xa, ya, za, ra)]
+        self.robot.movj(q=[q[0], 0.0, 0.0, q[3]])
 
     # -- choix des points ---------------------------------------------------
     def j1(self, x, y, z, r) -> float:
@@ -782,7 +789,8 @@ def main(argv=None) -> int:
     ap.add_argument("--longueur-outil", type=float, default=None,
                     help="longueur mesuree de la pince, mm")
     ap.add_argument("--garage", type=float, nargs=3, metavar=("X", "Y", "Z"),
-                    help="ou ecarter le bras pendant la capture (defaut : repli)")
+                    help="ou ecarter le bras pendant la capture (defaut : posture "
+                         "d'equerre, base inchangee)")
     ap.add_argument("--fenetre", action="store_true",
                     help="passer par le simulateur ouvert et connecte au robot")
     ap.add_argument("--simulation", action="store_true",

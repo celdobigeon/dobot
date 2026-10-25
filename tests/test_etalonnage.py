@@ -168,6 +168,23 @@ class TestDeroule(unittest.TestCase):
         self.assertEqual(len(questions), 1)
 
 
+class TestApproche(unittest.TestCase):
+
+    def test_approche_et_depart_verticaux(self):
+        robot = FauxRobot(x=230.0, y=20.0, z=60.0)
+        et = ec.Etalonnage(robot, None, z_table=0.0)
+        robot.trace.clear()
+        et.poser(200.0, -10.0, 10.0)
+        t = robot.trace
+        # la descente : meme x, y, r, de TRANSIT a PRISE ; la remontee aussi
+        bas = [i for i, p in enumerate(t) if abs(p[2] - ec.PRISE) < 1e-9]
+        self.assertEqual(len(bas), 1)
+        i = bas[0]
+        for j in (i - 1, i + 1):
+            self.assertEqual(t[j][:2], t[i][:2])
+            self.assertGreaterEqual(t[j][2] - t[i][2], ec.APPROCHE)
+
+
 class TestSecteur(unittest.TestCase):
 
     def test_poses_dans_le_secteur(self):
@@ -181,9 +198,11 @@ class TestSecteur(unittest.TestCase):
         j1 = [et.j1(*p) for p in robot.robot.trace]
         self.assertGreaterEqual(min(j1), 5.0)
         self.assertLessEqual(max(j1), 45.0)
-        # le repli s'est fait au milieu du secteur, pas a J1 = 0
+        # degagement en posture d'equerre, sans quitter le secteur
         self.assertTrue(robot.robot.postures)
-        self.assertTrue(all(abs(q[0] - 25.0) < 1e-9 for q in robot.robot.postures))
+        for q in robot.robot.postures:
+            self.assertEqual((q[1], q[2]), (0.0, 0.0))
+            self.assertTrue(5.0 <= q[0] <= 45.0)
         self.assertLess(et.recalage.rms, 1.5)
 
     def test_relever_secteur_au_clavier(self):
