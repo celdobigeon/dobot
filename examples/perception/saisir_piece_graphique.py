@@ -223,6 +223,8 @@ class Detecteur(threading.Thread):
         self._erreur = ""
         # avancement de la detection en cours, pour la barre de progression
         self.etape = ""                # "", capture, rapide, propositions, consolidee
+        self.affinage = 0.0            # avancement de l'affinage (0 a 1)
+        perception.suivi_affinage = self._suivre_affinage
         self.debut = 0.0
         self.duree_moyenne = 5.0       # s, moyenne glissante d'un cycle complet
 
@@ -235,8 +237,12 @@ class Detecteur(threading.Thread):
         if self.etape == "consolidee":
             return 1.0
         atteint = self.perception.PROGRESSION.get(self.etape, 0.0)
+        if self.etape == "propositions":
+            # l'affinage dit lui-meme ou il en est
+            debut = atteint
+            return float(min(0.99, debut + (1.0 - debut) * self.affinage))
         estime = (time.time() - self.debut) / max(self.duree_moyenne, 0.5)
-        return float(min(0.95, max(atteint, estime)))
+        return float(min(self.perception.PROGRESSION["propositions"], max(atteint, estime)))
 
     #: mm : au-dela, une piece a bouge
     SEUIL_CHANGEMENT = 15.0
@@ -256,6 +262,9 @@ class Detecteur(threading.Thread):
                 return True
             restants.remove(proches[0])
         return False
+
+    def _suivre_affinage(self, fraction: float) -> None:
+        self.affinage = float(fraction)
 
     def _publier(self, ep, pieces, niveau):
         pieces = [p for p in pieces if p.T_robot is not None]
@@ -315,7 +324,7 @@ class Detecteur(threading.Thread):
                 time.sleep(0.1)
                 continue
             ep = self.epoque
-            self.debut, self.etape = time.time(), "capture"
+            self.debut, self.etape, self.affinage = time.time(), "capture", 0.0
             try:
                 capture = self.capturer()
                 for etape, pieces in self.perception.detecter_par_etapes(capture):

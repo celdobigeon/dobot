@@ -1894,13 +1894,24 @@ class Affinage:
             b.confiance = float(np.clip(expl * (0.6 + 0.4 * marge) * phys
                                         * (1.0 - 0.5 * b.contredits), 0.0, 1.0))
 
+    def _avancer(self, fraction: float) -> None:
+        """Signale l'avancement (0 a 1) a qui le demande ; ne leve jamais."""
+        f = getattr(self, "progression", None)
+        if f is not None:
+            try:
+                f(float(fraction))
+            except Exception:                           # noqa: BLE001
+                pass
+
     def executer(self) -> List[Boite]:
         t0 = time.perf_counter()
         if self.obs.vide:
+            self._avancer(1.0)
             return []
         self.initialiser()
         self.associer_masques()
         self.durees["init"] = time.perf_counter() - t0
+        self._avancer(0.08)
         ev = self.scene.evaluations
         # CONTINUATION : la penetration entre pieces ne compte d'abord que
         # peu. Deux propositions qui se croisent (une piece inclinee lue a
@@ -1912,6 +1923,7 @@ class Affinage:
         self.r.k_penetration = 0.02 * k_pen
         self.balayer()
         self.associer_masques()
+        self._avancer(0.25)
         if self.r.flou_auto and self.scene.boites:
             # LISSAGE DE LA CAMERA, estime sur la capture : la scene (deja
             # a peu pres en place) est rendue avec 0 a 3 passes de lissage,
@@ -1924,19 +1936,23 @@ class Affinage:
             if meilleur != self.r.flou:
                 self.r.flou = meilleur
                 self.balayer()
-        for f in (0.25, 1.0)[:max(self.r.balayages, 1)]:
+        self._avancer(0.35)
+        for k, f in enumerate((0.25, 1.0)[:max(self.r.balayages, 1)]):
             self.r.k_penetration = f * k_pen
             self.balayer()
+            self._avancer(0.45 + 0.1 * k)
         self.r.k_penetration = k_pen
         self.associer_masques()
         if self.r.variantes:
             self.variantes()
         self.elaguer()
         self.etrangers()
+        self._avancer(0.65)
         self.durees["balayages"] = time.perf_counter() - t0
         self.durees["ev_balayages"] = self.scene.evaluations - ev
         ev = self.scene.evaluations
-        for _ in range(self.r.repropositions):
+        n_rep = max(int(self.r.repropositions), 1)
+        for k in range(self.r.repropositions):
             if not (self.reinitialiser() + self.reproposer()):
                 break
             self.balayer()
@@ -1944,11 +1960,14 @@ class Affinage:
             if self.r.variantes:
                 self.variantes()
             self.elaguer()
+            self._avancer(0.65 + 0.2 * (k + 1) / n_rep)
+        self._avancer(0.85)
         self.durees["repropositions"] = time.perf_counter() - t0
         self.durees["ev_repropositions"] = self.scene.evaluations - ev
         self.associer_masques()
         self.variantes(seulement_imposes=True)
         self.balayer(fin=True)
+        self._avancer(0.95)
         self.poser()
         self.elaguer()
         self.confiances()
@@ -1960,6 +1979,7 @@ class Affinage:
                     i, self.scene.boites[i].confiance))
                 self.scene.retirer(i)
         self.durees["total"] = time.perf_counter() - t0
+        self._avancer(1.0)
         return self.scene.boites
 
 
@@ -2066,9 +2086,11 @@ def vers_pieces(boites: Sequence[Boite], obs: Observation, vue: Optional[pc.VueC
 def raffiner(capture, propositions: Sequence, types, masques=None,
              vue: Optional[pc.VueCouleur] = None, reglages: Optional[Reglages] = None,
              T_robot_camera=None, table: Optional[pc.Table] = None,
-             trace: bool = False, rendre_affinage: bool = False):
+             trace: bool = False, rendre_affinage: bool = False,
+             progression=None):
     """
-    Affine une detection. `capture` : chemin, dictionnaire ou vision.Scene ;
+    Affine une detection. `progression(fraction)` (0 a 1), si donne, est
+    appele a chaque etape de l'affinage : pour une barre de progression. `capture` : chemin, dictionnaire ou vision.Scene ;
     `propositions` : pieces detectees (vision.Piece, T_camera dans le repere
     de la profondeur) ; `masques` : [(masque booleen de la vue, classe,
     confiance)] du reseau, ou None ; `vue` : la vue couleur des masques (et
@@ -2095,6 +2117,7 @@ def raffiner(capture, propositions: Sequence, types, masques=None,
                 b.type_source = p.type
             boites.append(b)
     aff = Affinage(obs, boites, reglages, trace)
+    aff.progression = progression
     res = aff.executer()
     pieces = vers_pieces(res, obs, vue, T_robot_camera)
     return (pieces, aff) if rendre_affinage else pieces

@@ -796,7 +796,8 @@ class Perception:
         res, aff = rf.raffiner(capture, pieces, self.types, masques=self.derniers_masques,
                                vue=vue, reglages=self.reglages,
                                T_robot_camera=self.T_robot_camera, table=table,
-                               rendre_affinage=True)
+                               rendre_affinage=True,
+                               progression=getattr(self, "suivi_affinage", None))
         self.dernier_affinage = aff
         self.derniere_vue = vue
         self.durees["raffinement"] = time.perf_counter() - t
