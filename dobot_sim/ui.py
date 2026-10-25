@@ -752,13 +752,14 @@ class _HoteMiseEnRoute:
         return b.exec_() == QtWidgets.QMessageBox.Ok
 
 
-def mise_en_route_autonome(pont, robot) -> bool:
+def mise_en_route_autonome(pont, robot, sans_posture: bool = False) -> bool:
     """
     Ouvre l'assistant de mise en route hors du simulateur. Rend True si le
-    robot ne signale plus aucun defaut a la fermeture.
+    robot ne signale plus aucun defaut a la fermeture. `sans_posture` :
+    commencer a la prise d'origine (posture deja declaree).
     """
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    DialogueMiseEnRoute(_HoteMiseEnRoute(pont, robot)).exec_()
+    DialogueMiseEnRoute(_HoteMiseEnRoute(pont, robot), sans_posture).exec_()
     try:
         return not pont.liaison.alarmes()
     except Exception:
@@ -815,7 +816,7 @@ class DialogueMiseEnRoute(QtWidgets.QDialog):
         },
     }
 
-    def __init__(self, fenetre: "FenetrePrincipale"):
+    def __init__(self, fenetre: "FenetrePrincipale", sans_posture: bool = False):
         super().__init__(fenetre if isinstance(fenetre, QtWidgets.QWidget)
                          else None)
         self.fen = fenetre
@@ -890,6 +891,14 @@ class DialogueMiseEnRoute(QtWidgets.QDialog):
             "doit avoir <b>exactement</b> la posture du vrai bras. Sinon, "
             "recommencez a l'etape 1.",
             "Effacer les defauts et verifier")
+        # la posture n'est a declarer qu'une fois par mise sous tension : une
+        # mise en route refaite plus tard (defaut, reprise d'un script) peut
+        # passer directement a la prise d'origine
+        self.b1_passer = QtWidgets.QPushButton(
+            "Passer : posture deja declaree depuis la mise sous tension")
+        self.b1_passer.clicked.connect(self._passer_posture)
+        self.e1.layout().insertWidget(self.e1.layout().indexOf(self.b1) + 1,
+                                      self.b1_passer)
         self.b1.clicked.connect(self._declarer)
         self.b2.clicked.connect(self._origine)
         self.b3.clicked.connect(self._verifier)
@@ -902,6 +911,8 @@ class DialogueMiseEnRoute(QtWidgets.QDialog):
         self._en_cours = False                # prise d'origine en route
         self._attente_course = False          # bras a ramener dans sa course
         self._activer(1)
+        if sans_posture:
+            self._passer_posture()
         self.minuteur = QtCore.QTimer(self)
         self.minuteur.setInterval(300)
         self.minuteur.timeout.connect(self._rafraichir)
@@ -1014,6 +1025,12 @@ class DialogueMiseEnRoute(QtWidgets.QDialog):
                             "{}</b>".format(posture["nom"].lower()))
             self._activer(2)
         self._rafraichir()
+
+    def _passer_posture(self) -> None:
+        self.r1.setText("<b style='color:#e0a030'>etape passee</b> : posture "
+                        "supposee deja declaree depuis la mise sous tension")
+        self.fen.journal("mise en route : declaration de posture passee")
+        self._activer(2)
 
     def _origine(self) -> None:
         if not self.fen._confirmer_mouvement(

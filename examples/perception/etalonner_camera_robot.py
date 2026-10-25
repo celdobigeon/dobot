@@ -100,6 +100,15 @@ DELAI_PINCE = 0.8
 ECART_MAX = 25.0
 #: deg : marge gardee a l'interieur du secteur de la base
 MARGE_SECTEUR = 3.0
+#: deg : marge gardee aux butees de chaque articulation, aux points de pose
+#: et de transit. Le controleur refuse des cibles que le modele accepte de
+#: justesse (essai du 25/10 : bras arriere a 83,9 deg pour une butee a 85,
+#: alarme 0x12).
+MARGE_BUTEE = 8.0
+#: posture de degagement : l'equerre (bras arriere vertical, avant-bras
+#: horizontal), le bras arriere un peu penche pour ne pas etre SUR sa
+#: butee (0 deg)
+EQUERRE_J2, EQUERRE_J3 = 5.0, 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +455,9 @@ class Etalonnage:
         self.piece: dict = {"etat": "absente"}
         #: fichier tenu a jour apres chaque pose (reprise apres interruption)
         self.chemin: Optional[str] = None
+        #: points de pose refuses par le controleur : on n'y retourne pas
+        self.interdits: List[Tuple[float, float]] = []
+        self.vise: Optional[Tuple[float, float, float]] = None
         from dobot_sim import DobotMagician
         self.modele = getattr(robot, "modele", None) or DobotMagician()
 
@@ -489,7 +501,7 @@ class Etalonnage:
             self.robot.movj(x=x, y=y, z=z, r=ra)
             return
         q = [float(v) for v in self.modele.mgi_pose(xa, ya, za, ra)]
-        self.robot.movj(q=[q[0], 0.0, 0.0, q[3]])
+        self.robot.movj(q=[q[0], EQUERRE_J2, EQUERRE_J3, q[3]])
 
     # -- choix des points ---------------------------------------------------
     def j1(self, x, y, z, r) -> float:
@@ -506,8 +518,19 @@ class Etalonnage:
         return self.secteur[0] + marge <= a <= self.secteur[1] - marge
 
     def _atteignable(self, x, y, r) -> bool:
-        return all(self.modele.atteignable(x, y, self._z(h), r)
-                   and self.dans_secteur(x, y, self._z(h), r) for h in (PRISE, TRANSIT))
+        """Pose et transit atteints avec MARGE_BUTEE sur chaque articulation,
+        dans le secteur de la base."""
+        for h in (PRISE, TRANSIT):
+            z = self._z(h)
+            try:
+                q = self.modele.mgi_pose(x, y, z, r)
+            except Exception:                       # noqa: BLE001
+                return False
+            if not self.modele.dans_butees(q) or np.min(self.modele.marges(q)) < MARGE_BUTEE:
+                return False
+            if not self.dans_secteur(x, y, z, r):
+                return False
+        return True
 
     def _visible(self, x, y, marge=60) -> bool:
         K, taille = getattr(self.camera, "K", None), getattr(self.camera, "taille", None)
@@ -541,6 +564,8 @@ class Etalonnage:
                 y = self.rng.uniform(*self.zone_y)
             r = _angle(r0 + self.rng.uniform(-self.r_max, self.r_max))
             if not self._atteignable(x, y, r) or not self._visible(x, y):
+                continue
+            if any(math.hypot(x - u, y - v) < 25.0 for u, v in self.interdits):
                 continue
             s = float(np.min(np.linalg.norm(deja - [x, y], axis=1)))
             if s > score:
@@ -604,27 +629,42 @@ class Etalonnage:
         self.robot.pince(False)
         self.piece = {"etat": "absente"}
         self.robot.attendre(DELAI_PINCE)
-        self.journal("  piece n {} : retirez l'ancienne de la table s'il y en a "
-                     "une".format(self.session + 1))
+        self.journal("  piece n {} : retirez de la table toute autre piece"
+                     .format(self.session + 1))
         self._placer_a_la_main(x, y, r)
 
     def remettre_piece(self):
-        """A la reprise : retrouver la piece, ou en prendre une nouvelle."""
-        etat = self.piece.get("etat")
-        if etat == "tenue":
-            rep = self.demander("  la pince tient-elle toujours la piece ? "
-                                "[Entree : oui / n : nouvelle piece] ")
-            if not rep.strip().lower().startswith("n"):
-                return
-        elif etat == "posee":
-            x, y, r = self.piece["x"], self.piece["y"], self.piece["r"]
-            rep = self.demander("  la piece est-elle toujours posee en x {:.0f} y {:.0f} ? "
-                                "[Entree : la reprendre / n : nouvelle piece] "
-                                .format(x, y))
-            if not rep.strip().lower().startswith("n"):
-                self.saisir(x, y, r)
-                return
+        """A la reprise : le robot ouvre la pince au point de depart, et on
+        lui remet une piece entre les mors (nouvelle session)."""
         self.nouvelle_piece()
+
+    def reprendre_apres_defaut(self) -> bool:
+        """
+        Un mouvement refuse par le controleur (cible hors butees...) n'est
+        pas grave en soi : on efface le defaut, on bannit ce point, et on
+        continue ailleurs. Rend False si le controleur reste en defaut
+        (certains defauts ne s'effacent qu'avec une prise d'origine).
+        """
+        pont = getattr(self.robot, "_pont", None)
+        li = getattr(pont, "liaison", None)
+        if li is None:
+            return False
+        try:
+            li.arret_urgence()
+            li.effacer_alarmes()
+            time.sleep(0.3)
+            reste = li.alarmes()
+        except Exception:                           # noqa: BLE001
+            return False
+        if self.vise is not None:
+            self.interdits.append(self.vise[:2])
+            self.journal("  point x {:.0f} y {:.0f} refuse par le robot : on n'y "
+                         "retournera pas".format(*self.vise[:2]))
+        if reste:
+            return False
+        if self.piece.get("etat") == "posee":
+            self.saisir(self.piece["x"], self.piece["y"], self.piece["r"])
+        return True
 
     def reposer_et_lacher(self):
         """Apres une interruption, piece en main : la reposer sur la table
@@ -636,6 +676,7 @@ class Etalonnage:
 
     def cycle(self) -> Paire:
         x, y, r = self.point_suivant()
+        self.vise = (x, y, r)
         self.poser(x, y, r)
         self.degager()
         attendu = np.array([x, y, self._z(HAUTEUR_PIECE)])
@@ -951,7 +992,7 @@ def main(argv=None) -> int:
                                                    "depart")}
             donnees["piece"] = piece
 
-    from dobot_sim import Commande
+    from dobot_sim import Commande, ErreurExecution
     if a.simulation:
         commande = Commande(simulateur=True, robot=False, outil="pince",
                             vitesse=a.vitesse, lancer_simulateur=True,
@@ -1000,8 +1041,16 @@ def main(argv=None) -> int:
             et.enregistrer()
         print("\nETALONNAGE : {} poses (Ctrl+C pour interrompre a tout moment)"
               .format(a.points))
-        for _ in range(a.points):
-            et.cycle()
+        faits, echecs = 0, 0
+        while faits < a.points:
+            try:
+                et.cycle()
+                faits += 1
+            except ErreurExecution:
+                echecs += 1
+                if echecs > 5 or not et.reprendre_apres_defaut():
+                    raise
+                print("  defaut efface, on continue ailleurs")
         rc = et.recalage
         print("\nrecalage : {:.2f} mm rms sur {} paires ({} retenues) ; decalage dans la "
               "pince ({:.1f}, {:.1f}) mm ; ecart d'angle {:.1f} deg".format(
@@ -1016,6 +1065,15 @@ def main(argv=None) -> int:
         interrompu(et)
     except Arret as exc:
         print("\narret : {}".format(exc))
+    except ErreurExecution as exc:
+        # l'alerte detaillee est deja affichee par Commande
+        print("\nETALONNAGE INTERROMPU : {}".format(exc))
+        if et.piece.get("etat") == "tenue":
+            print("  la piece est sans doute encore dans la pince (pompe en marche).")
+        print("  Le controleur reste en defaut : prise d'origine necessaire\n"
+              "    .venv/bin/python mise_en_route.py --sans-posture\n"
+              "  (ATTENTION : la base tourne pendant la prise d'origine ; surveillez "
+              "la camera),\n  puis --reprendre.")
     finally:
         chemin = et.enregistrer()
         if chemin and et.recalage is not None:

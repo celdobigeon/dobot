@@ -16,7 +16,10 @@ simulateur -- dans une petite fenetre a part :
   3. effacer les defauts et verifier que le controleur voit le bras ou il
      est.
 
-A faire apres CHAQUE mise sous tension, avant tout autre script. La
+A faire apres CHAQUE mise sous tension, avant tout autre script. Pour
+une remise en route plus tard (robot en defaut, sans l'avoir eteint), la
+posture est deja declaree : `--sans-posture` commence a la prise
+d'origine (ou le bouton "Passer" de l'etape 1). La
 fenetre du simulateur doit etre fermee : elle garderait le port serie.
 """
 
@@ -31,6 +34,9 @@ from dobot_sim.pilote import _fermer_liaison_directe, _liaison_directe
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Mise en route du Dobot reel")
     ap.add_argument("--port", help="port serie (defaut : le premier trouve)")
+    ap.add_argument("--sans-posture", action="store_true",
+                    help="passer l'etape 1 (posture deja declaree depuis la mise "
+                         "sous tension) : prise d'origine et verification seules")
     a = ap.parse_args(argv)
 
     robot = DobotMagician()
@@ -51,7 +57,7 @@ def main(argv=None) -> int:
             print("aucun defaut signale ; l'assistant permet quand meme de "
                   "refaire la mise en route")
         from dobot_sim.ui import mise_en_route_autonome
-        ok = mise_en_route_autonome(pont, robot)
+        ok = mise_en_route_autonome(pont, robot, sans_posture=a.sans_posture)
         x, y, z, r = (float(v) for v in pont.depuis_controleur(*_pose(pont)))
         if ok:
             print("robot pret : x {:.1f}  y {:.1f}  z {:.1f}  r {:.1f}".format(x, y, z, r))

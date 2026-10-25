@@ -24,6 +24,7 @@ class FauxRobot:
     def __init__(self, x=230.0, y=20.0, z=5.0, r=0.0):
         from dobot_sim import DobotMagician
         self.modele = DobotMagician()
+        self.modele.geo.lt = 78.0          # la pince mesuree
         self._p = [x, y, z, r]
         self.fermee = False
         self.postures = []
@@ -230,7 +231,7 @@ class TestReprise(unittest.TestCase):
             self.assertLess(np.linalg.norm(rc.decalages[1] - [0.0, -4.0]), 1.5)
             self.assertLess(rc.rms, 1.5)
 
-    def test_reprendre_la_piece_posee(self):
+    def test_reprise_piece_remise_a_la_main(self):
         import json
         import tempfile
         with tempfile.TemporaryDirectory() as d:
@@ -240,19 +241,21 @@ class TestReprise(unittest.TestCase):
             et.demarrer()
             for _ in range(4):
                 et.cycle()
-            x, y, r = et.point_suivant()
-            et.poser(x, y, r)
             et.enregistrer()
             with open(chemin) as f:
                 data = json.load(f)
-            # meme piece, toujours sur la table : la reprise va la chercher
+            questions = []
             et2 = ec.Etalonnage(robot, et.camera, journal=lambda m: None,
-                                demander=lambda t: "")
+                                demander=lambda t: questions.append(t) or "")
             et2.restaurer(data)
             et2.remettre_piece()
-            self.assertTrue(robot.tenue)
-            self.assertEqual(et2.session, 0)
-            self.assertEqual(len(et2.paires), 4)
+            # la pince s'est ouverte au point de depart, on a demande la piece
+            self.assertEqual(et2.session, 1)
+            self.assertEqual(et2.piece["etat"], "tenue")
+            self.assertTrue(any("entre les mors" in q for q in questions))
+            x, y, _z, _r = robot.pose()
+            self.assertAlmostEqual(x, et2.depart[0])
+            self.assertAlmostEqual(y, et2.depart[1])
 
     def test_recommencer_garde_la_configuration(self):
         et = ec.Etalonnage(FauxRobot(x=200.0, y=0.0), None, journal=lambda m: None,
@@ -273,6 +276,70 @@ class TestReprise(unittest.TestCase):
                 ec.charger_etalonnage(chemin)
 
 
+class TestMargeButees(unittest.TestCase):
+
+    def test_essai_du_25_10(self):
+        """Depart au bout de la portee (x 305) : l'essai reel avait vise
+        x 333,7, bras arriere a 1,1 deg de sa butee -- alarme 0x12."""
+        robot = FauxRobot()
+        robot.modele.geo.lt = 78.0
+        et = ec.Etalonnage(robot, None, z_table=25.0, graine=0,
+                           secteur=(-40.9, 29.0))
+        et.depart = (305.0, -1.7, -0.3)
+        for _ in range(30):
+            x, y, r = et.point_suivant()
+            for h in (ec.PRISE, ec.TRANSIT):
+                q = robot.modele.mgi_pose(x, y, 25.0 + h, r)
+                self.assertGreaterEqual(min(robot.modele.marges(q)), ec.MARGE_BUTEE)
+            et.paires.append(ec.Paire(np.array([x, y, 30.0]), r, np.zeros(3),
+                                      np.array([1.0, 0, 0]), 25.0))
+
+
+class TestDefaut(unittest.TestCase):
+
+    def test_point_refuse_banni_et_on_continue(self):
+        class Li:
+            def __init__(self):
+                self.effacees = 0
+
+            def arret_urgence(self):
+                pass
+
+            def effacer_alarmes(self):
+                self.effacees += 1
+
+            def alarmes(self):
+                return []
+
+        robot = FauxRobot(x=200.0, y=0.0)
+        robot._pont = type("P", (), {"liaison": Li()})()
+        et = ec.Etalonnage(robot, None, z_table=0.0, journal=lambda m: None)
+        et.depart = (200.0, 0.0, 0.0)
+        et.vise = (210.0, 10.0, 0.0)
+        et.piece = {"etat": "tenue"}
+        self.assertTrue(et.reprendre_apres_defaut())
+        self.assertEqual(et.interdits, [(210.0, 10.0)])
+        for _ in range(20):
+            x, y, _r = et.point_suivant()
+            self.assertGreaterEqual(math.hypot(x - 210.0, y - 10.0), 25.0)
+
+    def test_defaut_persistant(self):
+        class Li:
+            def arret_urgence(self):
+                pass
+
+            def effacer_alarmes(self):
+                pass
+
+            def alarmes(self):
+                return [18]
+
+        robot = FauxRobot()
+        robot._pont = type("P", (), {"liaison": Li()})()
+        et = ec.Etalonnage(robot, None, z_table=0.0, journal=lambda m: None)
+        self.assertFalse(et.reprendre_apres_defaut())
+
+
 class TestSecteur(unittest.TestCase):
 
     def test_poses_dans_le_secteur(self):
@@ -289,7 +356,7 @@ class TestSecteur(unittest.TestCase):
         # degagement en posture d'equerre, sans quitter le secteur
         self.assertTrue(robot.robot.postures)
         for q in robot.robot.postures:
-            self.assertEqual((q[1], q[2]), (0.0, 0.0))
+            self.assertEqual((q[1], q[2]), (ec.EQUERRE_J2, ec.EQUERRE_J3))
             self.assertTrue(5.0 <= q[0] <= 45.0)
         self.assertLess(et.recalage.rms, 1.5)
 
