@@ -151,22 +151,25 @@ class TestDeroule(unittest.TestCase):
         self.assertTrue(all(e["ecart_mm"] < 3.0 for e in v), v)
         self.assertTrue(robot.tenue)
 
-    def test_deux_pieces_vues(self):
+    def test_plusieurs_pieces_vues(self):
         questions = []
-
-        class DeuxPuisUne:
-            K, taille = None, None
-            n = 0
-
-            def voir(self):
-                self.n += 1
-                v = ec.Vue(np.zeros(3), np.array([1.0, 0, 0]))
-                return [v, v] if self.n == 1 else [v]
-
-        et = ec.Etalonnage(FauxRobot(), DeuxPuisUne(), z_table=0.0,
+        cam = type("C", (), {"K": None, "taille": None})()
+        et = ec.Etalonnage(FauxRobot(), cam, z_table=0.0,
                            demander=lambda t: questions.append(t) or "")
-        et.observer()
-        self.assertEqual(len(questions), 1)
+        axe = np.array([1.0, 0, 0])
+        bonne = ec.Vue(np.array([0.0, 0, 300]), axe, ec.TYPE_PIECE, ec.FACE_PIECE, 0.9)
+        # doublon de la meme piece : fondu
+        cam.voir = lambda: [bonne, ec.Vue(np.array([5.0, 0, 300]), axe, "fine", "a plat", 0.5)]
+        self.assertIs(et.observer(), bonne)
+        # une fausse detection loin : la bonne espece de piece l'emporte
+        cam.voir = lambda: [bonne, ec.Vue(np.array([200.0, 0, 300]), axe, "fine",
+                                          "sur la tranche", 0.6)]
+        self.assertIs(et.observer(), bonne)
+        # deux epaisses a plat, sans recalage ni pose precedente : on renonce
+        autre = ec.Vue(np.array([-150.0, 0, 300]), axe, ec.TYPE_PIECE, ec.FACE_PIECE, 0.8)
+        cam.voir = lambda: [bonne, autre]
+        self.assertIsNone(et.observer())
+        self.assertEqual(questions, [])                  # jamais de question
 
 
 class TestApproche(unittest.TestCase):

@@ -618,27 +618,44 @@ class Etalonnage:
     # -- la camera ----------------------------------------------------------
     def observer(self, attendu_robot=None) -> Optional[Vue]:
         """
-        La piece vue. Aucune piece : None (hors champ, cachee...), l'appelant
-        continue sans cette pose. Plusieurs pieces qu'on ne sait pas
-        departager : on demande de degager la table.
+        La piece posee, parmi ce que voit la camera ; None si on ne peut pas
+        la designer (rien de vu, ou plusieurs candidates qu'on ne sait pas
+        departager) : l'appelant abandonne la pose et continue. On ne
+        demande jamais rien : une detection en trop (reflet, objet au bord)
+        ne doit pas arreter l'etalonnage.
         """
-        while True:
-            vues = self.camera.voir()
-            if attendu_robot is not None and self.recalage is not None and vues:
-                prevu = self.recalage.vers_camera(attendu_robot)
-                vues.sort(key=lambda v: np.linalg.norm(v.position - prevu))
-                if len(vues) > 1 and np.linalg.norm(vues[0].position - prevu) < ECART_MAX \
-                        and np.linalg.norm(vues[1].position - prevu) > 3 * ECART_MAX:
-                    vues = vues[:1]
-            if len(vues) == 1:
+        vues = list(self.camera.voir())
+        # une meme piece detectee deux fois : on garde la plus sure
+        vues.sort(key=lambda v: -v.confiance)
+        uniques: List[Vue] = []
+        for v in vues:
+            if all(np.linalg.norm(v.position - u.position) > 20.0 for u in uniques):
+                uniques.append(v)
+        vues = uniques
+        self.derniere_observation = len(vues)
+        if len(vues) <= 1:
+            return vues[0] if vues else None
+        if attendu_robot is not None and self.recalage is not None:
+            prevu = self.recalage.vers_camera(attendu_robot)
+            vues.sort(key=lambda v: np.linalg.norm(v.position - prevu))
+            d0 = np.linalg.norm(vues[0].position - prevu)
+            d1 = np.linalg.norm(vues[1].position - prevu)
+            return vues[0] if d0 < ECART_MAX and d1 > d0 + 20.0 else None
+        # pas encore de recalage : la bonne espece de piece...
+        bonnes = [v for v in vues if v.type == TYPE_PIECE and v.face == FACE_PIECE]
+        if len(bonnes) == 1:
+            return bonnes[0]
+        # ... sinon la plus proche de la piece vue a la pose precedente
+        # (les premieres poses restent a quelques centimetres les unes des
+        # autres)
+        if self.paires:
+            ref = self.paires[-1].camera
+            vues.sort(key=lambda v: np.linalg.norm(v.position - ref))
+            d0 = np.linalg.norm(vues[0].position - ref)
+            d1 = np.linalg.norm(vues[1].position - ref)
+            if d1 > d0 + 40.0:
                 return vues[0]
-            if not vues:
-                return None
-            rep = self.demander(
-                "  la camera voit {} piece(s) au lieu d'une : degagez la table, "
-                "puis Entree (q : arreter) ".format(len(vues)))
-            if rep.strip().lower().startswith("q"):
-                raise Arret("arret demande")
+        return None
 
     # -- le deroule ---------------------------------------------------------
     def demarrer(self):
@@ -747,11 +764,15 @@ class Etalonnage:
         attendu = np.array([x, y, self._z(HAUTEUR_PIECE)])
         vue = self.observer(attendu)
         if vue is None:
-            # hors du champ de la camera, ou cachee : on le dit, on n'y
-            # retourne plus, et on continue
-            self.interdits.append((x, y))
-            self.journal("  --  pose x {:6.1f} y {:6.1f} r {:6.1f}  | piece NON VUE (hors "
-                         "champ ?) : point abandonne, on continue".format(x, y, r))
+            # hors du champ, cachee, ou ambigue : on le dit, et on continue
+            n = getattr(self, "derniere_observation", 0)
+            if n == 0:
+                self.interdits.append((x, y))
+                quoi = "piece NON VUE (hors champ ?) : point abandonne"
+            else:
+                quoi = "{} pieces vues, impossible de savoir laquelle : pose ignoree".format(n)
+            self.journal("  --  pose x {:6.1f} y {:6.1f} r {:6.1f}  | {}, on continue"
+                         .format(x, y, r, quoi))
             self.saisir(x, y, r, remonter=False)
             self.enregistrer()
             return None
