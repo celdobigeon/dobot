@@ -310,7 +310,7 @@ ol.etapes b{font-family:var(--sans); font-size:.97em;}
     <li><a href="#mouvements">MOVJ, MOVL, MOVC</a></li>
     <li><a href="#auxiliaires">Outil, attente, E/S</a></li>
     <li><a href="#temps">R&eacute;gler la vitesse</a></li>
-    <li><a href="#lissage">Le lissage</a></li>
+    <li><a href="#lissage">Le lissage, <code>trajet</code></a></li>
     <li><a href="#outil">L'outil et le TCP</a></li>
     <li><a href="#reperes">Travailler en rep&egrave;res</a></li>
     <li><a href="#verifier">V&eacute;rifier avant de lancer</a></li>
@@ -1037,6 +1037,42 @@ robot.movl(DEPOSE)                     <span class="c"># ARRET AU POINT : on dep
   atteint y est &agrave; 0,00&nbsp;mm, un point liss&eacute; est volontairement
   manqu&eacute;.</p>
   <!-- /memo:lissage-mesure -->
+
+  <h3 id="trajet">Sans arr&ecirc;t, et sans couper les coins&nbsp;: <code>trajet</code></h3>
+  <div class="note attention">
+    <span class="etiquette">Le lissage reste dans le simulateur</span>
+    <p>Sur le robot r&eacute;el, chaque <code>movl</code> est une commande point &agrave;
+    point&nbsp;: le contr&ocirc;leur <strong>s'arr&ecirc;te &agrave; chaque cible</strong>,
+    lissage ou pas. Un programme liss&eacute;, fluide &agrave; l'&eacute;cran, est saccad&eacute;
+    sur la machine.</p>
+  </div>
+  <p>Pour un mouvement continu <strong>aussi sur le robot</strong>, on donne la
+  liste des points &agrave; <code>trajet</code>. Le TCP suit les segments de
+  droite qui les relient, <strong>passe exactement par chacun</strong>, et ne
+  s'arr&ecirc;te qu'au dernier. C'est une trajectoire <em>affine par
+  morceaux</em>, jou&eacute;e par le mode continu (CP) du contr&ocirc;leur.</p>
+<pre><code>robot.movj(cible(<span class="n">200</span>, <span class="n">0</span>, <span class="n">50</span>))                 <span class="c"># orienter l'outil AVANT</span>
+robot.trajet([cible(<span class="n">200</span>, <span class="n">60</span>, <span class="n">50</span>), (<span class="n">260</span>, <span class="n">60</span>, <span class="n">50</span>),
+              (<span class="n">260</span>, <span class="n">0</span>, <span class="n">50</span>), (<span class="n">200</span>, <span class="n">0</span>, <span class="n">50</span>)], vitesse=<span class="n">80</span>)</code></pre>
+  <p>Le robot part de l'arr&ecirc;t, acc&eacute;l&egrave;re jusqu'&agrave; <code>vitesse</code>, et
+  <strong>ralentit dans les coins</strong>, d'autant plus qu'ils sont
+  vifs&nbsp;: sur ce carr&eacute; de 60&nbsp;mm &agrave; 80&nbsp;mm/s, chaque angle droit passe
+  &agrave; environ 27&nbsp;mm/s. Le simulateur reproduit ces vitesses.</p>
+  <div class="cadre"><table>
+    <tr><th></th><th>Lissage</th><th><code>trajet</code></th></tr>
+    <tr><td>Les points</td><td>manqu&eacute;s, le coin est coup&eacute;</td>
+        <td>atteints exactement</td></tr>
+    <tr><td>Dans un coin</td><td>vitesse gard&eacute;e</td><td>ralentissement</td></tr>
+    <tr><td>Robot r&eacute;el</td><td>arr&ecirc;t &agrave; chaque point</td>
+        <td><strong>sans arr&ecirc;t</strong>, comme &agrave; l'&eacute;cran</td></tr>
+    <tr><td>L'outil peut tourner</td><td>oui</td><td><strong>non</strong></td></tr>
+  </table></div>
+  <p>Trois limites, celles de la machine&nbsp;: l'outil ne tourne pas pendant
+  un trajet (un point qui change <code>r</code> est refus&eacute;)&nbsp;; la vitesse ne
+  d&eacute;passe pas 125&nbsp;mm/s&nbsp;; <code>duree</code> et <code>profil</code> ne
+  s'appliquent pas. Dans le programme, un trajet devient une suite de
+  <code>MOVL</code> marqu&eacute;s &laquo;&nbsp;continu&nbsp;-&gt;&nbsp;&raquo;&nbsp;; la case
+  <em>encha&icirc;ner sans arr&ecirc;t</em> de l'&eacute;diteur fait la m&ecirc;me chose.</p>
 </section>
 
 <!-- =============================================================== -->
@@ -1340,6 +1376,7 @@ print(e[<span class="k">"Q"</span>].shape)                           <span class
     <tr><td class="libre"><code>movj(T, &hellip;)</code></td><td>articulaire &mdash; aller quelque part</td></tr>
     <tr><td class="libre"><code>movl(T, &hellip;)</code></td><td>rectiligne &mdash; faire quelque chose</td></tr>
     <tr><td class="libre"><code>movc(via, T, &hellip;)</code></td><td>arc de cercle</td></tr>
+    <tr><td class="libre"><code>trajet([P1, P2, &hellip;], vitesse=)</code></td><td>segments encha&icirc;n&eacute;s sans arr&ecirc;t, aussi sur le robot</td></tr>
     <tr><td class="libre"><code>repli()</code></td><td>retour au repos (0, 15, 30, 0)&nbsp;&deg;</td></tr>
     <tr><th>Outil et E/S</th><th></th></tr>
     <tr><td class="libre"><code>monter_outil(nom)</code></td><td>aucun, ventouse, pince, stylo, laser</td></tr>

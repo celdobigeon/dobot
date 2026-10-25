@@ -355,7 +355,9 @@ class PontReel:
                 "programme refuse : {} defaut(s) sur la trajectoire.\n  {}"
                 .format(len(defauts), "\n  ".join(defauts[:6])))
 
-        if any(getattr(i, "lissage", 0) for i in programme.instructions):
+        enchaines = {k for c in programme.chaines for k in c}
+        if any(getattr(i, "lissage", 0) and k not in enchaines
+               for k, i in enumerate(programme.instructions)):
             self.journal("NOTE : le lissage n'existe pas en PTP sur le "
                          "controleur ; le robot reel marquera un arret a "
                          "chaque point.")
@@ -363,8 +365,19 @@ class PontReel:
         self._preparer_file(li)
         commandes: List[Callable[[], int]] = []
         couper = False
-        for ins in programme.instructions:
-            commandes.extend(self._traduire(li, ins, programme, outil))
+        debuts = {c[0]: c for c in programme.chaines}
+        sauter = -1
+        for i, ins in enumerate(programme.instructions):
+            if i <= sauter:
+                continue
+            if i in debuts:
+                # trajectoire continue : points CP, sans arret
+                chaine = debuts[i]
+                commandes.extend(self._commandes_chaine(traj, programme,
+                                                        chaine))
+                sauter = chaine[-1]
+            else:
+                commandes.extend(self._traduire(li, ins, programme, outil))
             # Ouvrir la pince ou relacher la ventouse fait SOUFFLER la
             # pompe, qui ne s'arrete plus. On la coupe dans la file, APRES
             # le mouvement suivant : elle souffle pendant ce mouvement, le
@@ -499,6 +512,22 @@ class PontReel:
             x, y, z, _r = self.vers_controleur(float(p[0]), float(p[1]),
                                                float(p[2]), float(r))
             out.append(lambda x=x, y=y, z=z, v=reglage[1]: li.cp(x, y, z, v))
+        return out
+
+    def _commandes_chaine(self, traj, programme,
+                          chaine: List[int]) -> List[Callable[[], int]]:
+        """Points CP d'une suite de MOVL enchaines (Pilote.trajet)."""
+        from .commande import echantillonner_course
+        segment = {id(s.instruction): k for k, s in enumerate(traj.segments)
+                   if getattr(s, "instruction", None) is not None}
+        s0 = segment[id(programme.instructions[chaine[0]])]
+        s1 = segment[id(programme.instructions[chaine[-1]])]
+        _depart, portions = echantillonner_course(traj, s0, s1)
+        vitesses, a = programme.parametres_chaine(chaine)
+        r = float(self.robot.pose(traj.segments[s0].q(0.0))[3])
+        out: List[Callable[[], int]] = []
+        for v, pts in zip(vitesses, portions):
+            out += self.commandes_cp(pts, v, a, r)
         return out
 
     @staticmethod

@@ -307,17 +307,18 @@ def _duree_troncon(d: float, w0: float, w1: float, c: float, a: float) -> float:
     return (vp - w0) / a + (vp - w1) / a
 
 
-def prevoir_cp(depart, portions: List[List[np.ndarray]],
-               vitesses: Sequence[float], acceleration: float,
-               pas: float = PAS_CP) -> Tuple[List[float], List[bool]]:
+def troncons_cp(depart, portions: List[List[np.ndarray]],
+                vitesses: Sequence[float], acceleration: float,
+                pas: float = PAS_CP):
     """
-    Duree previsible de chaque portion d'une trajectoire CP.
+    Troncons (d, w0, w1, c) d'une trajectoire CP, rendus portion par
+    portion, et pour chaque portion si la courbure y limite la vitesse.
 
     Modele d'anticipation classique de commande numerique : chaque troncon
     vise la vitesse de sa portion ; chaque jonction est plafonnee par le
     modele centripete (K_JONCTION) ; le robot part et finit a l'arret, et
     ne peut accelerer ni freiner plus fort que `acceleration` -- d'ou une
-    passe avant et une passe arriere. Rend (durees, courbure_limitante).
+    passe avant et une passe arriere.
     """
     a = max(float(acceleration), 1e-6)
     pts = [np.asarray(depart, dtype=float)]
@@ -328,10 +329,10 @@ def prevoir_cp(depart, portions: List[List[np.ndarray]],
             proprio.append(k)
     m = len(portions)
     n = len(pts) - 1
-    durees = [0.0] * m
+    troncons: List[List[Tuple[float, float, float, float]]] = [[] for _ in range(m)]
     limite = [False] * m
     if n <= 0:
-        return durees, limite
+        return troncons, limite
     d = [float(np.linalg.norm(pts[i + 1] - pts[i])) for i in range(n)]
     c = [max(float(vitesses[proprio[i]]), 1e-6) for i in range(n)]
     w = [0.0] * (n + 1)
@@ -354,7 +355,21 @@ def prevoir_cp(depart, portions: List[List[np.ndarray]],
     for i in range(n - 1, -1, -1):                       # passe arriere
         w[i] = min(w[i], math.sqrt(w[i + 1] ** 2 + 2.0 * a * d[i]))
     for i in range(n):
-        durees[proprio[i]] += _duree_troncon(d[i], w[i], w[i + 1], c[i], a)
+        troncons[proprio[i]].append((d[i], w[i], w[i + 1], c[i]))
+    return troncons, limite
+
+
+def prevoir_cp(depart, portions: List[List[np.ndarray]],
+               vitesses: Sequence[float], acceleration: float,
+               pas: float = PAS_CP) -> Tuple[List[float], List[bool]]:
+    """
+    Duree previsible de chaque portion d'une trajectoire CP (voir
+    `troncons_cp`). Rend (durees, courbure_limitante).
+    """
+    a = max(float(acceleration), 1e-6)
+    troncons, limite = troncons_cp(depart, portions, vitesses, a, pas)
+    durees = [sum(_duree_troncon(d, w0, w1, c, a) for d, w0, w1, c in tk)
+              for tk in troncons]
     return durees, limite
 
 

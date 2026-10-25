@@ -19,7 +19,7 @@ joue le mouvement.
     robot.movj(PRISE @ HAUT)
     robot.movl(PRISE, vitesse=60)         # descente lente
     robot.ventouse(True)
-    robot.movl(PRISE @ HAUT, lissage=60)  # raccord arrondi avec le suivant
+    robot.movl(PRISE @ HAUT, lissage=60)  # raccord arrondi (simulateur seul)
     robot.movc(via=cible(265, 0, 130), T=DEPOSE @ HAUT)
     robot.movl(DEPOSE)
     robot.ventouse(False)
@@ -331,6 +331,55 @@ class Pilote:
                       profil, commentaire, repere, mode="cartesien",
                       via=point_via,
                       pose=self._resoudre(T, x, y, z, r))
+        return self
+
+    def trajet(self, points, *, repere=None, vitesse=None, acceleration=None,
+               commentaire="") -> "Pilote":
+        """
+        Trajectoire CONTINUE affine par morceaux : le TCP suit les segments
+        de droite qui relient les points, SANS S'ARRETER aux points
+        intermediaires, et passe exactement par chacun.
+
+            robot.movj(cible(200, 0, 50))
+            robot.trajet([cible(200, 60, 50), cible(260, 60, 50),
+                          cible(260, 0, 50), cible(200, 0, 50)],
+                         vitesse=80)
+
+        Chaque point est une matrice homogene ou des coordonnees (x, y, z).
+        Le robot part de l'arret, accelere jusqu'a `vitesse` (mm/s, 125 au
+        plus), ralentit dans les coins -- d'autant plus qu'ils sont vifs --
+        et s'arrete au dernier point. Sur le robot reel, c'est le mode CP
+        du controleur ; le simulateur en reproduit les vitesses.
+
+        L'outil ne tourne pas pendant un trajet : tous les points gardent
+        l'orientation r de depart. Orientez l'outil avant, par un movj.
+        """
+        from .commande import TOLERANCE_R, VITESSE_CP_MAX, _ecart_angle
+        points = list(points)
+        if not points:
+            raise ValueError("trajet : aucun point")
+        r0 = self._pose[3]
+        memoire = list(self._pose)
+        poses = []
+        for p in points:
+            pose = self._resoudre(p, None, None, None, None)
+            if repere is None and abs(_ecart_angle(r0, pose[3])) > TOLERANCE_R:
+                self._pose = memoire
+                raise ValueError(
+                    "trajet : le point {} demande r = {:.1f} deg, au lieu de "
+                    "{:.1f} au depart. L'outil ne tourne pas pendant un "
+                    "trajet continu : orientez-le avant, par un movj."
+                    .format(len(poses) + 1, pose[3], r0))
+            poses.append(pose)
+        if vitesse is not None and float(vitesse) > VITESSE_CP_MAX:
+            print("trajet : {:.0f} mm/s demandes, limites a {:.0f} mm/s "
+                  "(vitesse la plus haute essayee en continu sur le robot)"
+                  .format(float(vitesse), VITESSE_CP_MAX))
+        for k, pose in enumerate(poses):
+            dernier = k == len(poses) - 1
+            self._ajouter("MOVL", None, vitesse, acceleration, 0.0,
+                          "trapeze", commentaire if k == 0 else "", repere,
+                          mode="cartesien", pose=pose, continu=not dernier)
         return self
 
     def repli(self, **kw) -> "Pilote":

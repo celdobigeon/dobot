@@ -1943,6 +1943,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             "le point de passage n'est alors plus atteint exactement")
         form.addRow("lissage du raccord", self.sp_lissage)
 
+        self.chk_continu = QtWidgets.QCheckBox("enchainer sans arret")
+        self.chk_continu.setToolTip(
+            "MOVL : enchaine avec le MOVL suivant sans s'arreter, en passant\n"
+            "exactement par la cible (mode continu CP du robot). Le robot\n"
+            "ralentit dans les coins ; l'outil ne doit pas tourner.")
+        form.addRow("", self.chk_continu)
+
         self.lab_duree_calc = QtWidgets.QLabel("")
         self.lab_duree_calc.setStyleSheet("color:#888")
         form.addRow("", self.lab_duree_calc)
@@ -2026,7 +2033,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                         self.cb_repere]
                        + self.champs_cible + self.champs_via
                        + [self.sp_duree, self.sp_vitesse, self.sp_accel,
-                          self.sp_lissage, self.sp_port, self.chk_outil,
+                          self.sp_lissage, self.chk_continu, self.sp_port,
+                          self.chk_outil,
                           self.ed_commentaire]):
             if isinstance(widget, QtWidgets.QComboBox):
                 widget.currentIndexChanged.connect(self._formulaire_modifie)
@@ -3904,6 +3912,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self.sp_lissage.setValue(ins.lissage)
             self.sp_port.setValue(int(ins.port))
             self.chk_outil.setChecked(bool(ins.etat))
+            self.chk_continu.setChecked(bool(ins.continu))
             self.ed_commentaire.setText(ins.commentaire)
             self._ecrire_cible(ins)
             self._ecrire_via(ins)
@@ -3993,7 +4002,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.cb_temps.setEnabled(mouvement)
         self.sp_vitesse.setEnabled(par_vitesse)
         self.sp_accel.setEnabled(par_vitesse)
-        self.sp_lissage.setEnabled(mouvement)
+        self.chk_continu.setEnabled(ins.type == "MOVL")
+        self.sp_lissage.setEnabled(mouvement and not (
+            ins.type == "MOVL" and ins.continu))
 
         es = ins.type in ("SORTIE", "ENTREE")
         self.sp_port.setEnabled(es)
@@ -4048,6 +4059,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         ins.lissage = float(self.sp_lissage.value())
         ins.port = int(self.sp_port.value())
         ins.etat = bool(self.chk_outil.isChecked())
+        ins.continu = bool(self.chk_continu.isChecked()) and ins.type == "MOVL"
         ins.commentaire = self.ed_commentaire.text()
         valeurs = self._lire_cible(ins)
         if self._articulaire(ins):

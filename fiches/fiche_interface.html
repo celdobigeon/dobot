@@ -465,7 +465,13 @@ footer{
     <tr><td class="libre">lissage</td>
       <td>arrondi du raccord <strong>avec l'instruction suivante</strong>, en pourcentage.
       0 = point d'arr&ecirc;t exact, 100 = recouvrement maximal. Le point de passage
-      n'est alors plus atteint exactement.</td></tr>
+      n'est alors plus atteint exactement. <strong>Simulateur seulement</strong>&nbsp;:
+      le robot r&eacute;el s'arr&ecirc;te &agrave; chaque point.</td></tr>
+    <tr><td class="libre">encha&icirc;ner sans arr&ecirc;t</td>
+      <td>MOVL seulement&nbsp;: encha&icirc;ne avec le MOVL suivant <strong>sans
+      s'arr&ecirc;ter</strong>, en passant exactement par la cible, aussi sur le robot
+      r&eacute;el (mode continu). Le robot ralentit dans les coins&nbsp;; l'outil ne doit
+      pas tourner. C'est ce qu'&eacute;crit <code>robot.trajet([&hellip;])</code>.</td></tr>
     <tr><td>port</td><td>num&eacute;ro de port EIO (1 &agrave; 20) pour SORTIE et ENTR&Eacute;E.</td></tr>
   </table></div>
 

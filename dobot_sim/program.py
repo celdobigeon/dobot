@@ -13,9 +13,9 @@ import numpy as np
 
 from .robot import (DobotMagician, cible, decomposer_cible,
                     verifier_repere_objet)
-from .trajectory import (SegmentAction, SegmentArticulaire, SegmentAttente,
-                         SegmentCirculaire, SegmentLineaire, Trajectoire,
-                         creer_profil, creer_profil_vitesse)
+from .trajectory import (ProfilTroncons, SegmentAction, SegmentArticulaire,
+                         SegmentAttente, SegmentCirculaire, SegmentLineaire,
+                         Trajectoire, creer_profil, creer_profil_vitesse)
 
 __all__ = ["Instruction", "Programme", "Evenement", "TYPES_INSTRUCTION",
            "TYPES_MOUVEMENT"]
@@ -73,6 +73,14 @@ class Instruction:
     lissage     arrondi du raccord AVEC L'INSTRUCTION SUIVANTE, en pourcentage.
                 0 = point d'arret exact, 100 = recouvrement maximal. Le point
                 de passage n'est alors plus atteint exactement.
+
+    continu     MOVL seulement : le robot enchaine avec le MOVL suivant sans
+                s'arreter, en passant EXACTEMENT par la cible (trajectoire
+                affine par morceaux, mode CP du controleur). Il ralentit
+                dans les coins, d'autant plus qu'ils sont vifs. La vitesse
+                de croisiere est `vitesse` (mm/s, 125 au plus) ; la duree
+                imposee et la loi horaire sont ignorees. L'outil ne tourne
+                pas : r doit rester le meme tout du long.
     """
     type: str = "MOVJ"
     mode: str = "cartesien"
@@ -94,6 +102,9 @@ class Instruction:
     lissage: float = 0.0            # pourcentage
     port: int = 1                   # SORTIE / ENTREE : numero de port EIO
     repere: str = "base"            # "base" ou "objet" : repere de la cible
+    # MOVL : enchainer SANS ARRET avec le MOVL suivant (trajectoire
+    # continue, mode CP du robot ; voir Pilote.trajet)
+    continu: bool = False
 
     # -- unites et valeurs effectives --------------------------------------
 
@@ -189,7 +200,9 @@ class Instruction:
                 self.vitesse_effective(), u, self.acceleration_effective(), u)
         else:
             tete += "  {:.1f}s".format(self.duree)
-        if self.lissage > 0:
+        if self.continu and self.type == "MOVL":
+            tete += "  continu ->"
+        elif self.lissage > 0:
             tete += "  lissage {:.0f}%".format(self.lissage)
         return self._suffixe(tete)
 
@@ -229,6 +242,9 @@ class Programme:
         #: Propre a l'animation : ni enregistre, ni envoye au robot.
         self.outil_initial = False
         self.sorties_initiales: Optional[List[bool]] = None
+        #: trajectoires continues trouvees par construire() : listes des
+        #: indices d'instructions (MOVL) parcourues sans arret
+        self.chaines: List[List[int]] = []
 
     def definir_repere_objet(self, T=None) -> None:
         """Fixe le repere objet a partir d'une matrice homogene 4x4."""
@@ -298,6 +314,7 @@ class Programme:
         self.evenements = []
 
         segments, lissages, logiques = [], [], []
+        indices: List[int] = []             # instruction de chaque segment
         provisoire = creer_profil("lineaire", 1.0)
 
         for i, instr in enumerate(self.instructions):
@@ -342,19 +359,80 @@ class Programme:
                 continue
 
             seg.instruction = instr          # lien segment -> ligne de programme
+            indices.append(i)
             segments.append(seg)
             # 0 a 100 % du recouvrement maximal que les deux segments
             # voisins peuvent absorber ; la Trajectoire fait la conversion
             lissages.append(max(0.0, min(instr.lissage, 100.0)) / 100.0)
             q = seg.q_final
 
+        self.chaines = self._chaines(robot, segments, indices)
+        for chaine in self.chaines:
+            for k in chaine[:-1]:
+                lissages[indices.index(k)] = 0.0
         traj = Trajectoire(robot, segments, lissages)
+        if self.chaines:
+            self._cadencer_chaines(traj, indices)
+            traj = Trajectoire(robot, segments, lissages)
         for k, instr in logiques:
             self.evenements.append(Evenement(
                 t=traj.debuts[k], type=instr.type, etat=bool(instr.etat),
                 port=int(instr.port), segment=k,
                 timeout=float(instr.duree) if instr.type == "ENTREE" else 0.0))
         return traj
+
+    def _chaines(self, robot: DobotMagician, segments,
+                 indices: List[int]) -> List[List[int]]:
+        """
+        Suites de MOVL consecutifs marques `continu` (le dernier de la
+        suite ne l'est pas forcement). Une suite ou l'outil tourne n'est
+        pas continue : le mode CP du controleur ne tourne pas l'outil.
+        """
+        from .commande import TOLERANCE_R, _ecart_angle
+        par_instruction = dict(zip(indices, segments))
+        chaines: List[List[int]] = []
+
+        def clore(suite: List[int]) -> None:
+            if len(suite) < 2:
+                return
+            r0 = robot.pose(par_instruction[suite[0]].q(0.0))[3]
+            if all(abs(_ecart_angle(r0, robot.pose(
+                    par_instruction[k].q_final)[3])) <= TOLERANCE_R
+                   for k in suite):
+                chaines.append(suite)
+
+        courante: List[int] = []
+        for i, instr in enumerate(self.instructions):
+            mouvl = instr.type == "MOVL" and i in par_instruction
+            if mouvl and (courante or instr.continu):
+                courante.append(i)
+            if courante and not (mouvl and instr.continu):
+                clore(courante)
+                courante = []
+        clore(courante)
+        return chaines
+
+    def _cadencer_chaines(self, traj: Trajectoire, indices: List[int]) -> None:
+        """
+        Lois horaires des trajectoires continues : celles du controleur en
+        mode CP (vitesse de croisiere, ralentissement aux coins, depart et
+        arrivee a l'arret), et non les profils de chaque MOVL.
+        """
+        from .commande import echantillonner_course, troncons_cp
+        for chaine in self.chaines:
+            s0, s1 = indices.index(chaine[0]), indices.index(chaine[-1])
+            depart, portions = echantillonner_course(traj, s0, s1)
+            v, a = self.parametres_chaine(chaine)
+            troncons, _ = troncons_cp(depart, portions, v, a)
+            for j, tr in enumerate(troncons):
+                traj.segments[s0 + j].profil = ProfilTroncons(tr, a)
+
+    def parametres_chaine(self, chaine: List[int]) -> Tuple[List[float], float]:
+        """Vitesses (une par MOVL) et acceleration envoyees au robot."""
+        from .commande import VITESSE_CP_MAX, VITESSE_CP_MIN
+        v = [float(np.clip(self.instructions[k].vitesse_effective(),
+                           VITESSE_CP_MIN, VITESSE_CP_MAX)) for k in chaine]
+        return v, self.instructions[chaine[0]].acceleration_effective()
 
     @property
     def evenements_outil(self) -> List[Tuple[float, bool]]:
@@ -482,9 +560,30 @@ class Programme:
         L += ["dernier = 0", ""]
         dernier_reglage = None
         lissage_demande = False
+        self.construire(robot)                   # trouve les chaines continues
+        en_continu = {}
+        for chaine in self.chaines:
+            vitesses, a = self.parametres_chaine(chaine)
+            for k, v in zip(chaine, vitesses):
+                en_continu[k] = (v, a)
         for i, ins in enumerate(self.instructions):
             if ins.commentaire:
                 L.append("# {}".format(ins.commentaire))
+
+            if i in en_continu:
+                # trajectoire continue (CP) : la vitesse de croisiere est
+                # junctionVel ; le champ velocity de SetCPCmd est ignore
+                v, a = en_continu[i]
+                reglage = ("cp", round(v, 2), round(a, 2))
+                if reglage != dernier_reglage:
+                    L.append("dType.SetCPParams(api, {a:.2f}, {v:.2f}, {a:.2f}, "
+                             "0, isQueued=1)".format(a=a, v=v))
+                    dernier_reglage = reglage
+                x, y, z, _r = decomposer_cible(ins.matrice(robot,
+                                                           self.repere_objet))
+                L.append("dernier = dType.SetCPCmd(api, 1, {:.2f}, {:.2f}, "
+                         "{:.2f}, {:.2f}, isQueued=1)[0]".format(x, y, z, v))
+                continue
 
             # vitesse et acceleration : on ne reemet la commande que si elles
             # changent, pour ne pas saturer la file du controleur

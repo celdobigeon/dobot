@@ -30,7 +30,7 @@ _SANS_NOMBRES = re.compile(r"[-+]?\d[\d.]*")
 
 __all__ = [
     "Profil", "ProfilLineaire", "ProfilTrapeze", "ProfilPolynomial5", "ProfilSinus",
-    "ProfilDemarrage", "ProfilArret",
+    "ProfilDemarrage", "ProfilArret", "ProfilTroncons",
     "creer_profil", "creer_profil_vitesse", "PROFILS",
     "Segment", "SegmentArticulaire", "SegmentLineaire", "SegmentCirculaire",
     "SegmentAttente", "SegmentAction", "Trajectoire",
@@ -292,6 +292,72 @@ class ProfilArret(ProfilDemarrage):
 
     def ds(self, t: float) -> float:
         return self._v(1.0 - self._u(t)) / self.duree
+
+
+class ProfilTroncons(Profil):
+    """
+    Loi horaire d'un morceau de trajectoire CONTINUE (mode CP du robot).
+
+    Le chemin est decoupe en troncons (d, w0, w1, c) : longueur d en mm,
+    vitesse d'entree w0, de sortie w1, de croisiere visee c. Sur chacun, le
+    robot accelere a `a` constante vers c, garde c, puis freine vers w1 --
+    sans atteindre c si le troncon est trop court. Les vitesses aux
+    jonctions viennent du modele du controleur (`commande.prevoir_cp`) :
+    le simulateur ralentit donc aux coins comme le robot.
+    """
+
+    nom = "troncons"
+
+    def __init__(self, troncons, acceleration: float):
+        a = max(float(acceleration), 1e-9)
+        self._phases = []                  # (t0, s0, duree, v0, acc)
+        t = s = 0.0
+        for d, w0, w1, c in troncons:
+            d = max(float(d), 0.0)
+            w0, w1 = max(float(w0), 0.0), max(float(w1), 0.0)
+            c = max(float(c), w0, w1, 1e-6)
+            if d <= 1e-9:
+                continue
+            da = (c * c - w0 * w0) / (2.0 * a)
+            dd = (c * c - w1 * w1) / (2.0 * a)
+            if da + dd > d:
+                c = max(np.sqrt(max((2.0 * a * d + w0 * w0 + w1 * w1) / 2.0,
+                                    0.0)), w0, w1)
+                da = max((c * c - w0 * w0) / (2.0 * a), 0.0)
+                dd = max(d - da, 0.0)
+            for v0, v1, longueur, acc in ((w0, c, da, a),
+                                          (c, c, d - da - dd, 0.0),
+                                          (c, w1, dd, -a)):
+                if longueur <= 1e-12:
+                    continue
+                duree = (2.0 * longueur / (v0 + v1) if v0 + v1 > 1e-12
+                         else 0.0)
+                self._phases.append((t, s, duree, v0, acc))
+                t += duree
+                s += longueur
+        self.longueur = s
+        super().__init__(t)
+
+    def _abscisse(self, t: float) -> Tuple[float, float]:
+        """(distance parcourue, vitesse) a l'instant t, en mm et mm/s."""
+        if not self._phases:
+            return 0.0, 0.0
+        t = float(np.clip(t, 0.0, self.duree))
+        for t0, s0, duree, v0, acc in reversed(self._phases):
+            if t >= t0:
+                u = min(t - t0, duree)
+                return s0 + v0 * u + 0.5 * acc * u * u, v0 + acc * u
+        return 0.0, 0.0
+
+    def s(self, t: float) -> float:
+        if self.longueur <= 1e-12:
+            return self._u(t)
+        return float(np.clip(self._abscisse(t)[0] / self.longueur, 0.0, 1.0))
+
+    def ds(self, t: float) -> float:
+        if self.longueur <= 1e-12:
+            return 1.0 / self.duree
+        return self._abscisse(t)[1] / self.longueur
 
 
 PROFILS = {

@@ -395,8 +395,20 @@ PRISE @ HAUT                      <span class="c"># 85 mm au-dessus de PRISE</sp
   <a href="fiche_api.html#p-movc">fiche&nbsp;3, <code>movc</code></a></p>
 </section>
 
+<section id="trajet">
+  <h2><span class="num">06</span>trajet() &mdash; sans arr&ecirc;t</h2>
+  <p class="intro">Des segments de droite encha&icirc;n&eacute;s sans s'arr&ecirc;ter aux points
+  interm&eacute;diaires, aussi sur le robot r&eacute;el. L'outil ne tourne pas.</p>
+
+<pre><code>robot.trajet([P1, P2, P3], vitesse=<span class="n">80</span>)      <span class="c"># mm/s, 125 au plus</span></code></pre>
+
+  <p class="legende-mat">D&eacute;tail&nbsp;:
+  <a href="fiche_programmation.html#trajet">fiche&nbsp;2, section&nbsp;07</a> &middot;
+  <a href="fiche_api.html#p-trajet">fiche&nbsp;3, <code>trajet</code></a></p>
+</section>
+
 <section id="sortie">
-  <h2><span class="num">06</span>Lancer</h2>
+  <h2><span class="num">07</span>Lancer</h2>
 <pre><code><span class="k">print</span>(robot.resume())
 robot.simuler()                   <span class="c"># F5 sous VS-Code</span></code></pre>
 </section>

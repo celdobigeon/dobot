@@ -731,6 +731,38 @@ robot.movl(z=<span class="n">25</span>)                    <span class="c"># des
     </div>
   </div>
 
+  <div class="api" id="p-trajet">
+    <p class="sig"><b>trajet</b>(<i>points</i>, *, <i>repere</i>=<u>None</u>,
+      <i>vitesse</i>=<u>None</u>, <i>acceleration</i>=<u>None</u>,
+      <i>commentaire</i>=<u>""</u>)</p>
+    <div class="corps">
+      <p><strong>Trajectoire continue affine par morceaux&nbsp;:</strong> le TCP suit
+      les segments de droite qui relient les points, <strong>sans s'arr&ecirc;ter</strong>
+      aux points interm&eacute;diaires, et passe exactement par chacun. Sur le robot
+      r&eacute;el, c'est le mode continu (CP) du contr&ocirc;leur&nbsp;: contrairement au
+      lissage, l'encha&icirc;nement sans arr&ecirc;t existe aussi sur la machine.</p>
+      <dl class="params">
+        <dt>points <span class="ty">liste</span></dt>
+        <dd>Matrices 4&times;4 ou coordonn&eacute;es <code>(x, y, z)</code>. Le premier
+          segment part de la position courante.</dd>
+        <dt>vitesse <span class="ty">float</span></dt>
+        <dd>Vitesse de croisi&egrave;re du TCP, en mm/s, <strong>125 au plus</strong>.
+          Le robot ralentit dans les coins, d'autant plus qu'ils sont vifs.</dd>
+        <dt>acceleration <span class="ty">float</span></dt>
+        <dd>En mm/s&sup2;.</dd>
+      </dl>
+      <div class="note attention">
+        <span class="etiquette">L'outil ne tourne pas</span>
+        <p>Tous les points gardent l'orientation <code>r</code> de d&eacute;part&nbsp;; un
+        point qui la change l&egrave;ve <code>ValueError</code>. Orientez l'outil avant,
+        par un <code>movj</code>.</p>
+      </div>
+<pre><code>robot.trajet([cible(<span class="n">200</span>, <span class="n">60</span>, <span class="n">50</span>), (<span class="n">260</span>, <span class="n">60</span>, <span class="n">50</span>), (<span class="n">260</span>, <span class="n">0</span>, <span class="n">50</span>)],
+             vitesse=<span class="n">80</span>)</code></pre>
+      <p class="voir"><span class="mot">Exemples</span> <a href="fiche_programmation.html#trajet">&sect;7 Sans arr&ecirc;t&nbsp;: trajet</a></p>
+    </div>
+  </div>
+
   <div class="api" id="p-repli">
     <p class="sig"><b>repli</b>(**<i>kw</i>)</p>
     <div class="corps">
@@ -1319,6 +1351,7 @@ q = r.mgi(T)                              <span class="c"># inverse</span></code
     <tr><td>acceleration</td><td class="num">0.0</td><td>idem, par seconde carr&eacute;e</td></tr>
     <tr><td>profil</td><td><code>"polynome5"</code></td><td>loi horaire</td></tr>
     <tr><td>lissage</td><td class="num">0.0</td><td>pourcentage, raccord avec la ligne suivante</td></tr>
+    <tr><td>continu</td><td><code>False</code></td><td>MOVL&nbsp;: encha&icirc;ner sans arr&ecirc;t avec le MOVL suivant (mode CP, voir <a href="#p-trajet">trajet</a>)</td></tr>
     <tr><td>etat</td><td><code>False</code></td><td>OUTIL, SORTIE, ENTREE&nbsp;: l'&eacute;tat vis&eacute;</td></tr>
     <tr><td>port</td><td class="num">1</td><td>SORTIE, ENTREE&nbsp;: num&eacute;ro de port EIO</td></tr>
     <tr><td>repere</td><td><code>"base"</code></td><td><code>"base"</code> ou <code>"objet"</code></td></tr>
@@ -1577,6 +1610,7 @@ print(e[<span class="k">"Q"</span>][:, <span class="n">1</span>].max(), <span cl
     <tr><td><a href="#p-simuler">simuler</a></td><td>ouvrir le simulateur</td></tr>
     <tr><td><a href="#p-sortie">sortie</a></td><td>piloter une sortie EIO</td></tr>
     <tr><td><a href="#trajectoire">Trajectoire</a></td><td>le mouvement compil&eacute;</td></tr>
+    <tr><td><a href="#p-trajet">trajet</a></td><td>segments encha&icirc;n&eacute;s sans arr&ecirc;t</td></tr>
     <tr><td><a href="#p-actionner">ventouse</a></td><td>alias de actionner</td></tr>
     <tr><td><a href="#f-verifier">verifier_repere_objet</a></td><td>valider un rep&egrave;re objet</td></tr>
     <tr><td><a href="#f-verifier">verifier_repere_outil</a></td><td>valider un rep&egrave;re outil</td></tr>

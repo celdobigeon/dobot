@@ -284,6 +284,33 @@ lissage, et la durée totale diminue d'autant. Une `ATTENTE` n'est jamais
 absorbée par un lissage. Mesuré sur le cycle de `mon_programme.py` : **35,1 s
 → 28,8 s**, sans que la vitesse maximale augmente d'un seul mm/s.
 
+> **Le lissage n'existe que dans le simulateur.** Sur le robot réel, chaque
+> `movl` est une commande point à point qui s'arrête à sa cible. Pour un
+> mouvement sans arrêt **aussi sur la machine**, utilisez `trajet`.
+
+**Trajet continu** — `robot.trajet([P1, P2, P3], vitesse=80)` relie les
+points par des segments de droite, **sans s'arrêter** aux points
+intermédiaires, et passe exactement par chacun. Sur le robot réel, c'est le
+mode continu (CP) du contrôleur. Le simulateur en reproduit les vitesses :
+départ et arrivée à l'arrêt, croisière à `vitesse`, et ralentissement dans
+les coins, d'autant plus fort qu'ils sont vifs. Sur un carré de 60 mm à
+80 mm/s, le robot passe chaque angle droit à environ 27 mm/s.
+
+```python
+robot.movj(cible(200, 0, 50))                 # orienter l'outil AVANT
+robot.trajet([cible(200, 60, 50), (260, 60, 50),
+              (260, 0, 50), (200, 0, 50)], vitesse=80)
+```
+
+Trois limites, celles du mode CP de la machine :
+- l'outil ne tourne pas pendant un trajet : un point qui change `r` est
+  refusé ;
+- la vitesse ne dépasse pas 125 mm/s, la plus haute essayée sur le robot ;
+- `duree=` et `profil=` ne s'appliquent pas.
+
+Dans le programme, un trajet devient une suite de `MOVL` marqués « continu
+-> » ; la case *enchaîner sans arrêt* de l'éditeur fait la même chose.
+
 `Trajectoire.controler()` échantillonne le mouvement complet et signale les
 dépassements de butées, les points hors d'atteinte, les **collisions** et
 les vitesses excessives.
