@@ -52,16 +52,27 @@ def _afficher_pose(c) -> None:
 
 
 def etat(a) -> int:
+    """Lecture seule : ne bouge rien, n'ouvre aucun assistant."""
+    from dobot_sim import DobotMagician
     from dobot_sim.liaison import resume_alarmes
-    c = _commande(a)
+    from dobot_sim.outils import outil
+    from dobot_sim.pilote import _fermer_liaison_directe, _liaison_directe
+    modele = DobotMagician()
+    modele.geo.lt = float(a.longueur_outil if a.longueur_outil is not None
+                          else outil(a.outil).longueur)
+    pont = _liaison_directe(modele, a.port)
     try:
-        _afficher_pose(c)
-        alarmes = c._pont.liaison.alarmes()
+        p = pont.liaison.pose()
+        x, y, z, r = pont.depuis_controleur(p.x, p.y, p.z, p.r)
+        q = pont.angles_reels()
+        print("pose    x {:7.1f}  y {:7.1f}  z {:7.1f} mm   r {:7.1f} deg".format(x, y, z, r))
+        print("angles  J1 {:+7.2f}  J2 {:+7.2f}  J3 {:+7.2f}  J4 {:+7.2f} deg".format(*q))
+        alarmes = pont.liaison.alarmes()
         print("alarmes " + ("aucune" if not alarmes else ""))
         for ligne in resume_alarmes(alarmes):
             print("  " + ligne)
     finally:
-        c.fermer()
+        _fermer_liaison_directe()
     return 0
 
 
