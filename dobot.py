@@ -25,6 +25,8 @@ Le Dobot reel en ligne de commande : une commande, une action.
     .venv/bin/python dobot.py etalonner-camera [--reprendre ...]
     .venv/bin/python dobot.py saisir [--boucle]     essai de saisie guidee
                                                     par la camera
+    .venv/bin/python dobot.py saisir --fenetre      la meme, dans le simulateur
+                                                    (miroir, pieces affichees)
                                                     etalonnage camera -> robot
 
 Les coordonnees sont celles du simulateur (x, y, z de la pointe d'outil, en
@@ -341,10 +343,15 @@ def etalonner(a) -> int:
 
 def saisir(a) -> int:
     sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
-    import saisir_piece
     args = ["--vitesse", str(a.vitesse)]
     if a.longueur_outil is not None:
         args += ["--longueur-outil", str(a.longueur_outil)]
+    if a.fenetre:
+        import saisir_piece_graphique
+        if a.port:
+            args += ["--port", a.port]
+        return saisir_piece_graphique.main(args)
+    import saisir_piece
     if a.boucle:
         args.append("--boucle")
     if a.forcer:
@@ -420,6 +427,9 @@ def main(argv=None) -> int:
                                       "la reposer ailleurs")
     p2.add_argument("--boucle", action="store_true",
                     help="enchainer sans attendre Entree (jusqu'a Ctrl+C)")
+    p2.add_argument("--fenetre", action="store_true",
+                    help="version graphique : simulateur en miroir, pieces vues et "
+                         "cible affichees en continu")
     p2.add_argument("--forcer", action="store_true",
                     help="sans marges de securite (plus de positions saisissables)")
     p2.set_defaults(f=saisir)

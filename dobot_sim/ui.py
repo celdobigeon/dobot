@@ -4313,6 +4313,12 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             # dobot_sim.Commande : une commande a la fois, executee tout de
             # suite, et suivie par le script jusqu'a sa fin
             return self._recevoir_commande(charge["commande"] or {})
+        if "scene" in charge:
+            # objets poses sur la table, vus par une camera : affichage seul
+            sc = charge["scene"] or {}
+            if hasattr(self.vue, "definir_objets"):
+                self.vue.definir_objets(sc.get("boites", []), sc.get("cible"))
+            return {}
         if charge.get("etat_reel"):
             return self._etat_execution_script()
         if charge.get("arret_urgence"):

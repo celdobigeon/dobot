@@ -189,6 +189,8 @@ class Vue3D(gl.GLViewWidget):
         self._trace: List[np.ndarray] = []
         self._enveloppe_prete = False
         self._item_enveloppe: Optional[gl.GLMeshItem] = None
+        #: objets poses sur la table (pieces detectees par la camera)
+        self._items_objets: List[gl.GLGraphicsItem.GLGraphicsItem] = []
         self._maillages_visibles = True
 
         self.setBackgroundColor(pg.mkColor(*FOND))
@@ -386,6 +388,50 @@ class Vue3D(gl.GLViewWidget):
         self.cibles.setData(pos=np.array(origines, dtype=float))
         self.reperes_cibles.setData(pos=np.array(sommets, dtype=float),
                                     color=np.array(couleurs, dtype=float))
+
+    #: couleurs (r, g, b, a) des objets : par type, et la cible
+    COULEURS_OBJETS = {"epaisse": (0.95, 0.65, 0.15, 0.55),
+                       "fine": (0.20, 0.70, 0.95, 0.55)}
+    COULEUR_CIBLE = (0.95, 0.20, 0.20, 0.80)
+
+    def definir_objets(self, boites: Sequence[dict], cible: Optional[int] = None) -> None:
+        """
+        Affiche des boites posees dans la scene (repere de base, mm) : les
+        pieces vues par la camera. Chaque boite : {"centre": (x, y, z),
+        "axes": matrice 3x3 (colonnes = axes de la boite), "dims": (L, l, h),
+        "type": nom}. `cible` : indice de la boite a mettre en evidence
+        (couleur vive et aretes). Une liste vide efface tout.
+        """
+        for item in self._items_objets:
+            self.removeItem(item)
+        self._items_objets = []
+        signes = np.array([[sx, sy, sz] for sz in (-1, 1) for sy in (-1, 1)
+                           for sx in (-1, 1)], dtype=float)
+        faces = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],
+                          [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+                          [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]], dtype=np.uint32)
+        aretes = [(0, 1), (1, 3), (3, 2), (2, 0), (4, 5), (5, 7), (7, 6), (6, 4),
+                  (0, 4), (1, 5), (2, 6), (3, 7)]
+        for k, b in enumerate(boites):
+            c = np.asarray(b["centre"], dtype=float)
+            R = np.asarray(b["axes"], dtype=float)
+            demi = np.asarray(b["dims"], dtype=float) / 2.0
+            sommets = c + (signes * demi) @ R.T
+            est_cible = cible is not None and k == cible
+            couleur = self.COULEUR_CIBLE if est_cible else self.COULEURS_OBJETS.get(
+                b.get("type", ""), (0.75, 0.75, 0.75, 0.5))
+            md = gl.MeshData(vertexes=sommets.astype(np.float32), faces=faces)
+            item = gl.GLMeshItem(meshdata=md, smooth=False, color=couleur,
+                                 shader="shaded", glOptions="translucent")
+            self.addItem(item)
+            self._items_objets.append(item)
+            lignes = np.array([sommets[i] for a in aretes for i in a], dtype=float)
+            bord = gl.GLLinePlotItem(pos=lignes, color=(1, 1, 1, 0.9) if est_cible
+                                     else (0.1, 0.1, 0.1, 0.6),
+                                     width=3.0 if est_cible else 1.0,
+                                     antialias=True, mode="lines")
+            self.addItem(bord)
+            self._items_objets.append(bord)
 
     def afficher_reperes(self, actif: bool) -> None:
         for item in self._items_reperes:
