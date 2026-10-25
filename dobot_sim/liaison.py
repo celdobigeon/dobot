@@ -106,6 +106,7 @@ class CommandeDobot:
     # -- JOG : mode manuel, IMMEDIAT (hors file) ; le mouvement dure tant
     # qu'on ne renvoie pas la commande 0
     PARAMS_JOG_ARTICULAIRE = 70   # 1.9.1  8 float : v[4] a[4]
+    PARAMS_JOG_CARTESIEN = 71     # 1.9.2  8 float : v xyzr, a xyzr
     JOG = 73                      # 1.9.5  uint8 isJoint + uint8 cmd
     # -- PTP
     PARAMS_PTP_ARTICULAIRE = 80   # 1.10.1  8 float : v[4] a[4]
@@ -577,11 +578,18 @@ class LiaisonDobot:
     # Immediat, hors file : il marche meme quand la file est bloquee par un
     # defaut de planification (alarme 0x12, firmware 3.7.0), ou aucun
     # mouvement programme ne part plus. cmd (articulaire) : 1/2 = J1+/-,
-    # 3/4 = J2+/-, 5/6 = J3+/-, 7/8 = J4+/- ; 0 = arret.
+    # 3/4 = J2+/-, 5/6 = J3+/-, 7/8 = J4+/- ; (cartesien) 1/2 = X+/-,
+    # 3/4 = Y+/-, 5/6 = Z+/-, 7/8 = R+/- ; 0 = arret.
 
     def jog(self, cmd: int, articulaire: bool = True) -> None:
         self.echanger(CommandeDobot.JOG, struct.pack("<BB", int(bool(articulaire)),
                                                      int(cmd)), ecriture=True)
+
+    def parametres_jog_cartesien(self, vitesse: float, acceleration: float) -> None:
+        """mm/s et mm/s2 (deg/s pour r), les memes pour x, y, z, r."""
+        self.echanger(CommandeDobot.PARAMS_JOG_CARTESIEN,
+                      struct.pack("<8f", *([float(vitesse)] * 4 + [float(acceleration)] * 4)),
+                      ecriture=True)
 
     def parametres_jog_articulaire(self, vitesse: float, acceleration: float) -> None:
         """deg/s et deg/s2, les memes pour les quatre articulations."""

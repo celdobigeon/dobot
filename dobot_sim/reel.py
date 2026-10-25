@@ -291,6 +291,44 @@ class PontReel:
         self.journal("bras amene en posture : J2 {:+.2f}, J3 {:+.2f}".format(q[1], q[2]))
         return q
 
+    def deplacer_manuel(self, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0,
+                        vitesse: float = 10.0, tolerance: float = 0.5,
+                        delai: float = 30.0) -> Tuple[float, float, float, float]:
+        """
+        Deplacement RELATIF de la pointe d'outil (mm, repere de la base) en
+        MODE MANUEL, un axe apres l'autre : z d'abord (on se degage avant
+        de se deplacer), puis x, puis y. Hors file : marche meme robot en
+        defaut. Rend la pose obtenue (repere du simulateur).
+        """
+        li = self._exiger()
+        li.parametres_jog_cartesien(vitesse, 3.0 * vitesse)
+
+        def pose():
+            p = li.pose()
+            return self.depuis_controleur(p.x, p.y, p.z, p.r)
+
+        depart = pose()
+        cibles = {0: depart[0] + dx, 1: depart[1] + dy, 2: depart[2] + dz}
+        try:
+            for i in (2, 0, 1):
+                if abs(cibles[i] - depart[i]) < tolerance:
+                    continue
+                plus, moins = {0: (1, 2), 1: (3, 4), 2: (5, 6)}[i]
+                fin = time.time() + delai
+                while time.time() < fin:
+                    e = float(pose()[i]) - cibles[i]
+                    if abs(e) < tolerance:
+                        break
+                    li.jog(moins if e > 0 else plus, articulaire=False)
+                    time.sleep(min(0.3, max(0.03, abs(e) / vitesse * 0.5)))
+                    li.jog(0, articulaire=False)
+                    time.sleep(0.05)
+                li.jog(0, articulaire=False)
+                time.sleep(0.2)
+        finally:
+            li.jog(0, articulaire=False)
+        return tuple(float(v) for v in pose())
+
     # -- ecriture -----------------------------------------------------------
 
     def prise_origine(self) -> int:

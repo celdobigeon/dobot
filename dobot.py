@@ -150,7 +150,32 @@ def aller(a) -> int:
 
 
 def deplacer(a) -> int:
-    """Deplacement RELATIF de la pointe d'outil, dans le repere de la base."""
+    """
+    Deplacement RELATIF de la pointe d'outil, dans le repere de la base.
+    Robot en defaut (file bloquee) ou --manuel : en mode manuel, un axe
+    apres l'autre, z d'abord.
+    """
+    from dobot_sim import DobotMagician
+    from dobot_sim.outils import outil
+    from dobot_sim.pilote import _fermer_liaison_directe, _liaison_directe
+    modele = DobotMagician()
+    modele.geo.lt = float(a.longueur_outil if a.longueur_outil is not None
+                          else outil(a.outil).longueur)
+    pont = _liaison_directe(modele, a.port)
+    manuel = a.manuel or bool(pont.liaison.alarmes())
+    if manuel:
+        try:
+            if not a.manuel:
+                print("robot en defaut : deplacement en MODE MANUEL, z d'abord")
+            if a.dr:
+                print("  (--dr ignore en mode manuel)")
+            x, y, z, r = pont.deplacer_manuel(a.dx, a.dy, a.dz,
+                                              vitesse=min(a.vitesse, 20.0))
+            print("pose    x {:7.1f}  y {:7.1f}  z {:7.1f} mm   r {:7.1f} deg"
+                  .format(x, y, z, r))
+        finally:
+            _fermer_liaison_directe()
+        return 0
     c = _commande(a)
     try:
         x, y, z, r = c.pose()
@@ -250,6 +275,9 @@ def main(argv=None) -> int:
     p.add_argument("--dr", type=float, default=0.0, help="rotation de l'outil, deg")
     p.add_argument("--articulaire", action="store_true",
                    help="mouvement articulaire (MOVJ) plutot qu'en ligne droite")
+    p.add_argument("--manuel", action="store_true",
+                   help="en mode manuel (JOG), un axe apres l'autre, z d'abord ; "
+                        "automatique si le robot est en defaut")
     p.set_defaults(f=deplacer)
     sp.add_parser("effacer", help="effacer les alarmes").set_defaults(f=effacer)
     p = sp.add_parser("mise-en-route", help="assistant de mise en route")
