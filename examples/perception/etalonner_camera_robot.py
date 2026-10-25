@@ -527,6 +527,11 @@ class CameraSimulee:
 # L'etalonnage
 # ---------------------------------------------------------------------------
 
+#: mm : longueur de la pince mesuree a la regle a l'equerre (le modele
+#: du simulateur dit 78)
+LONGUEUR_PINCE = 107.0
+
+
 class Arret(Exception):
     pass
 
@@ -1308,6 +1313,10 @@ def main(argv=None) -> int:
         print("ATTENTION : longueur d'outil {:.1f} mm, mais le fichier a ete fait avec "
               "{:.1f} mm : ses hauteurs seront fausses.".format(
                   a.longueur_outil, float(donnees["longueur_outil_mm"])))
+    if a.longueur_outil is None and not a.simulation:
+        # la pince mesuree a la regle (25/10) : 107 mm, pas les 78 du modele
+        a.longueur_outil = LONGUEUR_PINCE
+        print("longueur d'outil : {:.0f} mm (pince mesuree)".format(a.longueur_outil))
 
     from dobot_sim import Commande, ErreurExecution
     if a.simulation:
