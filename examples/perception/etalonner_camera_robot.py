@@ -915,7 +915,7 @@ def relever_secteur(robot, modele, lire: Callable[[], str] = _lire_touche,
                     journal: Callable[[str], None] = print) -> Tuple[float, float]:
     """Les deux rotations extremes de la base, montrees l'une apres l'autre."""
     journal(AIDE_CLAVIER)
-    journal("  SECTEUR : la base ne devra pas tourner au-dela de deux limites, "
+    journal("  Secteur angulaire : la base ne devra pas tourner au-dela de deux limites, "
             "pour ne pas heurter\n  la camera. Amenez le bras (a la main ou "
             "avec b / B) a la PREMIERE limite, puis Entree.")
     piloter(robot, lire, journal)
