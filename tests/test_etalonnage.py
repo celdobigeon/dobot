@@ -26,11 +26,17 @@ class FauxRobot:
         self.modele = DobotMagician()
         self._p = [x, y, z, r]
         self.fermee = False
+        self.postures = []
+        self.trace = []
 
     def pose(self):
         return tuple(self._p)
 
-    def movj(self, x=None, y=None, z=None, r=None, **kw):
+    def movj(self, x=None, y=None, z=None, r=None, q=None, **kw):
+        if q is not None:
+            self._p = list(self.modele.pose(q))
+            self.postures.append(list(q))
+            return
         self.movl(x=x, y=y, z=z, r=r)
 
     def movl(self, x=None, y=None, z=None, r=None, **kw):
@@ -38,6 +44,7 @@ class FauxRobot:
             if v is not None:
                 self._p[i] = float(v)
         assert self.modele.atteignable(*self._p), "cible hors d'atteinte {}".format(self._p)
+        self.trace.append(tuple(self._p))
 
     def pince(self, fermee=True, **kw):
         self.fermee = bool(fermee)
@@ -159,6 +166,44 @@ class TestDeroule(unittest.TestCase):
                            demander=lambda t: questions.append(t) or "")
         et.observer()
         self.assertEqual(len(questions), 1)
+
+
+class TestSecteur(unittest.TestCase):
+
+    def test_poses_dans_le_secteur(self):
+        robot = ec.PieceSimulee(FauxRobot(x=230.0, y=60.0), decalage=(0.0, 2.0))
+        camera = ec.CameraSimulee(robot, bruit=0.5, graine=4)
+        et = ec.Etalonnage(robot, camera, z_table=0.0, graine=5, journal=lambda m: None,
+                           demander=lambda _t: "", secteur=(5.0, 45.0))
+        et.demarrer()
+        for _ in range(10):
+            et.cycle()
+        j1 = [et.j1(*p) for p in robot.robot.trace]
+        self.assertGreaterEqual(min(j1), 5.0)
+        self.assertLessEqual(max(j1), 45.0)
+        # le repli s'est fait au milieu du secteur, pas a J1 = 0
+        self.assertTrue(robot.robot.postures)
+        self.assertTrue(all(abs(q[0] - 25.0) < 1e-9 for q in robot.robot.postures))
+        self.assertLess(et.recalage.rms, 1.5)
+
+    def test_relever_secteur_au_clavier(self):
+        robot = FauxRobot(x=230.0, y=0.0, z=60.0)
+        touches = iter(["1", "b", "b", "\n", "1", "B", "B", "B", "B", "B", "B", "\n"])
+        sect = ec.relever_secteur(robot, robot.modele, lire=lambda: next(touches),
+                                  journal=lambda m: None)
+        self.assertAlmostEqual(sect[0], -10.0, places=3)
+        self.assertAlmostEqual(sect[1], 20.0, places=3)
+
+    def test_clavier_refuse_hors_secteur(self):
+        robot = FauxRobot(x=230.0, y=0.0, z=60.0)
+        et = ec.Etalonnage(robot, None, z_table=0.0, secteur=(-5.0, 5.0))
+        touches = iter(["1", "B", "B", "\n"])
+        messages = []
+        ec.piloter(robot, lambda: next(touches), messages.append,
+                   autorise=lambda x, y, z, r: et.dans_secteur(x, y, z, r, 0.0))
+        self.assertTrue(any("hors du secteur" in m for m in messages))
+        # le premier pas (5 deg) est accepte, le second refuse
+        self.assertAlmostEqual(et.j1(*robot.pose()), 5.0, places=3)
 
 
 if __name__ == "__main__":

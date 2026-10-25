@@ -21,6 +21,10 @@ entre r et l'orientation de la piece (a 180 deg pres).
 
 Deroule :
 
+  0. SECTEUR (interactif) : amener le bras a l'une, puis a l'autre des deux
+     rotations extremes de la base qu'il ne doit pas depasser (pour ne pas
+     heurter la camera). Tout le reste se fait dans ce secteur : poses,
+     deplacements au clavier, repli pendant les captures ;
   1. ACCOSTAGE (interactif) : amener la pince OUVERTE au contact de la
      table, n'importe ou -- a la main (bouton de deverrouillage de
      l'avant-bras) puis au clavier. Le contact donne la hauteur de la
@@ -77,6 +81,8 @@ PAIRES_MIN = 4
 DELAI_PINCE = 0.8
 #: mm : au-dela, une piece vue n'est pas celle qu'on a posee
 ECART_MAX = 25.0
+#: deg : marge gardee a l'interieur du secteur de la base
+MARGE_SECTEUR = 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +380,8 @@ class Etalonnage:
                  journal: Callable[[str], None] = print,
                  demander: Callable[[str], str] = _demander,
                  zone_x=(150.0, 320.0), zone_y=(-220.0, 220.0),
-                 r_max: float = 60.0):
+                 r_max: float = 60.0,
+                 secteur: Optional[Tuple[float, float]] = None):
         self.robot = robot
         self.camera = camera
         self.z_table = z_table
@@ -383,6 +390,8 @@ class Etalonnage:
         self.journal = journal
         self.demander = demander
         self.zone_x, self.zone_y, self.r_max = zone_x, zone_y, float(r_max)
+        #: (J1 min, J1 max) en degres : la base ne sort pas de ce secteur
+        self.secteur = None if secteur is None else tuple(sorted(float(v) for v in secteur))
         self.paires: List[Paire] = []
         self.recalage: Optional[Recalage] = None
         self.depart: Optional[Tuple[float, float, float]] = None   # x, y, r
@@ -419,17 +428,36 @@ class Etalonnage:
         self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
 
     def degager(self):
-        """Ecarte le bras du champ de la camera."""
+        """Ecarte le bras du champ de la camera (sans quitter le secteur)."""
         if self.garage is not None:
             x, y, z = self.garage
             xa, ya, za, ra = self.robot.pose()
             self.robot.movj(x=x, y=y, z=z, r=ra)
-        else:
+        elif self.secteur is None or self.secteur[0] <= 0.0 <= self.secteur[1]:
             self.robot.repli()
+        else:
+            # la posture de repli, base tournee au milieu du secteur
+            q = list(self.modele.q_home)
+            q[0] = 0.5 * (self.secteur[0] + self.secteur[1])
+            self.robot.movj(q=q)
 
     # -- choix des points ---------------------------------------------------
+    def j1(self, x, y, z, r) -> float:
+        """Rotation de la base (deg) pour la pose (x, y, z, r)."""
+        try:
+            return float(self.modele.mgi_pose(x, y, z, r)[0])
+        except Exception:                           # noqa: BLE001
+            return math.degrees(math.atan2(y, x))
+
+    def dans_secteur(self, x, y, z, r, marge: float = MARGE_SECTEUR) -> bool:
+        if self.secteur is None:
+            return True
+        a = self.j1(x, y, z, r)
+        return self.secteur[0] + marge <= a <= self.secteur[1] - marge
+
     def _atteignable(self, x, y, r) -> bool:
-        return all(self.modele.atteignable(x, y, self._z(h), r) for h in (PRISE, TRANSIT))
+        return all(self.modele.atteignable(x, y, self._z(h), r)
+                   and self.dans_secteur(x, y, self._z(h), r) for h in (PRISE, TRANSIT))
 
     def _visible(self, x, y, marge=60) -> bool:
         K, taille = getattr(self.camera, "K", None), getattr(self.camera, "taille", None)
@@ -614,16 +642,15 @@ def charger_etalonnage(chemin: str = FICHIER) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 AIDE_CLAVIER = """
-  ACCOSTAGE : amenez la pince OUVERTE au contact de la table, n'importe ou.
-  A la main : bouton de deverrouillage de l'avant-bras, puis relachez-le.
-  Au clavier :
+  Le bras se deplace a la main (bouton de deverrouillage de l'avant-bras,
+  puis relachez-le) ou au clavier :
      fleches haut / bas   monter / descendre (z)
      x X  y Y             deplacer en x / y (minuscule : moins)
+     b B                  tourner la base
      r R                  tourner la pince
      1  2  3              pas de 10 / 1 / 0,2 mm (5 / 1 / 0,2 deg)
      o                    ouvrir la pince
-     Entree               CONTACT : la pince touche la table (glissez une
-                          feuille sous les mors : elle doit etre pincee)
+     Entree               valider la position
      q                    quitter
 """
 
@@ -648,26 +675,41 @@ def _lire_touche() -> str:
     return {"\x1b[A": "haut", "\x1b[B": "bas", "\r": "\n"}.get(c, c)
 
 
-def accoster(robot, lire: Callable[[], str] = _lire_touche,
-             journal: Callable[[str], None] = print) -> float:
-    """Approche interactive ; rend le z de la pointe au contact de la table."""
-    journal(AIDE_CLAVIER)
-    robot.pince(False)
+def piloter(robot, lire: Callable[[], str] = _lire_touche,
+            journal: Callable[[str], None] = print,
+            autorise: Optional[Callable[[float, float, float, float], bool]] = None
+            ) -> Tuple[float, float, float, float]:
+    """
+    Pilotage au clavier (voir AIDE_CLAVIER) jusqu'a Entree ; rend la pose
+    a cet instant. `autorise(x, y, z, r)` refuse les deplacements qui
+    sortiraient du secteur.
+    """
     pas = {"1": (10.0, 5.0), "2": (1.0, 1.0), "3": (0.2, 0.2)}
     p_mm, p_deg = pas["2"]
     while True:
         x, y, z, r = robot.pose()
-        sys.stdout.write("\r  x {:6.1f}  y {:6.1f}  z {:6.1f}  r {:6.1f}   pas {:.1f} mm   "
-                         .format(x, y, z, r, p_mm))
+        base = math.degrees(math.atan2(y, x))
+        sys.stdout.write("\r  x {:6.1f}  y {:6.1f}  z {:6.1f}  r {:6.1f}  base {:6.1f} deg"
+                         "   pas {:.1f}   ".format(x, y, z, r, base, p_mm))
         sys.stdout.flush()
         c = lire()
         d = {"haut": (0, 0, 1, 0), "bas": (0, 0, -1, 0), "x": (-1, 0, 0, 0),
              "X": (1, 0, 0, 0), "y": (0, -1, 0, 0), "Y": (0, 1, 0, 0),
              "r": (0, 0, 0, -1), "R": (0, 0, 0, 1)}.get(c)
+        cible = None
         if d is not None:
+            cible = (x + d[0] * p_mm, y + d[1] * p_mm, z + d[2] * p_mm, r + d[3] * p_deg)
+        elif c in ("b", "B"):
+            # rotation de la base : meme rayon, meme hauteur, angle +/- pas
+            a = math.radians((1 if c == "B" else -1) * p_deg)
+            cible = (x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a),
+                     z, r + math.degrees(a))
+        if cible is not None:
+            if autorise is not None and not autorise(*cible):
+                journal("\n  refuse : hors du secteur de la base")
+                continue
             try:
-                robot.movl(x=x + d[0] * p_mm, y=y + d[1] * p_mm, z=z + d[2] * p_mm,
-                           r=r + d[3] * p_deg)
+                robot.movl(x=cible[0], y=cible[1], z=cible[2], r=cible[3])
             except Exception as exc:                     # noqa: BLE001
                 journal("\n  refuse : {}".format(str(exc).splitlines()[0]))
         elif c in pas:
@@ -676,9 +718,54 @@ def accoster(robot, lire: Callable[[], str] = _lire_touche,
             robot.pince(False)
         elif c == "\n":
             journal("")
-            return float(robot.pose()[2])
+            return tuple(float(v) for v in robot.pose())
         elif c in ("q", "Q"):
             raise Arret("arret demande")
+
+
+def _angle_base(robot, modele) -> float:
+    """J1 lu sur le robot (deg)."""
+    try:
+        return float(robot.angles()[0])
+    except Exception:                               # noqa: BLE001
+        x, y, z, r = robot.pose()
+        return float(modele.mgi_pose(x, y, z, r)[0])
+
+
+def relever_secteur(robot, modele, lire: Callable[[], str] = _lire_touche,
+                    journal: Callable[[str], None] = print) -> Tuple[float, float]:
+    """Les deux rotations extremes de la base, montrees l'une apres l'autre."""
+    journal(AIDE_CLAVIER)
+    journal("  SECTEUR : la base ne devra pas tourner au-dela de deux limites, "
+            "pour ne pas heurter\n  la camera. Amenez le bras (a la main ou "
+            "avec b / B) a la PREMIERE limite, puis Entree.")
+    piloter(robot, lire, journal)
+    a = _angle_base(robot, modele)
+    journal("  premiere limite : base a {:.1f} deg. Amenez-le maintenant a la SECONDE "
+            "limite, puis Entree.".format(a))
+    piloter(robot, lire, journal)
+    b = _angle_base(robot, modele)
+    secteur = (min(a, b), max(a, b))
+    journal("  secteur de la base : de {:.1f} a {:.1f} deg ({:.0f} deg)".format(
+        secteur[0], secteur[1], secteur[1] - secteur[0]))
+    if secteur[1] - secteur[0] < 2 * MARGE_SECTEUR + 10.0:
+        raise Arret("secteur trop etroit ({:.0f} deg)".format(secteur[1] - secteur[0]))
+    if secteur[1] - secteur[0] > 180.0:
+        journal("  attention : un secteur de plus de 180 deg laisse les lignes droites "
+                "en sortir")
+    return secteur
+
+
+def accoster(robot, lire: Callable[[], str] = _lire_touche,
+             journal: Callable[[str], None] = print,
+             autorise: Optional[Callable[[float, float, float, float], bool]] = None
+             ) -> float:
+    """Approche interactive ; rend le z de la pointe au contact de la table."""
+    journal("  ACCOSTAGE : amenez la pince OUVERTE au contact de la table, n'importe "
+            "ou dans le secteur.\n  Glissez une feuille sous les mors : quand elle "
+            "est pincee, Entree.")
+    robot.pince(False)
+    return float(piloter(robot, lire, journal, autorise)[2])
 
 
 # ---------------------------------------------------------------------------
@@ -724,8 +811,14 @@ def main(argv=None) -> int:
         if a.simulation:
             # pas de main pour guider le bras : on part d'un point connu
             commande.movj(x=230, y=40, z=60, r=0)
-            print("simulation : la table est a z = 0 ; descendez avec la fleche bas")
-        z_contact = accoster(robot)
+            print("simulation : la table est a z = 0 ; tournez la base avec b / B, "
+                  "descendez avec la fleche bas")
+        et.secteur = relever_secteur(robot, et.modele)
+        if a.garage is not None and not et.dans_secteur(a.garage[0], a.garage[1],
+                                                        a.garage[2], 0.0, 0.0):
+            raise Arret("le garage {} est hors du secteur".format(a.garage))
+        z_contact = accoster(robot, autorise=lambda x, y, z, r:
+                             et.dans_secteur(x, y, z, r, 0.0))
         et.z_table = z_contact
         x, y, _z, r = robot.pose()
         robot.movl(x=x, y=y, z=z_contact + PRISE, r=r)
