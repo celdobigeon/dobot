@@ -23,6 +23,8 @@ Le Dobot reel en ligne de commande : une commande, une action.
     .venv/bin/python dobot.py origine               prise d'origine seule
                                                     (= mise-en-route --sans-posture)
     .venv/bin/python dobot.py etalonner-camera [--reprendre ...]
+    .venv/bin/python dobot.py etalonner-pince       etalonnage camera -> robot
+                                                    par la pince seule
     .venv/bin/python dobot.py saisir [--boucle]     essai de saisie guidee
                                                     par la camera
     .venv/bin/python dobot.py saisir --visualisation
@@ -342,6 +344,17 @@ def etalonner(a) -> int:
     return ec.main(args)
 
 
+def etalonner_pince(a) -> int:
+    sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
+    import etalonner_par_pince
+    args = ["--vitesse", str(a.vitesse)] + list(a.reste)
+    if a.longueur_outil is not None:
+        args += ["--longueur-outil", str(a.longueur_outil)]
+    if a.port:
+        args += ["--port", a.port]
+    return etalonner_par_pince.main(args)
+
+
 def saisir(a) -> int:
     sys.path.insert(0, os.path.join(ICI, "examples", "perception"))
     args = ["--vitesse", str(a.vitesse)]
@@ -426,6 +439,9 @@ def main(argv=None) -> int:
     p.set_defaults(f=origine)
     p = sp.add_parser("etalonner-camera", help="etalonnage camera -> robot",
                       add_help=False)
+    p3 = sp.add_parser("etalonner-pince", help="etalonnage camera -> robot par la pince "
+                                               "seule (aucune piece a poser)")
+    p3.set_defaults(f=etalonner_pince, reste=[])
     p2 = sp.add_parser("saisir", help="essai : saisir une piece vue par la camera, "
                                       "la reposer ailleurs")
     p2.add_argument("--boucle", action="store_true",
@@ -444,7 +460,7 @@ def main(argv=None) -> int:
 
     a, inconnus = ap.parse_known_args(argv)
     if inconnus:
-        if a.f is not etalonner:
+        if a.f not in (etalonner, etalonner_pince):
             ap.error("arguments inconnus : {}".format(" ".join(inconnus)))
         a.reste = inconnus
     try:

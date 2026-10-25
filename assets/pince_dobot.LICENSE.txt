@@ -1,0 +1,10 @@
+pince_dobot.npz : maillage de la pince pneumatique du Dobot Magician,
+tessele (gmsh, pas de 1,5 mm) depuis le modele CAO officiel fourni par
+Dobot : "Magician & Accessories-2D&3D files/.../Gripper手抓.stp" (dans ce
+depot).
+
+Repere : celui de l'OUTIL, en mm. Origine au centre des bouts des doigts
+(pince fermee) ; z vers le haut (le corps est entre z = 27 et z = 56) ; y =
+direction de serrage des doigts ; x = y ^ z. Le corps en aluminium est
+decale de 22,5 mm de l'axe de rotation.
+`piece` : numero de la piece de l'assemblage CAO de chaque sommet.

@@ -78,6 +78,11 @@ class Essai:
         self.et.restaurer({k: donnees.get(k) for k in
                            ("z_table_mm", "secteur_base_deg", "depart", "mesures",
                             "camera_K", "camera_taille")} | {"piece": None})
+        if self.et.recalage is None and donnees.get("T_robot_camera_mm"):
+            # etalonnage par la pince : pas de mesures, la transformation seule
+            T = np.array(donnees["T_robot_camera_mm"], float)
+            self.et.recalage = ec.Recalage(T[:3, :3], T[:3, 3], {}, self.ecart_r,
+                                           np.zeros(1), np.ones(1, bool))
         self.rng = np.random.default_rng(graine)
         #: sans marges : butees et secteur au plus juste, transit abaisse
         #: si besoin (au moins APPROCHE mm de descente verticale)
