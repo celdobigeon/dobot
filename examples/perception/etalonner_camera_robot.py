@@ -293,23 +293,54 @@ class Vue:
     confiance: float = 1.0
 
 
+#: ou garder les captures de l'etalonnage : chacune montre UNE piece dont
+#: le robot connait la pose -- de quoi annoter automatiquement des images
+#: d'entrainement pour la perception (dataset/ n'est pas suivi par git)
+ARCHIVE = os.path.join(ICI, "apprentissage", "dataset", "etalonnage")
+
+
 class Camera:
     """La vraie chaine : serveur de camera + Perception (sans etalonnage)."""
 
-    def __init__(self):
+    def __init__(self, archive: Optional[str] = ARCHIVE):
         import perception
         self.perception = perception.Perception()
         self.K = None
         self.taille = None
+        self.derniere_capture = None
+        self.derniere_detection = []
+        self.archive = None
+        if archive:
+            self.archive = os.path.join(archive, time.strftime("%Y%m%d_%H%M%S"))
 
     def voir(self) -> List[Vue]:
         import camera
         cap = camera.capturer()
         self.K = np.asarray(cap["K"], float)
         self.taille = cap["profondeur"].shape[::-1]
+        self.derniere_capture = cap
         pieces = self.perception.detecter(cap)
+        self.derniere_detection = pieces
         return [Vue(p.T_camera[:3, 3] * 1000.0, p.T_camera[:3, 0].copy(), p.type,
                     p.face, float(getattr(p, "confiance", 1.0))) for p in pieces]
+
+    def archiver(self, meta: dict) -> Optional[str]:
+        """Garde la derniere capture (.npz) et ce qu'on en sait (.json) : la
+        pose de la piece cote robot, ce que la perception a detecte."""
+        if self.archive is None or self.derniere_capture is None:
+            return None
+        os.makedirs(self.archive, exist_ok=True)
+        n = len([f for f in os.listdir(self.archive) if f.endswith(".npz")])
+        base = os.path.join(self.archive, "{:04d}".format(n))
+        np.savez_compressed(base + ".npz", **self.derniere_capture)
+        meta = dict(meta)
+        meta["detections"] = [{"type": p.type, "face": p.face,
+                               "confiance": float(getattr(p, "confiance", 1.0)),
+                               "T_camera": np.asarray(p.T_camera, float).tolist()}
+                              for p in self.derniere_detection]
+        with open(base + ".json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=1)
+        return base
 
 
 # ---------------------------------------------------------------------------
@@ -763,6 +794,7 @@ class Etalonnage:
         self.degager()
         attendu = np.array([x, y, self._z(HAUTEUR_PIECE)])
         vue = self.observer(attendu)
+        self._archiver(x, y, r, vue)
         if vue is None:
             # hors du champ, cachee, ou ambigue : on le dit, et on continue
             n = getattr(self, "derniere_observation", 0)
@@ -800,6 +832,22 @@ class Etalonnage:
         self.saisir(x, y, r, remonter=False)
         self.enregistrer()
         return paire
+
+    def _archiver(self, x, y, r, vue) -> None:
+        """La capture qu'on vient de faire, pour entrainer la perception."""
+        archiver = getattr(self.camera, "archiver", None)
+        if archiver is None:
+            return
+        try:
+            archiver({"pince": [float(x), float(y), float(self._z(PRISE))], "r": float(r),
+                      "z_table": float(self.z_table), "session": int(self.session),
+                      "piece": {"type": TYPE_PIECE, "face": FACE_PIECE,
+                                "hauteur": HAUTEUR_PIECE},
+                      "retenue": vue is not None,
+                      "camera_retenue": None if vue is None
+                      else [float(v) for v in vue.position]})
+        except Exception as exc:                        # noqa: BLE001
+            self.journal("  (capture non archivee : {})".format(exc))
 
     def valider(self, n: int = 3) -> List[dict]:
         """
