@@ -235,13 +235,34 @@ class Detecteur(threading.Thread):
         estime = (time.time() - self.debut) / max(self.duree_moyenne, 0.5)
         return float(min(0.95, max(atteint, estime)))
 
+    #: mm : au-dela, une piece a bouge
+    SEUIL_CHANGEMENT = 15.0
+
+    @classmethod
+    def changement(cls, avant, apres) -> bool:
+        """La scene a-t-elle change ? Pieces ajoutees, retirees, deplacees
+        (plus de SEUIL_CHANGEMENT mm), ou d'un autre type."""
+        if len(avant) != len(apres):
+            return True
+        restants = list(avant)
+        for p in apres:
+            c = p.T_robot[:3, 3] * 1000.0
+            proches = [q for q in restants if q.type == p.type and
+                       np.linalg.norm(q.T_robot[:3, 3] * 1000.0 - c) < cls.SEUIL_CHANGEMENT]
+            if not proches:
+                return True
+            restants.remove(proches[0])
+        return False
+
     def _publier(self, ep, pieces, niveau):
         pieces = [p for p in pieces if p.T_robot is not None]
         with self.verrou:
             d = self.derniere
-            # un resultat rapide ne remplace pas une scene consolidee de la
-            # meme position du bras : on garde le meilleur
-            if niveau == "rapide" and d is not None and d[0] == ep and d[3] == "consolidee":
+            # un resultat rapide ne remplace une scene consolidee de la meme
+            # position du bras que si la scene a CHANGE : sinon on garde le
+            # meilleur ; s'il a change, l'ancienne detection est perimee
+            if niveau == "rapide" and d is not None and d[0] == ep \
+                    and d[3] == "consolidee" and not self.changement(d[1], pieces):
                 return
         cible = self.essai.choisir(pieces) if pieces else None
         raison = ""

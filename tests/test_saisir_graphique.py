@@ -65,5 +65,19 @@ class TestDetecteur(unittest.TestCase):
         self.assertAlmostEqual(boites[0]["centre"][2], 42.0 - 17.0 / 2.0)
 
 
+class TestChangement(unittest.TestCase):
+
+    def test_changement(self):
+        a = [Piece(250.0, 0.0, 42.0, 0.0), Piece(200.0, 50.0, 42.0, 0.0)]
+        meme = [Piece(205.0, 48.0, 42.0, 0.0), Piece(252.0, 1.0, 42.0, 0.0)]
+        self.assertFalse(g.Detecteur.changement(a, meme))
+        bouge = [Piece(250.0, 0.0, 42.0, 0.0), Piece(200.0, 90.0, 42.0, 0.0)]
+        self.assertTrue(g.Detecteur.changement(a, bouge))
+        self.assertTrue(g.Detecteur.changement(a, a[:1]))
+        autre = [Piece(250.0, 0.0, 42.0, 0.0), Piece(200.0, 50.0, 42.0, 0.0)]
+        autre[1].type = "fine"
+        self.assertTrue(g.Detecteur.changement(a, autre))
+
+
 if __name__ == "__main__":
     unittest.main()
