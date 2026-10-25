@@ -86,10 +86,33 @@ class TestHorsAtteinte(unittest.TestCase):
         messages = []
         donnees = {"z_table_mm": 25.0, "secteur_base_deg": [-40.0, 20.0],
                    "ecart_r_deg": 0.0, "depart": [220.0, 0.0, 0.0], "mesures": []}
-        essai = sp.Essai(robot, perc, donnees, journal=messages.append, graine=1)
+        questions = []
+        essai = sp.Essai(robot, perc, donnees, journal=messages.append, graine=1,
+                         demander=lambda t: questions.append(t) or "")
         self.assertIsNone(essai.un_tour())
         self.assertFalse(robot.fermee)
-        self.assertTrue(any("HORS D'ATTEINTE" in m for m in messages))
+        self.assertTrue(any("HORS D'ATTEINTE" in q for q in questions))
+
+    def test_essayer_quand_meme(self):
+        robot = FauxRobotAngles(x=220.0, y=0.0, z=120.0)
+        perc = FaussePerception(robot, 25.0)
+        # pres d'une butee : refuse avec marges, possible sans
+        donnees = {"z_table_mm": 25.0, "secteur_base_deg": [-40.0, 20.0],
+                   "ecart_r_deg": 0.0, "depart": [220.0, 0.0, 0.0], "mesures": []}
+        essai = sp.Essai(robot, perc, donnees, journal=lambda m: None, graine=1,
+                         demander=lambda t: "f")
+        z = 30.0
+        candidats = [(x, y) for x in range(150, 340, 4) for y in range(-150, 60, 4)
+                     if essai.verifier(x, y, z, 0.0)[0]]
+        essai.forcer = True
+        ok = [(x, y) for x, y in candidats if not essai.verifier(x, y, z, 0.0)[0]]
+        essai.forcer = False
+        x, y = ok[0]
+        perc.piece = Piece(x, y, 25.0 + 17.0, 0.0)
+        essai.un_tour()
+        self.assertFalse(essai.forcer)                   # retabli apres l'essai
+        self.assertTrue(any(abs(p[0] - x) < 1e-6 and abs(p[1] - y) < 1e-6
+                            for p in robot.trace))
 
 
 class TestForcer(unittest.TestCase):

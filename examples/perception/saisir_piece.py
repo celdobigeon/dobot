@@ -174,15 +174,31 @@ class Essai:
         return cx, cy, z, r
 
     # -- le deroule ---------------------------------------------------------
-    def saisir(self, piece):
+    def saisir(self, piece, quand_meme: bool = False):
+        """
+        Saisit la piece. `quand_meme` : l'utilisateur a demande d'essayer
+        malgre un refus -- sans marges, transit abaisse, et si le modele
+        refuse encore, on laisse le robot en juger.
+        """
         x, y, z, r = self.prise_de(piece)
-        raison, h = self.verifier(x, y, z, r)
-        if raison:
-            r2 = ec._angle(r + 180.0)
-            raison2, h2 = self.verifier(x, y, z, r2)
-            if raison2:
-                raise HorsAtteinte("x {:.0f} y {:.0f} : {}".format(x, y, raison))
-            r, h = r2, h2
+        forcer = self.forcer
+        if quand_meme:
+            self.forcer = True
+        try:
+            raison, h = self.verifier(x, y, z, r)
+            if raison:
+                r2 = ec._angle(r + 180.0)
+                raison2, h2 = self.verifier(x, y, z, r2)
+                if not raison2:
+                    r, h = r2, h2
+                elif quand_meme:
+                    h = max(z + ec.APPROCHE, min(self.z_table + ec.TRANSIT, z + 40.0))
+                    self.journal("  le modele refuse encore ({}) : on essaie quand meme"
+                                 .format(raison))
+                else:
+                    raise HorsAtteinte("x {:.0f} y {:.0f} : {}".format(x, y, raison))
+        finally:
+            self.forcer = forcer
         self.journal("  saisie en x {:.1f} y {:.1f} z {:.1f} r {:.1f}  ({} {}, dessus a "
                      "z {:.1f})".format(x, y, z, r, piece.type, piece.face,
                                         piece.T_robot[2, 3] * 1000.0))
@@ -241,9 +257,18 @@ class Essai:
         try:
             prise = self.saisir(piece)
         except HorsAtteinte as exc:
-            self.journal("  piece HORS D'ATTEINTE ({}).\n  Deplacez-la vers le milieu "
-                         "de la zone de travail.".format(exc))
-            return None
+            rep = self.demander("  piece HORS D'ATTEINTE ({}).\n  [Entree : je la deplace "
+                                "vers le milieu de la zone / f : essayer quand meme] "
+                                .format(exc))
+            if not rep.strip().lower().startswith("f"):
+                return None
+            from dobot_sim import ErreurExecution
+            try:
+                prise = self.saisir(piece, quand_meme=True)
+            except ErreurExecution as exc2:
+                self.journal("  le robot a refuse : {}".format(exc2))
+                self.equerre()
+                return None
         vise = self.deposer(prise)
         return self.controler(vise)
 
