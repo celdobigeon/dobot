@@ -1158,8 +1158,9 @@ class Commande:
                     continue
                 self._vus.add(cle)
             reserves.append(a)
-        for a in plan.annonces:
-            _signaler(a)
+        if not getattr(self, "_annonces_muettes", False):
+            for a in plan.annonces:
+                _signaler(a)
         if plan.avertissements:
             _signaler("duree ou vitesse non tenable : le robot fera au mieux",
                       plan.avertissements)
@@ -1508,7 +1509,8 @@ class Commande:
             via, T, x=x, y=y, z=z, r=r, duree=duree, vitesse=vitesse,
             repere=repere, commentaire=commentaire), continu)
 
-    def enchainer(self, mouvements, continu: bool = True) -> "Commande":
+    def enchainer(self, mouvements, continu: bool = True,
+                  annoncer: bool = True) -> "Commande":
         """
         Plusieurs mouvements de types differents en UN appel, sans arret la
         ou c'est possible :
@@ -1520,6 +1522,7 @@ class Commande:
         parametres de la methode du meme nom. Les segments consecutifs
         forment une trajectoire continue, sauf la ou l'outil tourne (le mode
         continu du controleur ne tourne pas l'outil) : arret avant et apres.
+        `annoncer=False` tait ces explications (un script qui le sait deja).
         """
         mouvements = [(str(t), dict(kw)) for t, kw in mouvements]
         for t, _kw in mouvements:
@@ -1529,7 +1532,11 @@ class Commande:
         def decrire(p):
             for t, kw in mouvements:
                 getattr(p, t)(**kw)
-        return self._executer(decrire, continu)
+        self._annonces_muettes = not annoncer
+        try:
+            return self._executer(decrire, continu)
+        finally:
+            self._annonces_muettes = False
 
     def repli(self, duree=None, vitesse=None) -> "Commande":
         """

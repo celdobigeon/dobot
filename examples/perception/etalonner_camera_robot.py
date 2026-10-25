@@ -512,7 +512,8 @@ class Etalonnage:
         """Une suite de mouvements sans arret inutile (Commande.enchainer) ;
         a defaut, l'un apres l'autre."""
         if hasattr(self.robot, "enchainer"):
-            self.robot.enchainer(mouvements)
+            # les arrets la ou l'outil tourne sont voulus : pas d'annonce
+            self.robot.enchainer(mouvements, annoncer=False)
         else:
             for t, kw in mouvements:
                 getattr(self.robot, t)(**kw)
