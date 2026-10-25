@@ -39,6 +39,10 @@ Deroule :
   5. le resultat est ecrit dans etalonnage_camera_robot.json, que
      `charger_etalonnage()` relit pour Perception(T_robot_camera=...).
 
+RELANCER SANS RECONFIGURER : --recommencer garde secteur, hauteur de table
+et point de depart du fichier, mais efface les mesures (la camera a
+bouge, par exemple).
+
 INTERRUPTION ET REPRISE. Ctrl+C a tout moment arrete le robot sur place ;
 si la piece est en main, le script propose de la reposer (la pompe
 s'arrete). Le fichier est tenu a jour apres chaque pose : --reprendre
@@ -925,16 +929,27 @@ def main(argv=None) -> int:
     ap.add_argument("--reprendre", action="store_true",
                     help="reprendre l'etalonnage enregistre : secteur, table et "
                          "mesures gardes ; la piece est reprise ou remplacee")
+    ap.add_argument("--recommencer", action="store_true",
+                    help="nouvel etalonnage SANS la configuration interactive : "
+                         "secteur, hauteur de table et point de depart repris du "
+                         "fichier, mesures effacees (apres un deplacement de la camera)")
     ap.add_argument("--sortie", default=FICHIER)
     a = ap.parse_args(argv)
+    if a.reprendre and a.recommencer:
+        ap.error("--reprendre ou --recommencer, pas les deux")
 
     donnees = None
-    if a.reprendre:
+    if a.reprendre or a.recommencer:
         if not os.path.exists(a.sortie):
             print("rien a reprendre : {} n'existe pas".format(os.path.relpath(a.sortie)))
             return 1
         with open(a.sortie, encoding="utf-8") as f:
             donnees = json.load(f)
+        if a.recommencer:
+            piece = donnees.get("piece")
+            donnees = {k: donnees.get(k) for k in ("z_table_mm", "secteur_base_deg",
+                                                   "depart")}
+            donnees["piece"] = piece
 
     from dobot_sim import Commande
     if a.simulation:
@@ -957,8 +972,9 @@ def main(argv=None) -> int:
     try:
         if donnees is not None:
             et.restaurer(donnees)
-            print("REPRISE : {} poses deja faites, table a z = {:.1f} mm, secteur de la "
-                  "base {}".format(len(et.paires), et.z_table,
+            print("{} : {} poses deja faites, table a z = {:.1f} mm, secteur de la "
+                  "base {}".format("NOUVEL ETALONNAGE" if a.recommencer else "REPRISE",
+                                   len(et.paires), et.z_table,
                                    "de {:.1f} a {:.1f} deg".format(*et.secteur)
                                    if et.secteur else "libre"))
             if et.recalage is not None:

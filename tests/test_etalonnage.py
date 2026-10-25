@@ -254,6 +254,14 @@ class TestReprise(unittest.TestCase):
             self.assertEqual(et2.session, 0)
             self.assertEqual(len(et2.paires), 4)
 
+    def test_recommencer_garde_la_configuration(self):
+        et = ec.Etalonnage(FauxRobot(x=200.0, y=0.0), None, journal=lambda m: None,
+                           demander=lambda t: "")
+        et.restaurer({"z_table_mm": -40.0, "secteur_base_deg": [-20.0, 30.0],
+                      "depart": [200.0, 0.0, 0.0], "piece": {"etat": "absente"}})
+        self.assertEqual((et.z_table, et.secteur, len(et.paires)), (-40.0, (-20.0, 30.0), 0))
+        self.assertIsNone(et.recalage)
+
     def test_charger_inacheve(self):
         import json
         import tempfile
