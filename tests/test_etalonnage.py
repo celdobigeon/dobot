@@ -305,6 +305,30 @@ class TestMargeButees(unittest.TestCase):
                                       np.array([1.0, 0, 0]), 25.0))
 
 
+class TestHorsChamp(unittest.TestCase):
+
+    def test_piece_non_vue_on_continue(self):
+        robot = ec.PieceSimulee(FauxRobot(x=200.0, y=0.0), decalage=(0.0, 2.0))
+        camera = ec.CameraSimulee(robot, bruit=0.5, graine=4)
+        vraie = camera.voir
+        n = {"k": 0}
+
+        def voir():
+            n["k"] += 1
+            return [] if n["k"] == 3 else vraie()       # 3e image : rien de vu
+        camera.voir = voir
+        messages = []
+        et = ec.Etalonnage(robot, camera, z_table=0.0, graine=5,
+                           journal=messages.append, demander=lambda t: "q")
+        et.demarrer()
+        resultats = [et.cycle() for _ in range(6)]
+        self.assertIsNone(resultats[2])
+        self.assertEqual(len(et.paires), 5)
+        self.assertEqual(len(et.interdits), 1)
+        self.assertTrue(robot.tenue)                     # la piece a ete reprise
+        self.assertTrue(any("NON VUE" in m for m in messages))
+
+
 class TestDefaut(unittest.TestCase):
 
     def test_point_refuse_banni_et_on_continue(self):

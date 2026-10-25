@@ -616,8 +616,12 @@ class Etalonnage:
         return meilleur
 
     # -- la camera ----------------------------------------------------------
-    def observer(self, attendu_robot=None) -> Vue:
-        """La piece vue. Exactement une piece, sinon on demande."""
+    def observer(self, attendu_robot=None) -> Optional[Vue]:
+        """
+        La piece vue. Aucune piece : None (hors champ, cachee...), l'appelant
+        continue sans cette pose. Plusieurs pieces qu'on ne sait pas
+        departager : on demande de degager la table.
+        """
         while True:
             vues = self.camera.voir()
             if attendu_robot is not None and self.recalage is not None and vues:
@@ -628,6 +632,8 @@ class Etalonnage:
                     vues = vues[:1]
             if len(vues) == 1:
                 return vues[0]
+            if not vues:
+                return None
             rep = self.demander(
                 "  la camera voit {} piece(s) au lieu d'une : degagez la table, "
                 "puis Entree (q : arreter) ".format(len(vues)))
@@ -733,13 +739,22 @@ class Etalonnage:
             x, y, r = self.depart
         self.poser(x, y, r)
 
-    def cycle(self) -> Paire:
+    def cycle(self) -> Optional[Paire]:
         x, y, r = self.point_suivant()
         self.vise = (x, y, r)
         self.poser(x, y, r, remonter=False)          # degager remonte, sans arret
         self.degager()
         attendu = np.array([x, y, self._z(HAUTEUR_PIECE)])
         vue = self.observer(attendu)
+        if vue is None:
+            # hors du champ de la camera, ou cachee : on le dit, on n'y
+            # retourne plus, et on continue
+            self.interdits.append((x, y))
+            self.journal("  --  pose x {:6.1f} y {:6.1f} r {:6.1f}  | piece NON VUE (hors "
+                         "champ ?) : point abandonne, on continue".format(x, y, r))
+            self.saisir(x, y, r, remonter=False)
+            self.enregistrer()
+            return None
         paire = Paire(np.array([x, y, self._z(PRISE)]), r, vue.position, vue.axe,
                       self.z_table, self.session)
         prevu = None
@@ -777,6 +792,12 @@ class Etalonnage:
             self.poser(x, y, r, remonter=False)
             self.degager()
             vue = self.observer(np.array([x, y, self._z(HAUTEUR_PIECE)]))
+            if vue is None:
+                self.interdits.append((x, y))
+                self.journal("  {}  piece NON VUE en x {:.0f} y {:.0f} : reprise a la "
+                             "position connue".format(k + 1, x, y))
+                self.saisir(x, y, r, remonter=False)
+                continue
             (px, py, _pz), pr = self.recalage.prise(vue.position, vue.axe)
             # r a 180 deg pres : on garde le plus proche de la pose
             if abs(_angle(pr - r)) > 90:
@@ -817,6 +838,11 @@ class Etalonnage:
             "piece": self.piece,
             "paires": len(self.paires),
             "validation": self.validations,
+            "camera_K": None if getattr(self.camera, "K", None) is None
+            else np.asarray(self.camera.K, float).tolist(),
+            "camera_taille": None if getattr(self.camera, "taille", None) is None
+            else [int(v) for v in self.camera.taille],
+            "points_abandonnes": [[float(u), float(v)] for u, v in self.interdits],
             "mesures": [{"pince": [float(v) for v in p.pince], "r": float(p.r),
                          "camera": [float(v) for v in p.camera],
                          "axe_camera": [float(v) for v in p.lacet_camera],
@@ -863,6 +889,13 @@ class Etalonnage:
         self.session = int(data.get("session", 0))
         self.piece = dict(data.get("piece") or {"etat": "absente"})
         self.validations = list(data.get("validation", []))
+        self.interdits = [tuple(p) for p in data.get("points_abandonnes", [])]
+        # le champ de la camera, pour ne pas viser hors champ avant la
+        # premiere image de la reprise
+        if self.camera is not None and data.get("camera_K") is not None \
+                and getattr(self.camera, "K", None) is None:
+            self.camera.K = np.array(data["camera_K"], float)
+            self.camera.taille = tuple(data["camera_taille"])
         self.recalage = recaler(self.paires) if len(self.paires) >= 3 else None
 
 
@@ -1086,6 +1119,13 @@ def main(argv=None) -> int:
                                    if et.secteur else "libre"))
             if et.recalage is not None:
                 print("  recalage actuel : {:.2f} mm rms".format(et.recalage.rms))
+            if getattr(camera, "K", None) is None:
+                # le champ de la camera n'est pas dans le fichier (ancien) :
+                # une image suffit a l'apprendre
+                try:
+                    camera.voir()
+                except Exception as exc:                # noqa: BLE001
+                    print("  (champ de la camera inconnu : {})".format(exc))
             if a.secteur:
                 et.secteur = relever_secteur(robot, et.modele)
                 et.enregistrer()
