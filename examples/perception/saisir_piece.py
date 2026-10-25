@@ -9,8 +9,9 @@ Le robot se met en EQUERRE (hors du champ de la camera). On pose une piece
 sur la table, Entree : la camera la voit, le robot va la saisir -- descente
 et remontee verticales --, revient en equerre, la repose AILLEURS sur la
 table, revient en equerre, et dit ou la camera la voit alors (ecart a
-l'endroit vise). Avec --boucle, il recommence avec la piece ainsi
-deplacee, jusqu'a Ctrl+C.
+l'endroit vise). Puis il recommence : on pose une autre piece (ou on
+laisse celle-ci), Entree... jusqu'a Ctrl+C. Avec --boucle, il enchaine
+sans attendre Entree, avec la piece qu'il vient de deplacer.
 
 Il faut l'etalonnage camera -> robot (etalonner_camera_robot.py) : il
 fournit T_robot_camera, la hauteur de la table, le secteur de la base
@@ -197,7 +198,7 @@ def main(argv=None) -> int:
     ap.add_argument("--longueur-outil", type=float, default=None)
     ap.add_argument("--vitesse", type=float, default=20.0, help="mm/s (20)")
     ap.add_argument("--boucle", action="store_true",
-                    help="recommencer avec la piece deplacee, jusqu'a Ctrl+C")
+                    help="enchainer sans attendre Entree, avec la piece deplacee")
     ap.add_argument("--etalonnage", default=ec.FICHIER)
     a = ap.parse_args(argv)
 
@@ -217,17 +218,15 @@ def main(argv=None) -> int:
     try:
         robot.pince(False)
         essai.equerre()
-        essai.demander("Posez une piece sur la table (dans le champ de la camera), "
-                       "puis Entree ")
         piece = None
         while True:
+            if not a.boucle or piece is None:
+                essai.demander("\nPosez une piece sur la table (ou laissez celle qui y "
+                               "est), puis Entree -- Ctrl+C pour arreter ")
+                piece = None
             t0 = time.time()
             piece = essai.un_tour(piece)
             print("  tour fait en {:.0f} s".format(time.time() - t0))
-            if not a.boucle:
-                break
-            if piece is None:
-                essai.demander("Reposez une piece sur la table, puis Entree ")
     except KeyboardInterrupt:
         print("\ninterrompu (robot arrete)")
     except ec.Arret as exc:

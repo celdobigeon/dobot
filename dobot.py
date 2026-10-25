@@ -416,7 +416,8 @@ def main(argv=None) -> int:
                       add_help=False)
     p2 = sp.add_parser("saisir", help="essai : saisir une piece vue par la camera, "
                                       "la reposer ailleurs")
-    p2.add_argument("--boucle", action="store_true", help="recommencer jusqu'a Ctrl+C")
+    p2.add_argument("--boucle", action="store_true",
+                    help="enchainer sans attendre Entree (jusqu'a Ctrl+C)")
     p2.set_defaults(f=saisir)
     # ses options (--reprendre...) sont celles de etalonner_camera_robot.py :
     # elles lui sont passees telles quelles (voir parse_known_args)
