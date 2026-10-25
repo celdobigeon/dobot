@@ -917,6 +917,12 @@ class Commande:
         if entree is not None:
             charge["entree"] = entree
         rep = demander({"commande": charge})
+        # une lecture se repete sans risque : on laisse a une fenetre
+        # occupee (demarrage, connexion) le temps de repondre
+        debut = time.time()
+        while rep is None and time.time() - debut < self.SILENCE_MAX:
+            time.sleep(0.3)
+            rep = demander({"commande": charge})
         if rep is None or "q" not in rep:
             _echouer("LE SIMULATEUR NE REPOND PAS",
                      ["fenetre fermee ? robot deconnecte ?"])
@@ -990,6 +996,8 @@ class Commande:
 
     #: secondes laissees a une fenetre pour s'ouvrir (maillages a charger)
     DELAI_LANCEMENT = 60.0
+    #: secondes de silence de la fenetre avant de la croire fermee
+    SILENCE_MAX = 10.0
 
     def _lancer_simulateur(self) -> None:
         """
@@ -1361,8 +1369,17 @@ class Commande:
             time.sleep(0.05)
             etat = demander({"commande": {"etat": True}})
             if etat is None:
-                _echouer("LE SIMULATEUR NE REPOND PLUS",
-                         ["fenetre fermee pendant le mouvement ?"])
+                # une fenetre qui demarre, ou qui ouvre le port serie, peut
+                # rester plus d'une seconde sans repondre : seul un silence
+                # PROLONGE veut dire qu'elle est fermee
+                muet_depuis = time.time()
+                while etat is None and time.time() - muet_depuis < self.SILENCE_MAX:
+                    time.sleep(0.3)
+                    etat = demander({"commande": {"etat": True}})
+                if etat is None:
+                    _echouer("LE SIMULATEUR NE REPOND PLUS",
+                             ["muet depuis {:.0f} s : fenetre fermee ?"
+                              .format(self.SILENCE_MAX)])
 
     # -- cibles ---------------------------------------------------------------
 
