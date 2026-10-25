@@ -1491,6 +1491,29 @@ class Commande:
             via, T, x=x, y=y, z=z, r=r, duree=duree, vitesse=vitesse,
             repere=repere, commentaire=commentaire), continu)
 
+    def enchainer(self, mouvements, continu: bool = True) -> "Commande":
+        """
+        Plusieurs mouvements de types differents en UN appel, sans arret la
+        ou c'est possible :
+
+            robot.enchainer([("movl", dict(x=200, y=0, z=80)),
+                             ("movj", dict(q=[0, 5, 0, 0]))])
+
+        Chaque element est (type, parametres) : "movl" ou "movj", avec les
+        parametres de la methode du meme nom. Les segments consecutifs
+        forment une trajectoire continue, sauf la ou l'outil tourne (le mode
+        continu du controleur ne tourne pas l'outil) : arret avant et apres.
+        """
+        mouvements = [(str(t), dict(kw)) for t, kw in mouvements]
+        for t, _kw in mouvements:
+            if t not in ("movl", "movj"):
+                raise ValueError("enchainer : movl ou movj, pas {!r}".format(t))
+
+        def decrire(p):
+            for t, kw in mouvements:
+                getattr(p, t)(**kw)
+        return self._executer(decrire, continu)
+
     def repli(self, duree=None, vitesse=None) -> "Commande":
         """
         Retour a la position de repos J = (0, 15, 30, 0) deg.

@@ -477,43 +477,71 @@ class Etalonnage:
     def _z(self, h: float) -> float:
         return self.z_table + h
 
+    def _enchainer(self, mouvements):
+        """Une suite de mouvements sans arret inutile (Commande.enchainer) ;
+        a defaut, l'un apres l'autre."""
+        if hasattr(self.robot, "enchainer"):
+            self.robot.enchainer(mouvements)
+        else:
+            for t, kw in mouvements:
+                getattr(self.robot, t)(**kw)
+
+    def _approche(self, x, y, r) -> list:
+        """
+        De la ou est le bras jusqu'a la pince a PRISE en (x, y), orientee r :
+        remontee verticale si besoin, transit, puis descente VERTICALE. Le
+        transit est rectiligne si l'outil ne tourne pas (tout s'enchaine
+        alors sans arret), articulaire sinon (arret au-dessus, le mode
+        continu ne tournant pas l'outil).
+        """
+        xa, ya, za, ra = self.robot.pose()
+        m = []
+        if za < self._z(TRANSIT) - 1.0:
+            m.append(("movl", dict(x=xa, y=ya, z=self._z(TRANSIT), r=ra)))
+        tourne = abs(_angle(r - ra)) > 0.5
+        m.append(("movj" if tourne else "movl", dict(x=x, y=y, z=self._z(TRANSIT), r=r)))
+        m.append(("movl", dict(x=x, y=y, z=self._z(PRISE), r=r)))
+        return m
+
     def _aller(self, x, y, r):
         """Au-dessus de (x, y), pince orientee r, a la hauteur de transit."""
-        xa, ya, za, ra = self.robot.pose()
-        if za < self._z(TRANSIT) - 1.0:
-            self.robot.movl(x=xa, y=ya, z=self._z(TRANSIT), r=ra)
-        self.robot.movj(x=x, y=y, z=self._z(TRANSIT), r=r)
+        self._enchainer(self._approche(x, y, r)[:-1])
 
-    def poser(self, x, y, r):
-        self._aller(x, y, r)
-        self.robot.movl(x=x, y=y, z=self._z(PRISE), r=r)
+    def poser(self, x, y, r, remonter: bool = True):
+        self._enchainer(self._approche(x, y, r))
         self.robot.pince(False)
         self.piece = {"etat": "posee", "x": float(x), "y": float(y), "r": float(r)}
         self.robot.attendre(DELAI_PINCE)
-        self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
+        if remonter:
+            self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
 
-    def saisir(self, x, y, r):
-        self._aller(x, y, r)
-        self.robot.movl(x=x, y=y, z=self._z(PRISE), r=r)
+    def saisir(self, x, y, r, remonter: bool = True):
+        self._enchainer(self._approche(x, y, r))
         self.robot.pince(True)
         self.piece = {"etat": "tenue"}
         self.robot.attendre(DELAI_PINCE)
-        self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
+        if remonter:
+            self.robot.movl(x=x, y=y, z=self._z(TRANSIT), r=r)
 
     def degager(self):
         """
-        Ecarte le bras du champ de la camera : il remonte a la verticale
-        (deja fait par poser), puis prend la posture d'EQUERRE -- bras
-        arriere vertical, avant-bras horizontal -- sans tourner la base,
-        donc sans quitter le secteur. Ou la place de garage donnee.
+        Ecarte le bras du champ de la camera, d'un seul mouvement continu :
+        remontee VERTICALE au-dessus de la piece posee, puis posture
+        d'EQUERRE (bras arriere presque vertical, avant-bras horizontal),
+        base et poignet inchanges -- l'outil ne tourne pas, rien n'oblige a
+        s'arreter entre les deux. Ou la place de garage donnee.
         """
         xa, ya, za, ra = self.robot.pose()
+        m = []
+        if za < self._z(TRANSIT) - 1.0:
+            m.append(("movl", dict(x=xa, y=ya, z=self._z(TRANSIT), r=ra)))
         if self.garage is not None:
             x, y, z = self.garage
-            self.robot.movj(x=x, y=y, z=z, r=ra)
-            return
-        q = [float(v) for v in self.modele.mgi_pose(xa, ya, za, ra)]
-        self.robot.movj(q=[q[0], EQUERRE_J2, EQUERRE_J3, q[3]])
+            m.append(("movj", dict(x=x, y=y, z=z, r=ra)))
+        else:
+            q = [float(v) for v in self.modele.mgi_pose(xa, ya, self._z(TRANSIT), ra)]
+            m.append(("movj", dict(q=[q[0], EQUERRE_J2, EQUERRE_J3, q[3]])))
+        self._enchainer(m)
 
     # -- choix des points ---------------------------------------------------
     def j1(self, x, y, z, r) -> float:
@@ -708,7 +736,7 @@ class Etalonnage:
     def cycle(self) -> Paire:
         x, y, r = self.point_suivant()
         self.vise = (x, y, r)
-        self.poser(x, y, r)
+        self.poser(x, y, r, remonter=False)          # degager remonte, sans arret
         self.degager()
         attendu = np.array([x, y, self._z(HAUTEUR_PIECE)])
         vue = self.observer(attendu)
@@ -732,7 +760,8 @@ class Etalonnage:
             texte += "  | recalage : {:.2f} mm rms".format(self.recalage.rms)
         self.journal(texte)
         self.enregistrer()
-        self.saisir(x, y, r)
+        # la remontee est faite par la pose suivante, enchainee avec le transit
+        self.saisir(x, y, r, remonter=False)
         self.enregistrer()
         return paire
 
@@ -745,7 +774,7 @@ class Etalonnage:
         self.journal("\nVALIDATION : saisies guidees par la camera seule")
         for k in range(n):
             x, y, r = self.point_suivant()
-            self.poser(x, y, r)
+            self.poser(x, y, r, remonter=False)
             self.degager()
             vue = self.observer(np.array([x, y, self._z(HAUTEUR_PIECE)]))
             (px, py, _pz), pr = self.recalage.prise(vue.position, vue.axe)
@@ -768,11 +797,11 @@ class Etalonnage:
                 self.journal("    {} : reprise a la position connue".format(
                     "ecart trop grand pour saisir sans risque" if e > 6.0
                     else "prise hors d'atteinte"))
-                self.saisir(x, y, r)
+                self.saisir(x, y, r, remonter=False)
             else:
                 # visee au centre : la piece est desormais centree dans la
                 # pince, le decalage ne vaut plus pour les poses suivantes
-                self.saisir(px, py, pr)
+                self.saisir(px, py, pr, remonter=False)
                 self.decalage_courant = np.zeros(2)
         return self.validations
 
@@ -1097,7 +1126,7 @@ def main(argv=None) -> int:
         if a.validations:
             et.valider(a.validations)
         x, y, r = et.point_suivant()
-        et.poser(x, y, r)
+        et.poser(x, y, r, remonter=False)
         et.degager()
     except KeyboardInterrupt:
         interrompu(et)
