@@ -1015,9 +1015,11 @@ def accoster(robot, lire: Callable[[], str] = _lire_touche,
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Etalonnage camera -> robot par poses "
                                              "successives d'une piece")
-    ap.add_argument("--points", type=int, default=15, help="poses d'etalonnage (15)")
+    ap.add_argument("--points", type=int, default=0,
+                    help="nombre de poses ; 0 (defaut) : sans fin, jusqu'a Ctrl+C")
     ap.add_argument("--validations", type=int, default=3,
-                    help="saisies guidees par la camera, a la fin (3)")
+                    help="saisies guidees par la camera apres les poses (3) ; "
+                         "seulement avec --points N")
     ap.add_argument("--vitesse", type=float, default=40.0, help="mm/s (40)")
     ap.add_argument("--longueur-outil", type=float, default=None,
                     help="longueur mesuree de la pince, mm")
@@ -1106,10 +1108,11 @@ def main(argv=None) -> int:
             print("table a z = {:.1f} mm (repere robot)".format(z_contact))
             et.demarrer()
             et.enregistrer()
-        print("\nETALONNAGE : {} poses (Ctrl+C pour interrompre a tout moment)"
-              .format(a.points))
+        print("\nETALONNAGE : {} (Ctrl+C pour arreter : la piece est reposee, tout "
+              "est enregistre)".format("{} poses".format(a.points) if a.points
+                                       else "poses sans fin"))
         faits, echecs = 0, 0
-        while faits < a.points:
+        while a.points <= 0 or faits < a.points:
             try:
                 et.cycle()
                 faits += 1
@@ -1169,8 +1172,8 @@ def interrompu(et: Etalonnage) -> None:
     print("\n\nINTERRUPTION : robot arrete. {} poses mesurees.".format(len(et.paires)))
     try:
         if et.piece.get("etat") == "posee":
-            print("  la piece est posee en x {:.0f} y {:.0f} : --reprendre la "
-                  "reprendra".format(et.piece["x"], et.piece["y"]))
+            print("  la piece est posee sur la table en x {:.0f} y {:.0f}".format(
+                et.piece["x"], et.piece["y"]))
             return
         if et.piece.get("etat") != "tenue" or et.z_table is None:
             return
