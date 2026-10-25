@@ -50,6 +50,10 @@ PRISE_HAUTEUR, PIED = 12.0, 2.0
 ECART_DEPOSE = 60.0
 
 
+class HorsAtteinte(Exception):
+    """La piece vue ne peut pas etre saisie la ou elle est."""
+
+
 class Essai:
 
     def __init__(self, robot, perception, donnees, journal=print, demander=input,
@@ -134,8 +138,7 @@ class Essai:
             if self.et._atteignable(x, y, r2):
                 r = r2
             else:
-                raise ec.Arret("piece hors d'atteinte (ou hors du secteur) : x {:.0f} "
-                               "y {:.0f}".format(x, y))
+                raise HorsAtteinte("x {:.0f} y {:.0f}".format(x, y))
         self.journal("  saisie en x {:.1f} y {:.1f} z {:.1f} r {:.1f}  ({} {}, dessus a "
                      "z {:.1f})".format(x, y, z, r, piece.type, piece.face,
                                         piece.T_robot[2, 3] * 1000.0))
@@ -188,7 +191,13 @@ class Essai:
             if piece is None:
                 self.journal("  la camera ne voit aucune piece saisissable")
                 return None
-        prise = self.saisir(piece)
+        try:
+            prise = self.saisir(piece)
+        except HorsAtteinte as exc:
+            self.journal("  piece HORS D'ATTEINTE ({}) : trop loin, trop pres, ou hors du "
+                         "secteur de la base.\n  Deplacez-la vers le milieu de la zone de "
+                         "travail.".format(exc))
+            return None
         vise = self.deposer(prise)
         return self.controler(vise)
 

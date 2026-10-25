@@ -76,5 +76,20 @@ class TestSaisie(unittest.TestCase):
         self.assertAlmostEqual(robot.angles()[1], ec.EQUERRE_J2, places=3)
 
 
+class TestHorsAtteinte(unittest.TestCase):
+
+    def test_piece_trop_loin_on_demande_de_la_deplacer(self):
+        robot = FauxRobotAngles(x=220.0, y=0.0, z=120.0)
+        perc = FaussePerception(robot, 25.0)
+        perc.piece = Piece(420.0, 0.0, 42.0, 0.0)            # hors d'atteinte
+        messages = []
+        donnees = {"z_table_mm": 25.0, "secteur_base_deg": [-40.0, 20.0],
+                   "ecart_r_deg": 0.0, "depart": [220.0, 0.0, 0.0], "mesures": []}
+        essai = sp.Essai(robot, perc, donnees, journal=messages.append, graine=1)
+        self.assertIsNone(essai.un_tour())
+        self.assertFalse(robot.fermee)
+        self.assertTrue(any("HORS D'ATTEINTE" in m for m in messages))
+
+
 if __name__ == "__main__":
     unittest.main()
