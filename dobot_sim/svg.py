@@ -46,8 +46,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from .pilote import Pilote
-from .robot import cible
+from .trace import programme_depuis_polylignes
 
 __all__ = ["lire_svg", "programme_depuis_svg", "ErreurSVG"]
 
@@ -495,12 +494,6 @@ def lire_svg(chemin: str, tolerance: float = TOLERANCE) -> List[List[Point]]:
 # Du dessin au programme
 # ===========================================================================
 
-def _boite(polylignes: Sequence[Sequence[Point]]) -> Tuple[float, float, float, float]:
-    xs = [p[0] for poly in polylignes for p in poly]
-    ys = [p[1] for poly in polylignes for p in poly]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
 def programme_depuis_svg(chemin: str,
                          repere=None,
                          largeur: float = 100.0,
@@ -545,58 +538,10 @@ def programme_depuis_svg(chemin: str,
     Renvoie un `Pilote` : il reste a l'inspecter (`resume`, `controler`)
     ou a le jouer (`simuler`).
     """
-    log = journal or (lambda *_: None)
     polylignes = lire_svg(chemin, tolerance)
-
-    x0, y0, x1, y1 = _boite(polylignes)
-    dx, dy = max(x1 - x0, 1e-9), max(y1 - y0, 1e-9)
-    echelle = largeur / dx
-    if hauteur is not None:
-        echelle = min(echelle, hauteur / dy)
-    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-
-    def vers_repere(p: Point) -> Point:
-        # y du SVG vers le bas, y du repere vers le haut : on retourne
-        return ((p[0] - cx) * echelle, -(p[1] - cy) * echelle)
-
-    if repere is None:
-        from .robot import repere_travail
-        repere = repere_travail(x=210.0, y=0.0, z=0.0)
-
-    robot = Pilote(nom=nom or os.path.splitext(os.path.basename(chemin))[0],
-                   outil=outil,
-                   vitesse=vitesse_liaison, acceleration=600.0,
-                   vitesse_articulaire=60.0)
-
-    points = 0
-    for poly in polylignes:
-        pts = [vers_repere(p) for p in poly]
-        # on ote les points confondus : ils ne tracent rien et alourdissent
-        propre = [pts[0]]
-        for p in pts[1:]:
-            if math.hypot(p[0] - propre[-1][0], p[1] - propre[-1][1]) > 1e-6:
-                propre.append(p)
-        if len(propre) < 2:
-            continue
-        points += len(propre)
-
-        def vise(p, z):
-            return cible(x=p[0], y=p[1], z=z, repere=repere)
-
-        # liaison en l'air, puis descente a l'ARRET AU POINT
-        robot.movj(vise(propre[0], levee), lissage=70,
-                   commentaire="liaison")
-        robot.movl(vise(propre[0], profondeur), vitesse=vitesse_trace,
-                   commentaire="pose du stylo")
-        for p in propre[1:-1]:
-            robot.movl(vise(p, profondeur), vitesse=vitesse_trace,
-                       lissage=lissage_trace)
-        robot.movl(vise(propre[-1], profondeur), vitesse=vitesse_trace,
-                   commentaire="fin du trait")
-        robot.movl(vise(propre[-1], levee), vitesse=vitesse_liaison,
-                   commentaire="levee")
-
-    robot.repli()
-    log("{} : {} traits, {} points, echelle {:.3f} mm/unite"
-        .format(os.path.basename(chemin), len(polylignes), points, echelle))
-    return robot
+    return programme_depuis_polylignes(
+        polylignes, repere=repere, largeur=largeur, hauteur=hauteur,
+        levee=levee, profondeur=profondeur, vitesse_trace=vitesse_trace,
+        vitesse_liaison=vitesse_liaison, lissage_trace=lissage_trace,
+        outil=outil, y_vers_le_bas=True, journal=journal,
+        nom=nom or os.path.splitext(os.path.basename(chemin))[0])

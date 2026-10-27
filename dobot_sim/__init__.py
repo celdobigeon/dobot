@@ -50,7 +50,9 @@ from .robot import (DobotMagician, Encombrement, ErreurCinematique, Geometrie,
                     Limites, cible, decomposer_cible, depuis_xyzrpy,
                     repere_travail, vers_xyzrpy, verifier_repere_objet,
                     verifier_repere_outil)
+from .image import ErreurImage, lire_image, programme_depuis_image
 from .svg import ErreurSVG, lire_svg, programme_depuis_svg
+from .trace import programme_depuis_dessin, programme_depuis_polylignes
 from .trajectory import (ProfilPolynomial5, ProfilTrapeze, SegmentArticulaire,
                          SegmentCirculaire, SegmentLineaire, Trajectoire,
                          creer_profil, creer_profil_vitesse)
@@ -67,6 +69,8 @@ __all__ = [
     "ProfilTrapeze", "ProfilPolynomial5", "creer_profil", "creer_profil_vitesse",
     "Programme", "Instruction",
     "programme_depuis_svg", "lire_svg", "ErreurSVG",
+    "programme_depuis_image", "lire_image", "ErreurImage",
+    "programme_depuis_dessin", "programme_depuis_polylignes",
     "identite", "translation", "rot_x", "rot_y", "rot_z",
     "composer", "inverse", "interpoler", "rotation_de", "position_de", "formater",
     "__version__",

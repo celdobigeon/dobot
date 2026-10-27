@@ -15,3 +15,8 @@ PyOpenGL>=3.1.5
 # trouve aucun port. Aucune DLL ni DobotStudio n'est necessaire, le
 # protocole officiel est implemente directement dans dobot_sim/liaison.py.
 pyserial>=3.5
+
+# Trace depuis une IMAGE (dobot_sim/image.py : contours d'un logo, d'une
+# silhouette). Facultatif : sans OpenCV, le simulateur et le trace SVG
+# fonctionnent, et seul programme_depuis_image le reclame -- en le disant.
+# opencv-python>=4.10
