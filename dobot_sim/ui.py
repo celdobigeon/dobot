@@ -2383,6 +2383,49 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self.lab_axe.setText("chariot a {:.0f} mm".format(self.sp_axe_l.value()))
         self._cellule_redessiner()
 
+    def _cellule_suivre_programme(self) -> None:
+        """
+        Donne au tapis la cadence que le PROGRAMME lui impose.
+
+        Un tapis pilote a la main suit l'horloge des boutons ; des qu'un
+        programme le commande, c'est sa cadence a lui qui fait foi. Le
+        reglage manuel est donc ecrase ici, volontairement : deux
+        horloges concurrentes sur la meme bande ne montreraient plus
+        rien de vrai.
+        """
+        if getattr(self, "tapis", None) is None or self.programme is None:
+            return
+        cadence = self.programme.cadence_convoyeur()
+        if len(cadence) <= 1:
+            return                      # le programme ne touche pas au tapis
+        self.minuteur_tapis.stop()
+        self._v_tapis = 0.0
+        self.tapis.cadence = cadence
+        self._t_tapis = 0.0
+        self.lab_tapis.setText(
+            "cadence donnee par le programme ({} changement(s))"
+            .format(len(cadence) - 1))
+
+    def _cellule_a_l_instant(self, t: float) -> None:
+        """
+        Place tapis et chariot a l'instant t, comme on y place le bras.
+
+        Tout est fonction du temps -- la configuration articulaire, les
+        sorties, l'outil, et maintenant la bande et le rail. C'est ce qui
+        permet de rembobiner : rien n'est accumule, tout est recalcule.
+        """
+        if getattr(self, "tapis", None) is not None:
+            self._t_tapis = t
+            if hasattr(self.vue, "definir_convoyeur"):
+                self.vue.definir_convoyeur(self.tapis, t)
+        if getattr(self, "axe", None) is not None and self.programme is not None:
+            l = self.programme.position_rail(t)
+            self.sp_axe_l.blockSignals(True)
+            self.sp_axe_l.setValue(l)
+            self.sp_axe_l.blockSignals(False)
+            if hasattr(self.vue, "definir_rail"):
+                self.vue.definir_rail(self.axe, l)
+
     def _cellule_redessiner(self) -> None:
         """Remet tapis et rail dans la vue, si elle sait les dessiner."""
         if hasattr(self.vue, "definir_convoyeur"):
@@ -4504,6 +4547,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self._alerter(["le programme n'a pas pu etre compile "
                            "(trace complete dans le Journal)"])
             return
+        self._cellule_suivre_programme()
         ech = self.trajectoire.echantillonner(0.02) if len(self.trajectoire) else None
         if ech is None:
             self.vue.definir_chemin(None)
@@ -5398,6 +5442,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
 
         q = self.trajectoire.q(t)
         self._appliquer_q(q, source="animation")
+        self._cellule_a_l_instant(t)
         duree = max(self.trajectoire.duree, 1e-9)
         self.curseur_temps.blockSignals(True)
         self.curseur_temps.setValue(int(1000 * t / duree))

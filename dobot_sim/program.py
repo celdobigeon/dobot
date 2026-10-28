@@ -33,8 +33,11 @@ DUREE_LOGIQUE = 0.25
 class Evenement:
     """Changement d'etat date, produit par la compilation du programme."""
     t: float
-    type: str            # OUTIL | SORTIE | ENTREE
+    type: str            # OUTIL | SORTIE | ENTREE | CONVOYEUR
     etat: bool = False
+    #: grandeur portee par l'evenement, quand il en porte une : la
+    #: vitesse du tapis pour un CONVOYEUR, en mm/s
+    valeur: float = 0.0
     port: int = 0
     segment: int = 0
     timeout: float = 0.0
@@ -251,6 +254,8 @@ class Programme:
         self.repere_objet = (np.eye(4) if repere_objet is None
                              else np.asarray(repere_objet, dtype=float).copy())
         self.evenements: List[Evenement] = []
+        #: courses du chariot : (debut, duree, position visee)
+        self.courses_rail: List[Tuple[float, float, float]] = []
         #: Etat de l'outil et des sorties AVANT la premiere instruction.
         #: Un programme se joue d'habitude depuis un etat de repos, d'ou
         #: False partout. La commande temps reel (dobot_sim.Commande), elle,
@@ -331,11 +336,14 @@ class Programme:
         self.evenements = []
 
         segments, lissages, logiques = [], [], []
+        rails: List[Tuple[int, Instruction]] = []
         indices: List[int] = []             # instruction de chaque segment
         provisoire = creer_profil("lineaire", 1.0)
 
         for i, instr in enumerate(self.instructions):
             etiquette = "{}. {}".format(i + 1, instr.commentaire or instr.type)
+            if getattr(instr, "avec_rail", False):
+                rails.append((len(segments), instr))
 
             if instr.type == "ATTENTE":
                 seg = SegmentAttente(robot, q, max(instr.duree, 1e-3), etiquette)
@@ -395,7 +403,14 @@ class Programme:
             self.evenements.append(Evenement(
                 t=traj.debuts[k], type=instr.type, etat=bool(instr.etat),
                 port=int(instr.port), segment=k,
+                valeur=float(instr.vitesse) if instr.type == "CONVOYEUR"
+                else 0.0,
                 timeout=float(instr.duree) if instr.type == "ENTREE" else 0.0))
+        # le chariot : debut, duree et position visee de chaque
+        # mouvement qui l'emmene, pour pouvoir l'interpoler
+        self.courses_rail = [(traj.debuts[k], segments[k].duree,
+                              float(instr.rail))
+                             for k, instr in rails]
         return traj
 
     def _chaines(self, robot: DobotMagician, segments,
@@ -473,6 +488,44 @@ class Programme:
             if e.type == "SORTIE" and e.t <= t and 1 <= e.port <= nb_ports:
                 sorties[e.port - 1] = e.etat
         return sorties
+
+    def cadence_convoyeur(self) -> List[Tuple[float, float]]:
+        """
+        Les changements de vitesse du tapis, dates (apres construire()).
+
+        Exactement la forme qu'attend `Convoyeur.cadence` : il suffit de
+        la lui donner pour que la bande et les pieces se placent a
+        n'importe quel instant. L'integration etant exacte et par
+        morceaux, on peut avancer, reculer et faire du pas a pas sans
+        accumuler d'erreur -- ce qui est le point : une animation qui
+        derive au rembobinage ne montre plus le programme.
+        """
+        cadence = [(0.0, 0.0)]
+        for e in self.evenements:
+            if e.type == "CONVOYEUR":
+                cadence.append((float(e.t), float(e.valeur) if e.etat else 0.0))
+        return cadence
+
+    def position_rail(self, t: float, depart: float = 0.0) -> float:
+        """
+        Ou se trouve le chariot a l'instant t (apres construire()).
+
+        Le rail avance AVEC le bras : le controleur traite la cinquieme
+        coordonnee comme les quatre autres. On interpole donc sur la
+        duree du mouvement, au lieu de faire sauter le chariot a
+        l'arrivee -- sinon l'animation montrerait un deplacement qui
+        n'existe pas.
+        """
+        l = float(depart)
+        for t0, duree, vise in getattr(self, "courses_rail", []):
+            if t >= t0 + duree:
+                l = vise
+            elif t > t0:
+                avancement = (t - t0) / max(duree, 1e-9)
+                return l + (vise - l) * avancement
+            else:
+                break
+        return l
 
     def ports_utilises(self) -> Tuple[List[int], List[int]]:
         """(ports de sortie, ports d'entree) references par le programme."""
