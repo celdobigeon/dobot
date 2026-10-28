@@ -965,7 +965,11 @@ class LiaisonDobot:
         rattrape rien, et l'erreur est invisible a l'essai.
 
         VERIFIE SUR MACHINE : tapis du kit Dobot sur Stepper1,
-        firmware 3.7.0, marche avant et arriere a 60 mm/s.
+        firmware 3.7.0, marche avant et arriere a 60 mm/s. Verifie
+        EN FILE aussi -- marche, attente de 4 s, arret, le tout
+        empile avant de demarrer la file : c'est le chemin qu'emprunte
+        un programme, et il ne va pas de soi que le firmware execute
+        dans la file ce qu'il accepte en immediat.
         """
         self.echanger(CommandeDobot.MOTEUR_ETENDU,
                       struct.pack("<2Bi", int(index), 1 if actif else 0,
