@@ -22,7 +22,7 @@ __all__ = ["Instruction", "Programme", "Evenement", "TYPES_INSTRUCTION",
 
 TYPES_MOUVEMENT = ("MOVJ", "MOVL", "MOVC")
 TYPES_INSTRUCTION = ("MOVJ", "MOVL", "MOVC", "ATTENTE", "OUTIL",
-                     "SORTIE", "ENTREE")
+                     "SORTIE", "ENTREE", "CONVOYEUR")
 
 #: duree fictive attribuee aux instructions instantanees, pour qu'elles
 #: restent visibles sur la frise temporelle
@@ -55,6 +55,7 @@ class Instruction:
                 MOVC    deplacement cartesien circulaire (via + cible)
                 ATTENTE temporisation
                 OUTIL   commande de l'outil monte (ventouse, pince, laser)
+                CONVOYEUR vitesse du tapis, en mm/s
                 SORTIE  met une sortie tout-ou-rien a l'etat demande
                 ENTREE  attend qu'une entree passe a l'etat demande,
                         au plus pendant `duree` secondes
@@ -105,6 +106,13 @@ class Instruction:
     # MOVL : enchainer SANS ARRET avec le MOVL suivant (trajectoire
     # continue, mode CP du robot ; voir Pilote.trajet)
     continu: bool = False
+    # CONVOYEUR : le pas du tapis voyage AVEC le programme, comme la
+    # longueur d'outil. Le controleur ne connait que des impulsions par
+    # seconde ; sans ce nombre, un programme ecrit pour un tapis mesure
+    # repartirait sur la valeur nominale des qu'il change de main, et le
+    # tapis n'avancerait plus de la meme distance. `vitesse` porte alors
+    # les mm/s, `port` l'index du moteur (0 = Stepper1, 1 = Stepper2).
+    impulsions_par_mm: float = 0.0
 
     # -- unites et valeurs effectives --------------------------------------
 
@@ -172,6 +180,9 @@ class Instruction:
             else:
                 etat = "actif" if self.etat else "inactif"
             return self._suffixe("OUTIL    {}".format(etat))
+        if self.type == "CONVOYEUR":
+            return self._suffixe("TAPIS    {}".format(
+                "{:+.0f} mm/s".format(self.vitesse) if self.etat else "arret"))
         if self.type == "SORTIE":
             return self._suffixe("SORTIE   EIO{} = {}".format(
                 self.port, 1 if self.etat else 0))
@@ -323,7 +334,7 @@ class Programme:
             if instr.type == "ATTENTE":
                 seg = SegmentAttente(robot, q, max(instr.duree, 1e-3), etiquette)
 
-            elif instr.type in ("OUTIL", "SORTIE"):
+            elif instr.type in ("OUTIL", "SORTIE", "CONVOYEUR"):
                 # SegmentAction et non SegmentAttente : une action ne
                 # demande pas de temps, elle ne neutralise donc pas le
                 # lissage du mouvement qui la precede. Lisser un point

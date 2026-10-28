@@ -137,6 +137,9 @@ class PontReel:
         self.index_final = 0
         self._index_depart = 0
         self._ports_configures: set = set()
+        # capteurs infrarouges deja allumes : ils restent muets tant
+        # qu'on ne les a pas actives, et une fois suffit
+        self._capteurs_actives: set = set()
         # commandes qui n'ont pas tenu dans la file au televersement, et la
         # generation de file a laquelle elles appartiennent
         self._reste: List[Callable[[], int]] = []
@@ -406,6 +409,63 @@ class PontReel:
         self._exiger().arreter_file()
         self.journal("execution reelle suspendue")
 
+    # -- convoyeur, hors programme ------------------------------------------
+
+    def convoyeur(self, vitesse_mm_s: float, tapis=None,
+                  immediat: bool = True) -> None:
+        """
+        Fait tourner le tapis TOUT DE SUITE, sans passer par un programme.
+
+        C'est le geste de mise au point : on lance le tapis, on regarde
+        une piece arriver, on l'arrete. Une vitesse nulle l'arrete, une
+        vitesse negative le fait reculer.
+
+        `immediat` a True envoie la commande hors file : elle agit meme
+        pendant un programme, et notamment pour un arret. A False, elle
+        s'empile derriere le programme en cours.
+        """
+        from .convoyeur import IMPULSIONS_PAR_MM
+        li = self._exiger()
+        pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or IMPULSIONS_PAR_MM)
+        index = int(getattr(tapis, "index_moteur", 0) or 0)
+        v = float(vitesse_mm_s)
+        li.moteur_etendu(index, bool(v), v * pas, en_file=not immediat)
+        self.journal("convoyeur : {} ({:.0f} impulsions/s, Stepper{})"
+                     .format("{:+.0f} mm/s".format(v) if v else "arret",
+                             v * pas, index + 1))
+
+    def arreter_convoyeur(self, tapis=None) -> None:
+        """Arret du tapis, hors file : il ne attend pas la fin du programme."""
+        self.convoyeur(0.0, tapis=tapis, immediat=True)
+
+    def capteur_piece(self, tapis=None, port: Optional[int] = None) -> bool:
+        """
+        Le capteur de presence voit-il une piece ?
+
+        Deux cablages possibles, et le tapis dit lequel :
+
+        - capteur infrarouge Dobot sur un port GP : lecture par
+          `GetInfraredSensor`, apres une activation faite ici une fois ;
+        - capteur tout-ou-rien sur une entree EIO : lecture ordinaire,
+          la meme que celle du panneau Entrees / Sorties.
+        """
+        li = self._exiger()
+        eio = getattr(tapis, "capteur_eio", None)
+        if eio is not None:
+            self._assurer_port(li, int(eio), FonctionES.ENTREE)
+            return bool(li.entree(int(eio)))
+        if port is None:
+            port = getattr(tapis, "capteur_port", None)
+        if port is None:
+            raise ErreurPont(
+                "aucun capteur declare : donnez capteur_port (infrarouge "
+                "sur un port GP) ou capteur_eio (entree tout-ou-rien) au "
+                "Convoyeur")
+        if port not in self._capteurs_actives:
+            li.activer_capteur_ir(int(port), True)
+            self._capteurs_actives.add(int(port))
+        return bool(li.capteur_ir(int(port)))
+
     def definir_ratio(self, vitesse_pct: float) -> None:
         """Bride globalement les vitesses, en pourcentage."""
         self._exiger().definir_ratio(float(vitesse_pct), float(vitesse_pct))
@@ -652,6 +712,22 @@ class PontReel:
         if t == "ATTENTE":
             duree = float(ins.duree)
             return [lambda: li.attendre(duree)]
+
+        if t == "CONVOYEUR":
+            # Le controleur ne connait que des impulsions par seconde. Le
+            # pas du tapis voyage avec l'instruction -- sans lui, on
+            # retomberait sur la valeur nominale et le tapis n'avancerait
+            # pas de la distance voulue.
+            pas = float(getattr(ins, "impulsions_par_mm", 0.0))
+            if pas <= 0:
+                from .convoyeur import IMPULSIONS_PAR_MM
+                pas = IMPULSIONS_PAR_MM
+                self.journal("CONVOYEUR sans pas de tapis : valeur nominale "
+                             "de {:.1f} impulsions/mm retenue".format(pas))
+            index = int(ins.port)
+            actif = bool(ins.etat)
+            impulsions = float(ins.vitesse) * pas
+            return [lambda: li.moteur_etendu(index, actif, impulsions)]
 
         if t == "SORTIE":
             self._assurer_port(li, ins.port, FonctionES.SORTIE)

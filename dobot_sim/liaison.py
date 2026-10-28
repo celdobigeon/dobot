@@ -131,6 +131,21 @@ class CommandeDobot:
     ES_MULTIPLEXAGE = 130       # 1.15.1  (file) uint8 adresse, uint8 fonction
     ES_SORTIE = 131             # 1.15.2  (file) uint8 adresse, uint8 niveau
     ES_ENTREE = 133             # 1.15.4  -> uint8 adresse, uint8 niveau
+    # -- moteur etendu : c'est lui qui entraine le CONVOYEUR, branche sur
+    # Stepper1 ou Stepper2. La vitesse est en IMPULSIONS par seconde, pas
+    # en mm/s : la conversion vit dans dobot_sim/convoyeur.py.
+    MOTEUR_ETENDU = 135         # 1.15.6  (file) uint8 index, uint8 actif,
+    #                                            float impulsions/s
+    # SetEMotorS : meme chose, plus une DISTANCE en impulsions, apres
+    # laquelle le moteur s'arrete tout seul. Absent de la table des
+    # matieres du protocole V1.1.5 ; l'identifiant est deduit de sa place
+    # dans DobotDll.cpp (ProtocolEMotorS suit ProtocolEMotor), et n'a pas
+    # ete verifie sur machine.
+    MOTEUR_ETENDU_DISTANCE = 136
+    # -- capteurs du kit convoyeur, branches sur un port GP
+    CAPTEUR_COULEUR = 137       # 1.15.7  uint8 actif, uint8 port, uint8 version
+    #                                     -> uint8 r, g, b
+    CAPTEUR_IR = 138            # 1.15.8  idem -> uint8 present
     # -- controle de la file
     FILE_DEMARRER = 240         # 1.19.1
     FILE_ARRETER = 241          # 1.19.2
@@ -860,6 +875,87 @@ class LiaisonDobot:
                       struct.pack("<2B", 1 if active else 0, 1 if allume else 0),
                       ecriture=True, en_file=True)
         return self._dernier_index
+
+    # -- moteur etendu : le convoyeur -------------------------------------
+
+    def moteur_etendu(self, index: int, actif: bool, impulsions_s: float,
+                      en_file: bool = True) -> int:
+        """
+        Regle la vitesse d'un moteur pas-a-pas etendu (Stepper1 ou 2).
+
+        `impulsions_s` est SIGNE : le signe donne le sens de marche. La
+        valeur est en impulsions par seconde, et non en mm/s -- c'est
+        `dobot_sim.convoyeur` qui connait le pas du tapis.
+
+        `actif` a False arrete le moteur, quelle que soit la vitesse.
+
+        En file par defaut, pour que le convoyeur s'enchaine avec les
+        mouvements du bras. En immediat (`en_file=False`) pour un arret
+        qui ne doit pas attendre la fin du programme.
+        """
+        self.echanger(CommandeDobot.MOTEUR_ETENDU,
+                      struct.pack("<2Bf", int(index), 1 if actif else 0,
+                                  float(impulsions_s)),
+                      ecriture=True, en_file=en_file)
+        return self._dernier_index
+
+    def moteur_etendu_distance(self, index: int, actif: bool,
+                               impulsions_s: float, impulsions: int) -> int:
+        """
+        Fait avancer le moteur d'un NOMBRE D'IMPULSIONS, puis l'arrete.
+
+        Pratique pour indexer un tapis d'un pas connu sans avoir a le
+        chronometrer. Toujours en file : c'est une commande a duree.
+
+        NON VERIFIE SUR MACHINE : l'identifiant 136 est deduit de l'ordre
+        des commandes dans DobotDll.cpp, le protocole V1.1.5 ne le
+        documente pas. En cas de doute, `moteur_etendu` suffit a tout.
+        """
+        self.echanger(CommandeDobot.MOTEUR_ETENDU_DISTANCE,
+                      struct.pack("<2BfI", int(index), 1 if actif else 0,
+                                  float(impulsions_s), int(impulsions)),
+                      ecriture=True, en_file=True)
+        return self._dernier_index
+
+    # -- capteurs du kit convoyeur ----------------------------------------
+
+    def activer_capteur_ir(self, port: int, actif: bool = True,
+                           version: int = 1) -> None:
+        """
+        Allume ou eteint le capteur infrarouge de presence, sur un port GP.
+
+        A faire UNE FOIS avant de lire : le capteur reste muet tant qu'il
+        n'est pas active. Commande immediate.
+        """
+        self.echanger(CommandeDobot.CAPTEUR_IR,
+                      struct.pack("<3B", 1 if actif else 0, int(port),
+                                  int(version)), ecriture=True)
+
+    def capteur_ir(self, port: int) -> bool:
+        """
+        Vrai si le capteur infrarouge voit quelque chose devant lui.
+
+        Le capteur doit avoir ete active par `activer_capteur_ir`.
+        """
+        p = self.echanger(CommandeDobot.CAPTEUR_IR,
+                          struct.pack("<2B", int(port), 0))
+        if not p:
+            raise ErreurTrame("GetInfraredSensor : reponse vide")
+        return bool(p[0])
+
+    def activer_capteur_couleur(self, port: int, actif: bool = True,
+                                version: int = 1) -> None:
+        """Allume ou eteint le capteur de couleur, sur un port GP."""
+        self.echanger(CommandeDobot.CAPTEUR_COULEUR,
+                      struct.pack("<3B", 1 if actif else 0, int(port),
+                                  int(version)), ecriture=True)
+
+    def capteur_couleur(self) -> Tuple[int, int, int]:
+        """Les trois composantes lues par le capteur de couleur, 0 a 255."""
+        p = self.echanger(CommandeDobot.CAPTEUR_COULEUR)
+        if len(p) < 3:
+            raise ErreurTrame("GetColorSensor : {} octets".format(len(p)))
+        return int(p[0]), int(p[1]), int(p[2])
 
 
 def resume_alarmes(indices: Sequence[int]) -> List[str]:

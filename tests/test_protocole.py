@@ -190,6 +190,11 @@ class SerieSimulee:
             return struct.pack("<Q", self.index if self.demarree else 0)
         if ident == CommandeDobot.ALARMES:
             return b"\x00" * 16
+        if ident == CommandeDobot.CAPTEUR_IR:
+            # lecture : params = (port, 0) ; ecriture : (actif, port, version)
+            return bytes((getattr(self, "ir", 0),)) if len(params) == 2 else b""
+        if ident == CommandeDobot.CAPTEUR_COULEUR:
+            return bytes(getattr(self, "couleur", (0, 0, 0)))                 if not params else b""
         if ident == CommandeDobot.ES_ENTREE:
             return bytes((params[0] if params else 1, 1))
         if ident == CommandeDobot.FILE_DEMARRER:

@@ -172,6 +172,9 @@ class Pilote:
 
         # derniere cible cartesienne connue, pour les coordonnees omises
         self._pose = list(self.robot.pose(self.q_depart))
+        #: le tapis de la cellule, s'il y en a un. Pose une fois, il sert
+        #: de defaut a toutes les commandes de convoyeur du programme.
+        self.tapis = None
 
     # -- reglages -----------------------------------------------------------
 
@@ -499,6 +502,58 @@ class Pilote:
         return self.actionner(fermee, commentaire, couper)
 
     # -- entrees / sorties tout-ou-rien ------------------------------------
+
+    def convoyeur(self, vitesse: float = 0.0, tapis=None,
+                  commentaire: str = "") -> "Pilote":
+        """
+        Regle la vitesse du tapis, en MILLIMETRES PAR SECONDE.
+
+            robot.convoyeur(60, TAPIS)        # avance a 60 mm/s
+            robot.movl(TAPIS.cible(450, 0, 5))
+            robot.convoyeur(0, TAPIS)         # arret
+
+        Une vitesse nulle arrete le tapis. Une vitesse negative le fait
+        reculer. L'instruction prend sa place dans le programme comme une
+        sortie : elle part quand la file l'atteint, et le tapis continue
+        a tourner pendant les mouvements qui suivent.
+
+        `tapis` est un `Convoyeur` : on lui demande son pas, en
+        impulsions par millimetre, et ce pas voyage avec l'instruction
+        jusqu'au robot reel. Sans lui, la valeur nominale du kit Dobot
+        est retenue -- et un tapis different n'avancerait pas de la
+        distance voulue.
+
+        Le tapis du Pilote (`robot.tapis`) sert de defaut : il suffit de
+        le poser une fois.
+        """
+        tapis = tapis if tapis is not None else getattr(self, "tapis", None)
+        pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or 0.0)
+        index = int(getattr(tapis, "index_moteur", 0) or 0)
+        v = float(vitesse)
+        self.programme.ajouter(Instruction(
+            type="CONVOYEUR", vitesse=v, etat=bool(v), port=index,
+            impulsions_par_mm=pas, commentaire=commentaire))
+        return self
+
+    def attendre_piece(self, port: int, etat: bool = True,
+                       timeout: float = 30.0,
+                       commentaire: str = "piece au capteur") -> "Pilote":
+        """
+        Suspend le programme jusqu'a ce que le capteur du tapis voie une
+        piece.
+
+        C'est `attendre_entree` sous un autre nom : le capteur de
+        presence du kit convoyeur se cable sur une entree tout-ou-rien,
+        et le programme s'y synchronise comme sur n'importe quel capteur
+        de cellule. Le nom dit l'intention, ce qui se relit mieux dans un
+        programme de TP.
+
+        Le capteur infrarouge Dobot, lui, se branche sur un port GP et se
+        lit par `PontReel.capteur_piece()` -- hors file, donc depuis un
+        script, pas depuis le programme.
+        """
+        return self.attendre_entree(port, etat=etat, timeout=timeout,
+                                    commentaire=commentaire)
 
     def sortie(self, port: int, etat: bool = True,
                commentaire: str = "") -> "Pilote":
