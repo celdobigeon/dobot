@@ -26,6 +26,7 @@ le tapis une duree connue, mesurez le deplacement, et corrigez ici. Le
 nombre voyage ensuite avec le programme jusqu'au robot.
 """
 
+import json
 import math
 import os
 import sys
@@ -77,23 +78,41 @@ TAPIS = Convoyeur(
     capteur_port=PORTS_GP["GP4"],
 )
 
-# Au droit du capteur, sur la bande -- mais TOURNEE D'UN QUART DE TOUR.
+# LE POINT DE PRISE : appris si on l'a appris, calcule sinon.
 #
-# Pourquoi. Une cible prise dans le repere du tapis en herite
-# l'orientation : le tapis etant pose a rz=-90, la cible demande -90 au
-# poignet, et comme J1 vaut zero a cet endroit c'est J4 qui doit les
-# fournir en entier -- pile sur sa butee de 90 deg. controler() le disait
-# sans qu'on voie pourquoi.
+# Calcule, il vaut ce que valent les cotes du tapis ci-dessus -- qui sont
+# plausibles et non relevees. Sur la machine, cela a envoye le bras a
+# cent millimetres de la piece. Le tapis, le capteur et l'arret etaient
+# pourtant justes : c'etait le repere du tapis qui ne correspondait a
+# rien de reel.
 #
-# Une ventouse se moque de son orientation autour de z : elle aspire
-# aussi bien dans un sens que dans l'autre. Ce quart de tour ne coute
-# donc rien et ramene le poignet au large. Avec une PINCE il serait au
-# contraire impose par la piece, et il faudrait deplacer le tapis ou le
-# robot plutot que tordre le poignet.
-PRISE = TAPIS.cible(250, 0, 85) @ hg.rot_z(math.radians(-90))
-# La depose est RAMENEE VERS LE ROBOT : le tapis occupe desormais la
-# bande x = 200..260, et l'ancienne depose a (250 ; -60) tombait
-# dessus. Posez la votre ou il y a vraiment de la place.
+# Appris, il absorbe d'un coup la place reelle du tapis, l'abscisse
+# reelle du capteur, le retard de la scrutation, et le decalage entre le
+# bord de la piece que le capteur voit et son centre que la ventouse
+# vise. Aucune de ces grandeurs n'a besoin d'etre connue separement.
+#
+#     python etalonner_convoyeur.py COM6
+#
+# Le quart de tour, lui, reste utile dans les deux cas : une cible prise
+# dans le repere du tapis en herite l'orientation, et ce tapis est pose
+# a rz=-90, ce qui mettrait J4 sur sa butee. Une ventouse se moque de
+# son orientation autour de z ; avec une PINCE elle serait imposee par
+# la piece, et il faudrait deplacer le tapis plutot que tordre le
+# poignet.
+_APPRIS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "convoyeur_etalonnage.json")
+if os.path.exists(_APPRIS):
+    with open(_APPRIS, encoding="utf-8") as _f:
+        _p = json.load(_f)
+    PRISE = cible(x=_p["x"], y=_p["y"], z=_p["z"], rz=_p["rz"])
+    print("point de prise APPRIS sur {} essai(s) : "
+          "x={x:.1f} y={y:.1f} z={z:.1f}".format(_p.get("essais", 1), **_p))
+else:
+    # z=85 : hauteur relevee sur la cellule, et non une valeur
+    # de principe. Ne la remettez pas a zero.
+    PRISE = TAPIS.cible(250, 0, 85) @ hg.rot_z(math.radians(-90))
+    print("point de prise CALCULE sur des cotes non relevees -- lancez")
+    print("etalonner_convoyeur.py si le bras ne tombe pas sur la piece.")
 DEPOSE = cible(x=170, y=-140, z=100)        # a cote, sur la table
 HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
 
