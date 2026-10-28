@@ -189,7 +189,12 @@ class SerieSimulee:
         if ident == CommandeDobot.FILE_INDEX_COURANT:
             return struct.pack("<Q", self.index if self.demarree else 0)
         if ident == CommandeDobot.ALARMES:
-            return b"\x00" * 16
+            # `alarmes` porte des INDICES de bits, comme ceux que rend
+            # LiaisonDobot.alarmes() : on les repose dans le champ.
+            champ = bytearray(16)
+            for indice in getattr(self, "alarmes", ()):
+                champ[indice // 8] |= 1 << (indice % 8)
+            return bytes(champ)
         if ident == CommandeDobot.POSE_RAIL:
             return struct.pack("<f", float(getattr(self, "rail", 0.0)))
         if ident == CommandeDobot.RAIL_PRESENT:
