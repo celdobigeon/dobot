@@ -231,6 +231,57 @@ class Convoyeur:
 
     # -- geometrie, pour le dessin et les cibles ----------------------------
 
+    def boites(self, t: float = 0.0) -> List[dict]:
+        """
+        De quoi DESSINER le tapis : une liste de boites orientees.
+
+        Chaque boite donne `centre` (repere de la base), `axes` (colonnes
+        = axes de la boite), `dims` et un `role` -- bande, bati, capteur,
+        fenetre, champ, piece. La vue n'a plus qu'a les peindre.
+
+        La forme vit ici plutot que dans le widget pour deux raisons :
+        un objet sait decrire sa propre geometrie, et surtout cela se
+        VERIFIE sans ouvrir de fenetre OpenGL.
+        """
+        R = np.asarray(self.repere, dtype=float)
+        axes = R[:3, :3]
+        L, l = float(self.longueur), float(self.largeur)
+
+        def boite(centre, dims, role):
+            c = (R @ np.append(np.asarray(centre, dtype=float), 1.0))[:3]
+            return {"centre": c, "axes": axes, "dims": tuple(dims),
+                    "role": role}
+
+        epaisseur = 8.0
+        formes = [boite((L / 2, 0.0, -epaisseur / 2), (L, l, epaisseur), "bande")]
+        for cote in (-1, 1):
+            formes.append(boite((L / 2, cote * (l / 2 + 6), 4.0),
+                                (L, 12.0, 24.0), "bati"))
+
+        if self.capteur_s is not None:
+            s = float(self.capteur_s)
+            formes.append(boite((s, l / 2 + 26, 26.0), (16.0, 16.0, 16.0),
+                                "capteur"))
+            # la fenetre surveillee, en travers de la bande : la voir
+            # explique d'un coup qu'une piece trop rapide la traverse
+            # entre deux lectures
+            formes.append(boite((s, 0.0, 1.0),
+                                (2 * float(self.capteur_fenetre), l, 2.0),
+                                "fenetre"))
+
+        if self.camera_s is not None:
+            champ = float(self.camera_champ)
+            formes.append(boite((float(self.camera_s), 0.0, 1.0),
+                                (champ, min(champ, l), 2.0), "champ"))
+
+        for piece in self.pieces:
+            if not self.sur_le_tapis(piece, t):
+                continue
+            cote = float(piece.cote)
+            formes.append(boite((self.abscisse(piece, t), piece.y, cote / 2),
+                                (cote, cote, cote), "piece"))
+        return formes
+
     def point(self, s: float, y: float = 0.0, z: float = 0.0) -> np.ndarray:
         """Un point du tapis, en coordonnees de la BASE du robot."""
         return (self.repere @ hg.translation(float(s), float(y),

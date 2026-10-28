@@ -41,24 +41,43 @@ REEL = "--reel" in sys.argv
 # 1. LA CELLULE
 # ---------------------------------------------------------------------------
 
-# Le tapis, pose le long de l'axe y du robot : il entre a (180 ; -180) et
-# s'eloigne vers les y positifs. rz=90 fait tourner son repere d'un quart
-# de tour, pour que son axe x -- le sens de marche -- suive +y.
+# Le tapis passe DEVANT le robot, en travers, et sa bande va vers les y
+# NEGATIFS -- constate sur la machine le 28/10/2026.
+#
+# Comment on le sait, et pourquoi ce n'est pas une evidence. Un operateur
+# place face au robot le voit deplier son bras en s'eloignant de lui :
+# le +x du robot pointe donc vers le convoyeur, et le +y tombe a GAUCHE
+# de l'operateur (x avant, y gauche, z haut : la convention Dobot). La
+# bande, observee allant de gauche a droite depuis cette place, descend
+# donc les y. D'ou rz=-90, qui couche l'axe x du tapis -- son sens de
+# marche -- sur le -y du robot.
+#
+# `sens` reste a +1 : il ne decrit pas la geometrie mais le CABLAGE du
+# moteur. Une consigne positive a bien fait avancer la bande dans le
+# sens declare ici ; si vous rebranchez le moteur a l'envers, c'est
+# `sens=-1` qu'il faudra, et rien d'autre a toucher.
+#
+# A MESURER CHEZ VOUS : x, y et longueur ci-dessous sont plausibles, pas
+# releves. Mettez-y vos cotes -- le reste du programme suit.
+#
 # Le capteur est place la ou le BRAS ATTEINT la bande : plus loin, la
 # piece arrive hors de portee. controler() le dit, mais autant poser le
 # capteur au bon endroit.
 TAPIS = Convoyeur(
-    repere=repere_travail(x=170, y=-230, z=0, rz=90),
-    longueur=600,          # mm, de l'entree a la sortie
+    repere=repere_travail(x=230, y=250, z=0, rz=-90),
+    longueur=500,          # mm, de l'entree a la sortie
     largeur=60,
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
-    capteur_s=380,         # abscisse du capteur le long du tapis
-    camera_s=250,          # abscisse du champ de la camera
+    capteur_s=250,         # abscisse du capteur : pile devant le robot
+    camera_s=150,          # abscisse du champ de la camera, en amont
     capteur_eio=5,         # capteur tout-ou-rien sur l'entree EIO 5
 )
 
-PRISE = TAPIS.cible(380, 0, 5)             # au droit du capteur, sur la bande
-DEPOSE = cible(x=250, y=-60, z=10)         # a cote, sur la table
+PRISE = TAPIS.cible(250, 0, 5)             # au droit du capteur, sur la bande
+# La depose est RAMENEE VERS LE ROBOT : le tapis occupe desormais la
+# bande x = 200..260, et l'ancienne depose a (250 ; -60) tombait
+# dessus. Posez la votre ou il y a vraiment de la place.
+DEPOSE = cible(x=170, y=-140, z=10)        # a cote, sur la table
 HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
 
 VITESSE_TAPIS = 60                         # mm/s

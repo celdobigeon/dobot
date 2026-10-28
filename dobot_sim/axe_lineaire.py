@@ -93,6 +93,46 @@ class AxeLineaire:
     def dans_la_course(self, l: float) -> bool:
         return -1e-9 <= float(l) <= self.course + 1e-9
 
+    def reperage(self) -> np.ndarray:
+        """
+        Un repere pose sur le rail : x le long de la course, z vers le haut.
+
+        Sert au dessin. La direction du rail ne suffit pas a orienter une
+        boite : il faut deux autres axes, et les choisir ici evite que
+        chaque vue les reinvente -- mal, le jour ou le rail sera vertical.
+        """
+        d = np.asarray(self.direction, dtype=float)
+        d = d / (np.linalg.norm(d) or 1.0)
+        appui = np.array([0.0, 0.0, 1.0])
+        if abs(float(d @ appui)) > 0.99:        # rail vertical : autre appui
+            appui = np.array([1.0, 0.0, 0.0])
+        y = np.cross(appui, d)
+        y /= np.linalg.norm(y) or 1.0
+        T = np.eye(4)
+        T[:3, 0], T[:3, 1], T[:3, 2] = d, y, np.cross(d, y)
+        T[:3, 3] = np.asarray(self.origine, dtype=float)
+        return T
+
+    def boites(self, l: float = 0.0) -> list:
+        """
+        De quoi DESSINER le rail : la poutre et le chariot en `l`.
+
+        Meme convention que `Convoyeur.boites` -- centre, axes, dims,
+        role -- et meme raison d'etre ici : cela se verifie sans fenetre.
+        """
+        T = self.reperage()
+        axes = T[:3, :3]
+
+        def boite(centre, dims, role):
+            c = (T @ np.append(np.asarray(centre, dtype=float), 1.0))[:3]
+            return {"centre": c, "axes": axes, "dims": tuple(dims),
+                    "role": role}
+
+        course = float(self.course)
+        return [boite((course / 2, 0.0, -30.0), (course, 90.0, 24.0), "poutre"),
+                boite((self.borner(l), 0.0, -12.0), (120.0, 110.0, 14.0),
+                      "chariot")]
+
     def matrice(self, l: float) -> np.ndarray:
         """
         La translation de la base quand le chariot est en `l`.

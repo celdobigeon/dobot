@@ -224,6 +224,12 @@ class Vue3D(gl.GLViewWidget):
         self._items_objets: List[gl.GLGraphicsItem.GLGraphicsItem] = []
         #: la camera (boitier et champ de vision), si on la connait
         self._items_camera: List[gl.GLGraphicsItem.GLGraphicsItem] = []
+        #: le tapis et le rail, quand la cellule en comporte
+        self._items_tapis: List[gl.GLGraphicsItem.GLGraphicsItem] = []
+        self._items_rail: List[gl.GLGraphicsItem.GLGraphicsItem] = []
+        #: deplacement de la BASE du robot -- c'est tout ce que fait
+        #: un rail, et le reste du dessin n'a pas a le savoir
+        self._base = np.eye(4)
         self._maillages_visibles = True
 
         self.setBackgroundColor(pg.mkColor(*FOND))
@@ -362,6 +368,8 @@ class Vue3D(gl.GLViewWidget):
         """Place le robot dans la configuration q (degres)."""
         self._q = np.asarray(q_deg, dtype=float).copy()
         reperes = self.robot.reperes(self._q)
+        if not np.allclose(self._base, np.eye(4)):
+            reperes = [self._base @ T for T in reperes]
 
         for piece, item in zip(self.pieces + self.pieces_outil,
                                self._items_pieces + self._items_outil):
@@ -469,6 +477,75 @@ class Vue3D(gl.GLViewWidget):
                                  antialias=True, mode="lines")
         self.addItem(bord)
         return [item, bord]
+
+    # -- les peripheriques de la cellule -------------------------------------
+
+    COULEUR_BANDE = (0.18, 0.18, 0.20, 0.85)
+    COULEUR_BATI = (0.55, 0.57, 0.62, 0.70)
+    COULEUR_CAPTEUR = (0.95, 0.35, 0.20, 0.85)
+    COULEUR_FENETRE = (0.95, 0.35, 0.20, 0.30)
+    COULEUR_CHAMP = (0.30, 0.70, 0.95, 0.25)
+    COULEUR_PIECE_TAPIS = (0.95, 0.80, 0.25, 0.85)
+    COULEUR_RAIL = (0.45, 0.47, 0.52, 0.75)
+    COULEUR_CHARIOT = (0.85, 0.85, 0.90, 0.85)
+
+    #: ce qu'on peint, selon le role que l'objet s'est donne
+    COULEURS_ROLES = {
+        "bande":   (0.18, 0.18, 0.20, 0.85),
+        "bati":    (0.55, 0.57, 0.62, 0.70),
+        "capteur": (0.95, 0.35, 0.20, 0.85),
+        "fenetre": (0.95, 0.35, 0.20, 0.30),
+        "champ":   (0.30, 0.70, 0.95, 0.25),
+        "piece":   (0.95, 0.80, 0.25, 0.85),
+        "poutre":  (0.45, 0.47, 0.52, 0.75),
+        "chariot": (0.85, 0.85, 0.90, 0.85),
+    }
+    #: les roles dont les aretes n'apportent rien et alourdissent la scene
+    ROLES_SANS_ARETES = ("bati", "capteur", "fenetre", "champ")
+
+    def _peindre(self, formes) -> list:
+        """Pose dans la scene les boites qu'un objet a decrites."""
+        items = []
+        for forme in formes:
+            paire = self._items_boite(forme)
+            paire[0].setColor(self.COULEURS_ROLES.get(forme.get("role", ""),
+                                                      (0.75, 0.75, 0.75, 0.6)))
+            if forme.get("role") in self.ROLES_SANS_ARETES:
+                paire[1].setVisible(False)
+            items += paire
+        return items
+
+    def definir_convoyeur(self, tapis, t: float = 0.0) -> None:
+        """
+        Dessine le tapis a l'instant `t` : bande, bati, capteur, champ de
+        la camera, et les pieces transportees. `None` efface.
+
+        La forme vient de `Convoyeur.boites()` : deplacer le tapis dans
+        la cellule ne demande que de changer sa matrice, et le dessin
+        suit sans qu'une cote soit a reprendre ici.
+        """
+        for item in getattr(self, "_items_tapis", []):
+            self.removeItem(item)
+        self._items_tapis = [] if tapis is None else self._peindre(tapis.boites(t))
+
+    def definir_rail(self, axe, l: float = 0.0) -> None:
+        """
+        Dessine le rail et y pose le robot. `None` efface et remet la
+        base a l'origine.
+
+        Le rail ne fait qu'une chose : deplacer le repere dans lequel le
+        bras travaille. On le represente donc par un changement de repere
+        de la BASE, applique a tout le robot dans `maj()` -- et non en
+        bougeant chaque maillage, ce qui reviendrait au meme en plus
+        fragile.
+        """
+        for item in getattr(self, "_items_rail", []):
+            self.removeItem(item)
+        self._items_rail = []
+        self._base = np.eye(4) if axe is None else axe.matrice(float(l))
+        if axe is not None:
+            self._items_rail = self._peindre(axe.boites(l))
+        self.maj(self._q)
 
     def definir_tenue(self, boite: Optional[dict]) -> None:
         """

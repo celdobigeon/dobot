@@ -25,6 +25,8 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from . import homogeneous as hg
 from . import meshes as mm
 from . import outils as ou
+from .axe_lineaire import AxeLineaire
+from .convoyeur import Convoyeur
 from .es import PORTS_RESERVES, EtatES
 from .program import Instruction, Programme, TYPES_INSTRUCTION, programme_demo
 from .robot import (DobotMagician, ErreurCinematique, cible, repere_travail,
@@ -1367,6 +1369,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self._creer_dock_programme()
         self._creer_docks_bas()
         self._creer_dock_reel()
+        self._creer_dock_cellule()
         self._creer_menus()
         self._proportions_initiales()
         #: disposition de reference. Elle ne peut pas etre photographiee
@@ -2159,6 +2162,308 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         d2.raise_()
         self.resizeDocks([d2], [300], QtCore.Qt.Vertical)
         d1.hide()
+
+    # -- panneau cellule : convoyeur et axe lineaire ------------------------
+
+    def _creer_dock_cellule(self) -> None:
+        """
+        Les peripheriques de la cellule : on declare ce qu'on a, et on le
+        pilote SEPAREMENT du bras.
+
+        Pourquoi un pilotage independant. Regler un convoyeur ou un rail
+        demande de le faire bouger seul, pour mesurer son pas, trouver le
+        bon sens, placer un capteur. Passer par un programme oblige a
+        ecrire un cycle complet et a lancer le bras pour voir tourner une
+        courroie : on ne met pas au point un tapis en faisant plonger une
+        ventouse a cote. Les boutons ci-dessous agissent donc tout de
+        suite, et le bras ne bouge pas.
+
+        En simulation ils animent la scene ; machine connectee, ils
+        parlent AUSSI au controleur. C'est volontaire : le meme geste
+        fait la meme chose des deux cotes, et l'ecart saute aux yeux.
+        """
+        self.tapis = None
+        self.axe = None
+        self._t_tapis = 0.0
+        self._v_tapis = 0.0
+
+        self.minuteur_tapis = QtCore.QTimer(self)
+        self.minuteur_tapis.setInterval(40)
+        self.minuteur_tapis.timeout.connect(self._tapis_pas)
+
+        dock = QtWidgets.QDockWidget("Cellule", self)
+        dock.setObjectName("dock_cellule")
+        page = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(page)
+        lay.setContentsMargins(6, 6, 6, 6)
+
+        def spin(mini, maxi, val, suffixe="", pas=1.0, decimales=0):
+            s = QtWidgets.QDoubleSpinBox()
+            s.setRange(mini, maxi)
+            s.setDecimals(decimales)
+            s.setSingleStep(pas)
+            s.setValue(val)
+            if suffixe:
+                s.setSuffix(" " + suffixe)
+            return s
+
+        # ------------------------------------------------------------ tapis
+        self.grp_tapis = QtWidgets.QGroupBox("Convoyeur")
+        self.grp_tapis.setCheckable(True)
+        self.grp_tapis.setChecked(False)
+        gl_ = QtWidgets.QGridLayout(self.grp_tapis)
+        gl_.setContentsMargins(8, 4, 8, 6)
+
+        self.sp_tapis_x = spin(-600, 600, 230, "mm", 5)
+        self.sp_tapis_y = spin(-600, 600, 250, "mm", 5)
+        self.sp_tapis_rz = spin(-180, 180, -90, "deg", 15)
+        self.sp_tapis_long = spin(100, 2000, 500, "mm", 10)
+        self.sp_tapis_larg = spin(20, 300, 60, "mm", 5)
+        self.sp_tapis_imp = spin(1, 2000, 282.9, "imp/mm", 1, 1)
+        self.sp_tapis_capteur = spin(0, 2000, 250, "mm", 10)
+        self.cb_tapis_moteur = QtWidgets.QComboBox()
+        self.cb_tapis_moteur.addItems(["Stepper1", "Stepper2"])
+
+        champs = [("x de l'entree", self.sp_tapis_x),
+                  ("y de l'entree", self.sp_tapis_y),
+                  ("orientation", self.sp_tapis_rz),
+                  ("longueur", self.sp_tapis_long),
+                  ("largeur", self.sp_tapis_larg),
+                  ("pas", self.sp_tapis_imp),
+                  ("capteur a", self.sp_tapis_capteur),
+                  ("moteur", self.cb_tapis_moteur)]
+        for ligne, (titre, widget) in enumerate(champs):
+            gl_.addWidget(QtWidgets.QLabel(titre), ligne, 0)
+            gl_.addWidget(widget, ligne, 1)
+
+        # Le pas est la seule valeur qu'on ne peut pas deviner : 282,9
+        # imp/mm est le NOMINAL du kit. Le bouton mesure le reste.
+        aide = QtWidgets.QLabel(
+            "Le pas vaut 282,9 imp/mm en nominal. Mesurez le votre :\n"
+            "marquez la bande, lancez le tapis 10 s, mesurez, divisez.")
+        aide.setWordWrap(True)
+        aide.setStyleSheet("color: #9aa0ac;")
+        gl_.addWidget(aide, len(champs), 0, 1, 2)
+
+        self.sp_tapis_v = spin(1, 300, 60, "mm/s", 5)
+        gl_.addWidget(QtWidgets.QLabel("vitesse"), len(champs) + 1, 0)
+        gl_.addWidget(self.sp_tapis_v, len(champs) + 1, 1)
+
+        boutons = QtWidgets.QHBoxLayout()
+        self.bt_tapis_arriere = QtWidgets.QPushButton("◀ arriere")
+        self.bt_tapis_stop = QtWidgets.QPushButton("■ stop")
+        self.bt_tapis_avant = QtWidgets.QPushButton("avant ▶")
+        for b in (self.bt_tapis_arriere, self.bt_tapis_stop, self.bt_tapis_avant):
+            boutons.addWidget(b)
+        gl_.addLayout(boutons, len(champs) + 2, 0, 1, 2)
+
+        self.bt_tapis_piece = QtWidgets.QPushButton("poser une piece a l'entree")
+        gl_.addWidget(self.bt_tapis_piece, len(champs) + 3, 0, 1, 2)
+        self.lab_tapis = QtWidgets.QLabel("tapis a l'arret")
+        self.lab_tapis.setWordWrap(True)
+        gl_.addWidget(self.lab_tapis, len(champs) + 4, 0, 1, 2)
+
+        lay.addWidget(self.grp_tapis)
+
+        # ------------------------------------------------------------- rail
+        self.grp_axe = QtWidgets.QGroupBox("Axe lineaire")
+        self.grp_axe.setCheckable(True)
+        self.grp_axe.setChecked(False)
+        ga = QtWidgets.QGridLayout(self.grp_axe)
+        ga.setContentsMargins(8, 4, 8, 6)
+
+        self.sp_axe_course = spin(100, 3000, 1000, "mm", 50)
+        self.cb_axe_dir = QtWidgets.QComboBox()
+        self.cb_axe_dir.addItems(["+y (gauche)", "-y (droite)",
+                                  "+x (avant)", "-x (arriere)"])
+        self.sp_axe_l = spin(0, 3000, 0, "mm", 10)
+        self.sp_axe_pas = spin(1, 500, 50, "mm", 10)
+
+        for ligne, (titre, widget) in enumerate(
+                [("course", self.sp_axe_course),
+                 ("direction", self.cb_axe_dir),
+                 ("position", self.sp_axe_l),
+                 ("pas du jog", self.sp_axe_pas)]):
+            ga.addWidget(QtWidgets.QLabel(titre), ligne, 0)
+            ga.addWidget(widget, ligne, 1)
+
+        # La direction par defaut n'est PAS verifiee sur machine : le
+        # protocole documente la cinquieme coordonnee sans dire ou elle
+        # pousse. Le dire ici evite qu'on la prenne pour un releve.
+        note = QtWidgets.QLabel(
+            "La direction est une HYPOTHESE, pas un releve. Pour la "
+            "fixer : notez la pose, deplacez le chariot de 100 mm, "
+            "relisez. La coordonnee qui a bouge donne la direction.")
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #9aa0ac;")
+        ga.addWidget(note, 4, 0, 1, 2)
+
+        bj = QtWidgets.QHBoxLayout()
+        self.bt_axe_moins = QtWidgets.QPushButton("◀")
+        self.bt_axe_aller = QtWidgets.QPushButton("aller a la position")
+        self.bt_axe_plus = QtWidgets.QPushButton("▶")
+        for b in (self.bt_axe_moins, self.bt_axe_aller, self.bt_axe_plus):
+            bj.addWidget(b)
+        ga.addLayout(bj, 5, 0, 1, 2)
+        self.lab_axe = QtWidgets.QLabel("chariot a 0 mm")
+        self.lab_axe.setWordWrap(True)
+        ga.addWidget(self.lab_axe, 6, 0, 1, 2)
+
+        lay.addWidget(self.grp_axe)
+        lay.addStretch(1)
+
+        # ------------------------------------------------------------ cablage
+        self.grp_tapis.toggled.connect(self._cellule_tapis_change)
+        self.grp_axe.toggled.connect(self._cellule_axe_change)
+        for s in (self.sp_tapis_x, self.sp_tapis_y, self.sp_tapis_rz,
+                  self.sp_tapis_long, self.sp_tapis_larg, self.sp_tapis_imp,
+                  self.sp_tapis_capteur):
+            s.valueChanged.connect(self._cellule_tapis_change)
+        self.cb_tapis_moteur.currentIndexChanged.connect(self._cellule_tapis_change)
+        for s in (self.sp_axe_course,):
+            s.valueChanged.connect(self._cellule_axe_change)
+        self.cb_axe_dir.currentIndexChanged.connect(self._cellule_axe_change)
+
+        self.bt_tapis_avant.clicked.connect(lambda: self._tapis_marche(+1))
+        self.bt_tapis_arriere.clicked.connect(lambda: self._tapis_marche(-1))
+        self.bt_tapis_stop.clicked.connect(lambda: self._tapis_marche(0))
+        self.bt_tapis_piece.clicked.connect(self._tapis_poser_piece)
+        self.bt_axe_aller.clicked.connect(
+            lambda: self._axe_aller(self.sp_axe_l.value()))
+        self.bt_axe_moins.clicked.connect(
+            lambda: self._axe_aller(self.sp_axe_l.value() - self.sp_axe_pas.value()))
+        self.bt_axe_plus.clicked.connect(
+            lambda: self._axe_aller(self.sp_axe_l.value() + self.sp_axe_pas.value()))
+
+        dock.setWidget(self._defilable(page))
+        dock.setMinimumWidth(300)
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        self.docks.append(dock)
+        self._dock_cellule = dock
+        reel = getattr(self, "_dock_reel", None)
+        if reel is not None:
+            self.tabifyDockWidget(reel, dock)
+            reel.raise_()
+
+    # -- cellule : declaration ----------------------------------------------
+
+    def _cellule_tapis_change(self, *_) -> None:
+        """Le tapis a ete (de)coche ou reconfigure : on le reconstruit."""
+        if not self.grp_tapis.isChecked():
+            self.tapis = None
+            self._v_tapis = 0.0
+            self.minuteur_tapis.stop()
+            self.lab_tapis.setText("tapis a l'arret")
+        else:
+            pieces = list(self.tapis.pieces) if self.tapis is not None else []
+            self.tapis = Convoyeur(
+                repere=repere_travail(x=self.sp_tapis_x.value(),
+                                      y=self.sp_tapis_y.value(), z=0.0,
+                                      rz=self.sp_tapis_rz.value()),
+                longueur=self.sp_tapis_long.value(),
+                largeur=self.sp_tapis_larg.value(),
+                index_moteur=self.cb_tapis_moteur.currentIndex(),
+                impulsions_par_mm=self.sp_tapis_imp.value(),
+                capteur_s=self.sp_tapis_capteur.value(),
+                camera_s=max(0.0, self.sp_tapis_capteur.value() - 100.0))
+            self.tapis.pieces = pieces
+        self._cellule_redessiner()
+
+    def _cellule_axe_change(self, *_) -> None:
+        """L'axe lineaire a ete (de)coche ou reconfigure."""
+        if not self.grp_axe.isChecked():
+            self.axe = None
+            self.lab_axe.setText("pas d'axe lineaire")
+        else:
+            directions = [(0, 1, 0), (0, -1, 0), (1, 0, 0), (-1, 0, 0)]
+            self.axe = AxeLineaire(
+                course=self.sp_axe_course.value(),
+                direction=directions[self.cb_axe_dir.currentIndex()])
+            self.sp_axe_l.setRange(0, self.axe.course)
+            self.lab_axe.setText("chariot a {:.0f} mm".format(self.sp_axe_l.value()))
+        self._cellule_redessiner()
+
+    def _cellule_redessiner(self) -> None:
+        """Remet tapis et rail dans la vue, si elle sait les dessiner."""
+        if hasattr(self.vue, "definir_convoyeur"):
+            self.vue.definir_convoyeur(self.tapis, self._t_tapis)
+        if hasattr(self.vue, "definir_rail"):
+            self.vue.definir_rail(self.axe, self.sp_axe_l.value())
+
+    # -- cellule : pilotage independant --------------------------------------
+
+    def _tapis_marche(self, sens: int) -> None:
+        """
+        Lance ou arrete le tapis TOUT DE SUITE. Le bras ne bouge pas.
+
+        Machine connectee, la consigne part aussi au controleur : c'est
+        le meme geste des deux cotes.
+        """
+        if self.tapis is None:
+            return
+        v = sens * self.sp_tapis_v.value()
+        self._v_tapis = v
+        self.tapis.regler(v, self._t_tapis)
+        if v:
+            self.minuteur_tapis.start()
+        else:
+            self.minuteur_tapis.stop()
+
+        etat = "arret" if not v else "{:+.0f} mm/s".format(v)
+        imp = self.tapis.impulsions_par_seconde(v)
+        texte = "tapis : {}  ({:+.0f} impulsions/s)".format(etat, imp)
+        if getattr(self, "pont", None) is not None and self.pont.connecte:
+            try:
+                self.pont.convoyeur(v, self.tapis)
+                texte += "  -- envoye a la machine"
+            except Exception as exc:
+                texte += "  -- REFUSE : {}".format(exc)
+                self.journal("convoyeur : {}".format(exc))
+        self.lab_tapis.setText(texte)
+
+    def _tapis_pas(self) -> None:
+        """Avance l'horloge du tapis et redessine : les pieces defilent."""
+        if self.tapis is None:
+            self.minuteur_tapis.stop()
+            return
+        self._t_tapis += self.minuteur_tapis.interval() / 1000.0
+        if hasattr(self.vue, "definir_convoyeur"):
+            self.vue.definir_convoyeur(self.tapis, self._t_tapis)
+        if self.tapis.capteur(self._t_tapis):
+            self.lab_tapis.setText("CAPTEUR : une piece est dans la fenetre")
+
+    def _tapis_poser_piece(self) -> None:
+        """
+        Pose une piece a l'entree du tapis.
+
+        Sans piece, un tapis qui tourne ne se voit pas : la bande n'a pas
+        de texture. C'est aussi ce qui permet d'essayer le capteur.
+        """
+        if self.tapis is None:
+            return
+        self.tapis.poser(0.0, t0=self._t_tapis)
+        if hasattr(self.vue, "definir_convoyeur"):
+            self.vue.definir_convoyeur(self.tapis, self._t_tapis)
+        self.lab_tapis.setText("piece posee a l'entree ({} sur le tapis)"
+                               .format(len(self.tapis.pieces)))
+
+    def _axe_aller(self, l: float) -> None:
+        """Amene le chariot. Le bras garde sa pose et glisse avec la base."""
+        if self.axe is None:
+            return
+        l = float(np.clip(l, 0.0, self.axe.course))
+        self.sp_axe_l.setValue(l)
+        if hasattr(self.vue, "definir_rail"):
+            self.vue.definir_rail(self.axe, l)
+        texte = "chariot a {:.0f} mm".format(l)
+        if getattr(self, "pont", None) is not None and self.pont.connecte:
+            try:
+                self.pont.rail(l)
+                texte += "  -- envoye a la machine"
+            except Exception as exc:
+                texte += "  -- REFUSE : {}".format(exc)
+                self.journal("axe lineaire : {}".format(exc))
+        self.lab_axe.setText(texte)
 
     # -- panneau robot reel -------------------------------------------------
 
