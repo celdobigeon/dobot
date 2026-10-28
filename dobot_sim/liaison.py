@@ -963,6 +963,9 @@ class LiaisonDobot:
         ignore. Et comme l'exposant domine, toutes les vitesses donnent
         le meme ordre de grandeur delirant : baisser la consigne ne
         rattrape rien, et l'erreur est invisible a l'essai.
+
+        VERIFIE SUR MACHINE : tapis du kit Dobot sur Stepper1,
+        firmware 3.7.0, marche avant et arriere a 60 mm/s.
         """
         self.echanger(CommandeDobot.MOTEUR_ETENDU,
                       struct.pack("<2Bi", int(index), 1 if actif else 0,
