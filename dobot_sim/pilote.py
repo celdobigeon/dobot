@@ -663,6 +663,28 @@ class Pilote:
 
     # -- simulation ---------------------------------------------------------
 
+    def pose_sur_robot(self, port: Optional[str] = None) -> np.ndarray:
+        """
+        La pose de l'OUTIL lue sur la machine, en matrice homogene.
+
+        Le bras ne bouge pas : on lit. C'est le geste de
+        l'APPRENTISSAGE -- on amene la ventouse ou elle doit aller, a la
+        main, et on demande au robot ou il est. Le point obtenu absorbe
+        d'un coup tout ce qu'on ne sait pas mesurer autrement : la place
+        exacte du tapis, l'abscisse reelle du capteur, le retard de la
+        chaine de scrutation, le decalage entre le bord de la piece que
+        le capteur voit et son centre que la ventouse doit viser.
+
+        Un point appris vaut mieux qu'un point calcule a partir de cotes
+        relevees au decimetre.
+        """
+        from .robot import cible as _cible
+
+        pont = _liaison_directe(self.robot, port)
+        p = pont.liaison.pose()
+        x, y, z, r = pont.depuis_controleur(p.x, p.y, p.z, p.r)
+        return _cible(x=x, y=y, z=z, rz=r)
+
     def convoyeur_sur_robot(self, vitesse: float = 0.0, tapis=None,
                             port: Optional[str] = None) -> "Pilote":
         """
@@ -683,7 +705,7 @@ class Pilote:
         return self
 
     def attendre_piece_sur_robot(self, timeout: float = 30.0, tapis=None,
-                                 etat: bool = True,
+                                 etat: bool = True, periode: float = 0.0,
                                  port: Optional[str] = None) -> bool:
         """
         Attend que le capteur du tapis voie une piece, en le SCRUTANT
@@ -698,6 +720,24 @@ class Pilote:
         synchroniser. Le cycle doit alors etre mene depuis le PC, morceau
         par morceau -- c'est le prix du cablage, pas un choix de style.
 
+        CE QUE LA SCRUTATION COUTE EN PRECISION, et comment le calculer.
+        La piece continue d'avancer entre deux lectures : on ne la voit
+        donc pas la ou elle est, mais la ou elle etait. La dispersion de
+        la position d'arret vaut
+
+            vitesse du tapis  x  periode de scrutation
+
+        Sur cette cellule, une lecture du capteur prend 9,7 ms (mesure a
+        115200 bauds, firmware 3.7.0) et l'ordre d'arret 9,4 ms. A
+        60 mm/s, cela fait environ 1,2 mm de dispersion et 0,6 mm de
+        retard moyen -- et jusqu'a 3 mm quand la liaison hoquette.
+
+        D'ou `periode=0` par defaut : on scrute aussi vite que la liaison
+        le permet. Mettre une pause n'economise rien d'utile et multiplie
+        l'erreur d'autant. Et si la precision ne suffit toujours pas,
+        c'est la VITESSE qu'il faut baisser : elle entre directement dans
+        le produit ci-dessus.
+
         Ctrl+C rend la main sans rien casser : le tapis continue, c'est a
         l'appelant de l'arreter.
         """
@@ -711,7 +751,8 @@ class Pilote:
         while _time.time() < fin:
             if bool(pont.capteur_piece(tapis)) == bool(etat):
                 return True
-            _time.sleep(0.02)
+            if periode > 0:
+                _time.sleep(periode)
         return False
 
     def executer_sur_robot(self, vitesse: float = 30.0,
