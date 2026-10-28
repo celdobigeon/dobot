@@ -36,3 +36,8 @@ examples/perception/apprentissage/synthetique/
 examples/perception/apprentissage/points_cles/donnees/
 examples/perception/apprentissage/rgbd/donnees/
 examples/perception/etalonnage_camera_robot*.json
+
+# Etalonnage de la cellule : une MESURE de la machine du labo, pas du
+# code. Clone ailleurs, il enverrait le bras ou la piece ne sera pas.
+# L'exemple s'en passe : sans lui il calcule, et il le signale.
+examples/convoyeur_etalonnage.json
