@@ -50,6 +50,7 @@ from .robot import (DobotMagician, Encombrement, ErreurCinematique, Geometrie,
                     Limites, cible, decomposer_cible, depuis_xyzrpy,
                     repere_travail, vers_xyzrpy, verifier_repere_objet,
                     verifier_repere_outil)
+from .axe_lineaire import AxeLineaire
 from .convoyeur import Convoyeur, Piece
 from .image import ErreurImage, lire_image, programme_depuis_image
 from .svg import ErreurSVG, lire_svg, programme_depuis_svg
@@ -72,7 +73,7 @@ __all__ = [
     "programme_depuis_svg", "lire_svg", "ErreurSVG",
     "programme_depuis_image", "lire_image", "ErreurImage",
     "programme_depuis_dessin", "programme_depuis_polylignes",
-    "Convoyeur", "Piece",
+    "Convoyeur", "Piece", "AxeLineaire",
     "identite", "translation", "rot_x", "rot_y", "rot_z",
     "composer", "inverse", "interpoler", "rotation_de", "position_de", "formater",
     "__version__",

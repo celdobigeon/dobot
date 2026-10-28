@@ -140,6 +140,8 @@ class PontReel:
         # capteurs infrarouges deja allumes : ils restent muets tant
         # qu'on ne les a pas actives, et une fois suffit
         self._capteurs_actives: set = set()
+        # le rail n'est declare au controleur qu'une fois par liaison
+        self._rail_declare = False
         # commandes qui n'ont pas tenu dans la file au televersement, et la
         # generation de file a laquelle elles appartiennent
         self._reste: List[Callable[[], int]] = []
@@ -694,13 +696,23 @@ class PontReel:
 
         if t in ("MOVJ", "MOVL"):
             cadence = self._regler_cadence(li, ins)
+            # Le rail n'est pas une commande a part : c'est la CINQUIEME
+            # coordonnee du mouvement. Bras et chariot partent et
+            # arrivent ensemble, cadences par le controleur.
+            rail = float(ins.rail) if getattr(ins, "avec_rail", False) else None
+            if rail is not None:
+                self._assurer_rail(li)
             if getattr(ins, "mode", "cartesien") == "articulaire":
                 q = [float(v) for v in ins.q]
                 mode = PTP.MOVJ_ANGLE if t == "MOVJ" else PTP.MOVL_ANGLE
-                return cadence + [lambda: li.ptp(mode, *q)]
+                if rail is None:
+                    return cadence + [lambda: li.ptp(mode, *q)]
+                return cadence + [lambda: li.ptp_avec_rail(mode, *q, rail)]
             x, y, z, r = self._cible(ins, programme)
             mode = PTP.MOVJ_XYZ if t == "MOVJ" else PTP.MOVL_XYZ
-            return cadence + [lambda: li.ptp(mode, x, y, z, r)]
+            if rail is None:
+                return cadence + [lambda: li.ptp(mode, x, y, z, r)]
+            return cadence + [lambda: li.ptp_avec_rail(mode, x, y, z, r, rail)]
 
         if t == "MOVC":
             cadence = self._regler_cadence(li, ins)
@@ -791,6 +803,38 @@ class PontReel:
             li.echanger(ident, params, ecriture=True, en_file=True)
             return li.dernier_index
         return [envoyer]
+
+    def _assurer_rail(self, li: LiaisonDobot) -> None:
+        """
+        Declare le rail au controleur, une fois pour la connexion.
+
+        Sans cette declaration, le controleur ignore la cinquieme
+        coordonnee : le bras va bien a sa cible, mais le chariot ne bouge
+        pas -- et rien ne le signale.
+        """
+        if self._rail_declare:
+            return
+        li.declarer_rail(True)
+        self._rail_declare = True
+        self.journal("axe lineaire declare au controleur")
+
+    def rail(self, l: float) -> None:
+        """
+        Position du chariot, TOUT DE SUITE, bras immobile.
+
+        Geste de mise au point, hors programme : on amene le chariot et
+        on regarde. Le bras garde la pose qu'il a.
+        """
+        li = self._exiger()
+        self._assurer_rail(li)
+        p = li.pose()
+        li.ptp_avec_rail(PTP.MOVJ_XYZ, p.x, p.y, p.z, p.r, float(l))
+        li.demarrer_file()
+        self.journal("chariot envoye a {:.0f} mm".format(float(l)))
+
+    def position_rail(self) -> float:
+        """Ou le controleur croit que le chariot se trouve, en mm."""
+        return self._exiger().pose_rail()
 
     def _assurer_port(self, li: LiaisonDobot, port: int, fonction: int) -> None:
         """Configure le multiplexage d'un port EIO, une seule fois."""

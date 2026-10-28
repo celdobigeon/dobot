@@ -175,6 +175,11 @@ class Pilote:
         #: le tapis de la cellule, s'il y en a un. Pose une fois, il sert
         #: de defaut a toutes les commandes de convoyeur du programme.
         self.tapis = None
+        #: l'axe lineaire, s'il y en a un, et la position courante du
+        #: chariot -- retenue pour que `controler` et la simulation
+        #: sachent d'ou le bras travaille
+        self.rail = None
+        self.rail_courant = 0.0
 
     # -- reglages -----------------------------------------------------------
 
@@ -281,7 +286,7 @@ class Pilote:
 
     def movj(self, T=None, *, x=None, y=None, z=None, r=None, repere=None, q=None,
              duree=None, vitesse=None, acceleration=None, lissage=None,
-             profil=None, commentaire="") -> "Pilote":
+             profil=None, rail=None, commentaire="") -> "Pilote":
         """
         Mouvement articulaire : les angles sont interpoles, le chemin du TCP
         n'est pas rectiligne. Vitesse et acceleration sont en deg/s et deg/s2.
@@ -291,20 +296,39 @@ class Pilote:
             robot.movj(x=220, y=-90, z=60)       coordonnees directes
             robot.movj(q=[0, 15, 30, 0])         configuration articulaire
         """
+        chariot = self._chariot(rail)
         if q is not None:
             ins = self._ajouter("MOVJ", duree, vitesse, acceleration, lissage,
                                 profil, commentaire, None, mode="articulaire",
-                                q=[float(v) for v in q])
+                                q=[float(v) for v in q], **chariot)
             self._pose = list(self.robot.pose(ins.q))
         else:
             self._ajouter("MOVJ", duree, vitesse, acceleration, lissage,
                           profil, commentaire, repere, mode="cartesien",
-                          pose=self._resoudre(T, x, y, z, r))
+                          pose=self._resoudre(T, x, y, z, r), **chariot)
         return self
+
+    def _chariot(self, rail) -> dict:
+        """
+        Les champs de rail d'une instruction, ou rien.
+
+        `rail=None` ne veut pas dire « chariot a zero » : il veut dire
+        « ce mouvement ne parle pas du rail ». Sans cette distinction,
+        tout programme ecrit sans rail ramenerait le chariot a l'origine
+        des qu'un rail serait declare.
+        """
+        if rail is None:
+            return {}
+        axe = getattr(self, "rail", None)
+        l = float(rail)
+        if axe is not None:
+            l = axe.borner(l)
+            self.rail_courant = l
+        return {"rail": l, "avec_rail": True}
 
     def movl(self, T=None, *, x=None, y=None, z=None, r=None, repere=None,
              duree=None, vitesse=None, acceleration=None, lissage=None,
-             profil=None, commentaire="") -> "Pilote":
+             profil=None, rail=None, commentaire="") -> "Pilote":
         """
         Mouvement cartesien rectiligne : le TCP suit une droite.
         Vitesse et acceleration sont en mm/s et mm/s2.
@@ -315,8 +339,28 @@ class Pilote:
         """
         self._ajouter("MOVL", duree, vitesse, acceleration, lissage,
                       profil, commentaire, repere, mode="cartesien",
-                      pose=self._resoudre(T, x, y, z, r))
+                      pose=self._resoudre(T, x, y, z, r),
+                      **self._chariot(rail))
         return self
+
+    def aller_rail(self, l: float, vitesse=None, lissage=None,
+                   commentaire: str = "") -> "Pilote":
+        """
+        Deplace le CHARIOT seul, le bras gardant sa pose.
+
+            robot.rail = AxeLineaire(course=1000)
+            robot.aller_rail(400)              # le chariot y va
+            robot.movl(PRISE)                  # le bras prend, de la
+
+        Le rail n'est pas une commande separee sur le controleur : c'est
+        la cinquieme coordonnee d'un mouvement point a point. On renvoie
+        donc la pose courante du bras, assortie de la nouvelle position
+        de chariot -- le bras ne bouge pas, le chariot si.
+        """
+        return self.movj(x=self._pose[0], y=self._pose[1], z=self._pose[2],
+                         r=self._pose[3], rail=l, vitesse=vitesse,
+                         lissage=lissage,
+                         commentaire=commentaire or "chariot")
 
     def movc(self, via, T=None, *, x=None, y=None, z=None, r=None, repere=None,
              duree=None, vitesse=None, acceleration=None, lissage=None,

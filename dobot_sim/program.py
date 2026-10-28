@@ -113,6 +113,12 @@ class Instruction:
     # tapis n'avancerait plus de la meme distance. `vitesse` porte alors
     # les mm/s, `port` l'index du moteur (0 = Stepper1, 1 = Stepper2).
     impulsions_par_mm: float = 0.0
+    # Axe lineaire : position du chariot pour ce mouvement, en mm. `rail`
+    # n'a de sens que si `avec_rail` est vrai -- sinon zero voudrait dire
+    # "chariot a l'origine" au lieu de "pas de rail", et tout programme
+    # ecrit sans rail ramenerait le chariot a zero.
+    rail: float = 0.0
+    avec_rail: bool = False
 
     # -- unites et valeurs effectives --------------------------------------
 

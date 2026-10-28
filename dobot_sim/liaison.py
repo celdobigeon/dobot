@@ -87,8 +87,10 @@ class CommandeDobot:
     # -- informations appareil
     NOM_APPAREIL = 1            # 1.3.2
     VERSION = 2                 # 1.3.3
+    RAIL_PRESENT = 3            # 1.3.4  uint8 avec_rail, uint8 version
     # -- pose temps reel
     POSE = 10                   # 1.4.1  -> 8 float : x y z r J1 J2 J3 J4
+    POSE_RAIL = 13              # 1.4.3  -> 1 float : position du rail, mm
     REINIT_POSE = 11            # 1.4.2  uint8 manuel + 2 float (bras, avant-bras)
     # -- calibration des capteurs d'angle
     ERREUR_CAPTEURS = 140       # 1.16.1  2 float : erreur bras, erreur avant-bras
@@ -114,6 +116,9 @@ class CommandeDobot:
     PARAMS_PTP_SAUT = 82          # 1.10.3
     PARAMS_PTP_COMMUNS = 83       # 1.10.4  2 float : ratio v, ratio a
     PTP = 84                      # 1.10.5  (file) uint8 mode + 4 float
+    # -- axe lineaire (rail) : un 7e axe qui TRANSLATE LA BASE
+    PARAMS_PTP_RAIL = 85          # 1.10.6  2 float : vitesse, acceleration
+    PTP_AVEC_RAIL = 86            # 1.10.7  (file) uint8 mode + 5 float
     # -- CP : trajectoire continue, les points s'enchainent SANS arret
     PARAMS_CP = 90              # 1.11.1  3 float + uint8 : planAcc,
     #                                     junctionVel, acc, realTimeTrack
@@ -752,6 +757,63 @@ class LiaisonDobot:
         self.echanger(CommandeDobot.PTP,
                       struct.pack("<B4f", int(mode), float(x), float(y),
                                   float(z), float(r)),
+                      ecriture=True, en_file=True)
+        return self._dernier_index
+
+    # -- axe lineaire (rail) ----------------------------------------------
+
+    def declarer_rail(self, present: bool = True, version: int = 1) -> None:
+        """
+        Dit au controleur qu'un rail est monte, ou qu'il ne l'est plus.
+
+        A faire AVANT toute commande de rail : sans cela le controleur
+        ignore la cinquieme coordonnee et le chariot ne bouge pas. Reste
+        en memoire jusqu'a la prochaine declaration.
+        """
+        self.echanger(CommandeDobot.RAIL_PRESENT,
+                      struct.pack("<2B", 1 if present else 0, int(version)),
+                      ecriture=True)
+
+    def rail_present(self) -> bool:
+        """Le controleur croit-il avoir un rail ?"""
+        p = self.echanger(CommandeDobot.RAIL_PRESENT)
+        if not p:
+            raise ErreurTrame("GetDeviceWithL : reponse vide")
+        return bool(p[0])
+
+    def pose_rail(self) -> float:
+        """Position du chariot sur le rail, en millimetres."""
+        p = self.echanger(CommandeDobot.POSE_RAIL)
+        if len(p) < 4:
+            raise ErreurTrame("GetPoseL : {} octets".format(len(p)))
+        return float(struct.unpack("<f", p[:4])[0])
+
+    def definir_cadence_rail(self, vitesse: float, acceleration: float) -> None:
+        """Vitesse et acceleration du rail en mode PTP, en mm/s et mm/s2."""
+        self.echanger(CommandeDobot.PARAMS_PTP_RAIL,
+                      struct.pack("<2f", float(vitesse), float(acceleration)),
+                      ecriture=True, en_file=True)
+
+    def cadence_rail(self) -> Tuple[float, float]:
+        """Ce que le controleur a retenu : (vitesse, acceleration)."""
+        p = self.echanger(CommandeDobot.PARAMS_PTP_RAIL)
+        if len(p) < 8:
+            raise ErreurTrame("GetPTPLParams : {} octets".format(len(p)))
+        v, a = struct.unpack("<2f", p[:8])
+        return float(v), float(a)
+
+    def ptp_avec_rail(self, mode: int, x: float, y: float, z: float,
+                      r: float, l: float) -> int:
+        """
+        Mouvement point a point du bras ET du chariot, ensemble.
+
+        Le rail n'est pas une commande separee : il est la cinquieme
+        coordonnee du mouvement. Bras et chariot partent et arrivent
+        ensemble -- c'est le controleur qui les cadence.
+        """
+        self.echanger(CommandeDobot.PTP_AVEC_RAIL,
+                      struct.pack("<B5f", int(mode), float(x), float(y),
+                                  float(z), float(r), float(l)),
                       ecriture=True, en_file=True)
         return self._dernier_index
 

@@ -190,6 +190,12 @@ class SerieSimulee:
             return struct.pack("<Q", self.index if self.demarree else 0)
         if ident == CommandeDobot.ALARMES:
             return b"\x00" * 16
+        if ident == CommandeDobot.POSE_RAIL:
+            return struct.pack("<f", float(getattr(self, "rail", 0.0)))
+        if ident == CommandeDobot.RAIL_PRESENT:
+            if params:                           # ecriture
+                self.avec_rail = bool(params[0]); return b""
+            return bytes((1 if getattr(self, "avec_rail", False) else 0,))
         if ident == CommandeDobot.CAPTEUR_IR:
             # lecture : params = (port, 0) ; ecriture : (actif, port, version)
             return bytes((getattr(self, "ir", 0),)) if len(params) == 2 else b""
