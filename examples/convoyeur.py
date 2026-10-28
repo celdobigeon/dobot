@@ -33,6 +33,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dobot_sim import Convoyeur, Pilote, cible, repere_travail   # noqa: E402
+from dobot_sim.convoyeur import PORTS_GP                         # noqa: E402
 from dobot_sim import homogeneous as hg                          # noqa: E402
 
 REEL = "--reel" in sys.argv
@@ -70,7 +71,10 @@ TAPIS = Convoyeur(
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
     capteur_s=250,         # abscisse du capteur : pile devant le robot
     camera_s=150,          # abscisse du champ de la camera, en amont
-    capteur_eio=5,         # capteur tout-ou-rien sur l'entree EIO 5
+    # Le capteur de presence est l'INFRAROUGE du kit, sur GP4.
+    # Ce n'est pas un detail de cablage : voir plus bas, il
+    # change la forme meme du cycle sur la machine.
+    capteur_port=PORTS_GP["GP4"],
 )
 
 # Au droit du capteur, sur la bande -- mais TOURNEE D'UN QUART DE TOUR.
@@ -104,27 +108,43 @@ robot = Pilote(nom="convoyeur", outil="ventouse",
 robot.tapis = TAPIS                        # sert de defaut aux commandes
 robot.regler_longueur_outil(79.3)          # mesuree sur la machine
 
-robot.repli()
-for i in range(10):
-    # le tapis amene la piece, le capteur l'arrete
-    robot.convoyeur(VITESSE_TAPIS, commentaire="le tapis amene")
-    robot.attendre_piece(TAPIS.capteur_eio, timeout=30,
-                         commentaire="piece au capteur")
-    robot.convoyeur(0, commentaire="arret sous le bras")
+CYCLES = 10
 
+
+def prise_depose(r):
+    """
+    La prise et la depose, SANS le tapis : le geste du bras, seul.
+
+    Il sert tel quel des deux cotes -- en simulation dans un programme
+    d'un seul tenant, sur la machine par morceaux -- et c'est tout
+    l'interet de l'isoler : le mouvement ne doit pas changer selon la
+    facon dont on attend la piece.
+    """
     # prise : ARRET AU POINT, sinon la ventouse aspire avant d'y etre
-    robot.movj(PRISE @ HAUT, lissage=70)
-    robot.movl(PRISE, vitesse=50)
-    robot.ventouse(True)
-    robot.attendre(0.3)
-    robot.movl(PRISE @ HAUT, lissage=80)
+    r.movj(PRISE @ HAUT, lissage=70)
+    r.movl(PRISE, vitesse=50)
+    r.ventouse(True)
+    r.attendre(0.3)
+    r.movl(PRISE @ HAUT, lissage=80)
 
     # depose a cote
-    robot.movj(DEPOSE @ HAUT, lissage=70)
-    robot.movl(DEPOSE, vitesse=50)
-    robot.ventouse(False)
-    robot.attendre(0.3)
-    robot.movl(DEPOSE @ HAUT)
+    r.movj(DEPOSE @ HAUT, lissage=70)
+    r.movl(DEPOSE, vitesse=50)
+    r.ventouse(False)
+    r.attendre(0.3)
+    r.movl(DEPOSE @ HAUT)
+
+
+# En SIMULATION, le cycle est un programme d'un seul tenant : le tapis y
+# figure comme instruction, et l'attente de la piece est remplacee par le
+# temps qu'elle met a parcourir le tapis -- un calcul, pas un capteur.
+robot.repli()
+duree_arrivee = TAPIS.capteur_s / VITESSE_TAPIS
+for i in range(CYCLES):
+    robot.convoyeur(VITESSE_TAPIS, commentaire="le tapis amene")
+    robot.attendre(duree_arrivee, commentaire="la piece arrive au capteur")
+    robot.convoyeur(0, commentaire="arret sous le bras")
+    prise_depose(robot)
 robot.repli()
 robot.convoyeur(0, commentaire="fin de cycle")
 
@@ -170,8 +190,62 @@ if quand is not None:
           "({:.0f} mm a {:.0f} mm/s)".format(quand, TAPIS.capteur_s,
                                              VITESSE_TAPIS))
 
-if REEL:
-    print("\nLE ROBOT ET LE TAPIS VONT BOUGER.")
-    robot.executer_sur_robot(vitesse=30)
-else:
+if not REEL:
     robot.simuler()
+    sys.exit(0)
+
+# ---------------------------------------------------------------------------
+# 4. SUR LA MACHINE : LE CYCLE EST MENE DEPUIS LE PC
+# ---------------------------------------------------------------------------
+#
+# Pourquoi la forme change ici, et pourquoi ce n'est pas un choix.
+#
+# Le capteur du kit est un INFRAROUGE sur un port GP. Il ne se lit que
+# par une commande immediate : la file du controleur ne sait pas
+# attendre dessus, et aucune instruction televersee ne peut s'y
+# synchroniser. Le cycle se mene donc morceau par morceau --
+#
+#     tapis en marche  ->  on SCRUTE le capteur  ->  tapis a l'arret
+#     ->  on televerse la prise-depose  ->  on recommence
+#
+# Le robot reste attache au PC pendant tout le cycle : si la liaison
+# tombe, le cycle s'arrete.
+#
+# L'AUTRE CABLAGE, et ce qu'il vaut. Un capteur tout-ou-rien sur une
+# entree EIO se laisse attendre par le controleur. On retrouve alors un
+# programme d'un seul tenant, `attendre_piece(eio)` a la place de la
+# scrutation, et la machine devient autonome -- le PC peut etre
+# debranche. Si votre cellule doit tourner seule, c'est ce cablage qu'il
+# faut, et il se declare par `capteur_eio=` au lieu de `capteur_port=`.
+
+print("")
+print("LE ROBOT ET LE TAPIS VONT BOUGER.")
+print("Le capteur est un infrarouge sur un port GP : le cycle est mene")
+print("depuis le PC, morceau par morceau. Ctrl+C arrete tout.")
+print("")
+
+robot.vider_programme()
+robot.repli()
+robot.executer_sur_robot(vitesse=30)
+
+try:
+    for i in range(CYCLES):
+        robot.convoyeur_sur_robot(VITESSE_TAPIS)
+        vue = robot.attendre_piece_sur_robot(timeout=30)
+        robot.convoyeur_sur_robot(0)
+        if not vue:
+            print("cycle {} : aucune piece en 30 s -- on s'arrete la."
+                  .format(i + 1))
+            break
+        print("cycle {}/{} : piece au capteur, on la prend"
+              .format(i + 1, CYCLES))
+        robot.vider_programme()
+        prise_depose(robot)
+        robot.executer_sur_robot(vitesse=30)
+finally:
+    # le tapis ne doit pas rester en marche si le script s'interrompt
+    robot.convoyeur_sur_robot(0)
+    robot.vider_programme()
+    robot.repli()
+    robot.executer_sur_robot(vitesse=30)
+    print("cellule au repos")

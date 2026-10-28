@@ -663,6 +663,57 @@ class Pilote:
 
     # -- simulation ---------------------------------------------------------
 
+    def convoyeur_sur_robot(self, vitesse: float = 0.0, tapis=None,
+                            port: Optional[str] = None) -> "Pilote":
+        """
+        Fait tourner le tapis sur la MACHINE, tout de suite, hors
+        programme. Le bras ne bouge pas.
+
+        A ne pas confondre avec `convoyeur()`, qui INSCRIT une consigne
+        dans le programme. Celle-ci part immediatement, et sert a mener
+        un cycle depuis le PC -- ce qui devient obligatoire des que le
+        capteur de presence est un infrarouge sur un port GP : la file du
+        controleur ne sait pas attendre dessus.
+
+        La liaison est celle de `executer_sur_robot` : ouverte au premier
+        besoin, reutilisee, fermee a la fin du script.
+        """
+        pont = _liaison_directe(self.robot, port)
+        pont.convoyeur(float(vitesse), tapis if tapis is not None else self.tapis)
+        return self
+
+    def attendre_piece_sur_robot(self, timeout: float = 30.0, tapis=None,
+                                 etat: bool = True,
+                                 port: Optional[str] = None) -> bool:
+        """
+        Attend que le capteur du tapis voie une piece, en le SCRUTANT
+        depuis le PC. Rend True s'il l'a vue, False si le delai expire.
+
+        Pourquoi scruter plutot que laisser la file attendre. Un capteur
+        tout-ou-rien cable sur une entree EIO se laisse attendre par le
+        controleur : `attendre_piece()` suffit, le programme se suspend
+        tout seul et le PC peut meme etre debranche. L'infrarouge du kit,
+        lui, se branche sur un port GP et ne se lit que par une commande
+        immediate : aucune instruction de la file ne peut s'y
+        synchroniser. Le cycle doit alors etre mene depuis le PC, morceau
+        par morceau -- c'est le prix du cablage, pas un choix de style.
+
+        Ctrl+C rend la main sans rien casser : le tapis continue, c'est a
+        l'appelant de l'arreter.
+        """
+        import time as _time
+
+        tapis = tapis if tapis is not None else self.tapis
+        if tapis is None:
+            raise ValueError("aucun tapis : robot.tapis = Convoyeur(...)")
+        pont = _liaison_directe(self.robot, port)
+        fin = _time.time() + float(timeout)
+        while _time.time() < fin:
+            if bool(pont.capteur_piece(tapis)) == bool(etat):
+                return True
+            _time.sleep(0.02)
+        return False
+
     def executer_sur_robot(self, vitesse: float = 30.0,
                            port: Optional[str] = None) -> bool:
         """
@@ -703,7 +754,6 @@ class Pilote:
         part tant qu'un defaut reste ; Ctrl+C declenche un ARRET D'URGENCE.
         """
         import signal
-        import time as _time
 
         from .passerelle import demander
         from .reel import BLOQUANTS_TELEVERSEMENT
