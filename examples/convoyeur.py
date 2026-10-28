@@ -73,11 +73,24 @@ TAPIS = Convoyeur(
     capteur_eio=5,         # capteur tout-ou-rien sur l'entree EIO 5
 )
 
-PRISE = TAPIS.cible(250, 0, 5)             # au droit du capteur, sur la bande
+# Au droit du capteur, sur la bande -- mais TOURNEE D'UN QUART DE TOUR.
+#
+# Pourquoi. Une cible prise dans le repere du tapis en herite
+# l'orientation : le tapis etant pose a rz=-90, la cible demande -90 au
+# poignet, et comme J1 vaut zero a cet endroit c'est J4 qui doit les
+# fournir en entier -- pile sur sa butee de 90 deg. controler() le disait
+# sans qu'on voie pourquoi.
+#
+# Une ventouse se moque de son orientation autour de z : elle aspire
+# aussi bien dans un sens que dans l'autre. Ce quart de tour ne coute
+# donc rien et ramene le poignet au large. Avec une PINCE il serait au
+# contraire impose par la piece, et il faudrait deplacer le tapis ou le
+# robot plutot que tordre le poignet.
+PRISE = TAPIS.cible(250, 0, 85) @ hg.rot_z(math.radians(-90))
 # La depose est RAMENEE VERS LE ROBOT : le tapis occupe desormais la
 # bande x = 200..260, et l'ancienne depose a (250 ; -60) tombait
 # dessus. Posez la votre ou il y a vraiment de la place.
-DEPOSE = cible(x=170, y=-140, z=10)        # a cote, sur la table
+DEPOSE = cible(x=170, y=-140, z=100)        # a cote, sur la table
 HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
 
 VITESSE_TAPIS = 60                         # mm/s
