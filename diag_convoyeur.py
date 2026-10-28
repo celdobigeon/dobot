@@ -72,7 +72,7 @@ def arreter(li, *index):
         for en_file in (False, True):
             try:
                 li.echanger(CommandeDobot.MOTEUR_ETENDU,
-                            struct.pack("<2Bf", i, 0, 0.0),
+                            struct.pack("<2Bi", i, 0, 0),
                             ecriture=True, en_file=en_file, essais=1)
             except ErreurLiaison:
                 pass
@@ -83,10 +83,44 @@ def arreter(li, *index):
 
 
 def marche(index, mm_s=VITESSE_MM_S):
-    return struct.pack("<2Bf", index, 1, mm_s * IMPULSIONS_PAR_MM)
+    return struct.pack("<2Bi", index, 1, round(mm_s * IMPULSIONS_PAR_MM))
 
 
 # ---------------------------------------------------------------------------
+
+def prealable(li):
+    """
+    L'acquittement du controleur veut-il seulement dire quelque chose ?
+
+    A faire AVANT tout le reste : si le controleur acquitte des
+    identifiants qui n'existent pas, alors « accepte » ne prouve rien,
+    et aucun essai de ce script ne peut conclure par la trame de
+    reponse. Seul l'oeil sur la bande compte.
+    """
+    print("\n" + "=" * 68)
+    print("PREALABLE : QUE VAUT UN ACQUITTEMENT ?")
+    print("=" * 68)
+    complaisant = []
+    for ident in (200, 222, 254):
+        try:
+            li.echanger(ident, b"\x00", ecriture=True, en_file=True, essais=1)
+            complaisant.append(ident)
+        except ErreurLiaison:
+            pass
+    if complaisant:
+        print("  le controleur ACQUITTE les identifiants {} -- qui n'existent"
+              .format(", ".join(str(i) for i in complaisant)))
+        print("  pas. Son accusé de reception ne prouve donc RIEN : ni que")
+        print("  SetEMotor existe dans ce firmware, ni qu'il est execute.")
+        print("  => ne concluez des essais ci-dessous QUE par ce que fait la")
+        print("     bande. Le texte « accepte » est a ignorer.")
+    else:
+        print("  le controleur refuse les identifiants inconnus : son")
+        print("  acquittement est donc informatif, et « accepte » veut dire")
+        print("  que la commande lui est connue.")
+    li.vider_file()
+    return not complaisant
+
 
 def cause_a(li):
     """Le rail confisque-t-il Stepper1 ?"""
@@ -128,8 +162,8 @@ def cause_b(li):
     for index in (0, 1):
         essai(li, "Stepper{} - SetEMotorS, 150 mm comptes".format(index + 1),
               CommandeDobot.MOTEUR_ETENDU_DISTANCE,
-              struct.pack("<2BfI", index, 1,
-                          VITESSE_MM_S * IMPULSIONS_PAR_MM,
+              struct.pack("<2BiI", index, 1,
+                          round(VITESSE_MM_S * IMPULSIONS_PAR_MM),
                           int(150 * IMPULSIONS_PAR_MM)))
         arreter(li, index)
 
@@ -161,7 +195,15 @@ def cause_c(li):
      - elle tourne pareil qu'avant          -> aucun courant n'arrive au
        moteur : alimentation ou connecteur. Le logiciel n'y peut rien.
 """)
-    input("  tournez la poulie, puis Entree pour exciter le moteur... ")
+    try:
+        input("  tournez la poulie, puis Entree pour exciter le moteur... ")
+    except EOFError:
+        # lance sans clavier (depuis un autre outil) : on previent et on
+        # laisse le temps d'aller poser la main sur la poulie.
+        print("  (pas de clavier : excitation dans 6 secondes)")
+        for reste in range(6, 0, -1):
+            print("    {}...".format(reste))
+            time.sleep(1.0)
     essai(li, "Stepper1 - excitation lente, 2 mm/s",
           CommandeDobot.MOTEUR_ETENDU, marche(0, 2.0), duree=10.0)
     arreter(li, 0)
@@ -183,6 +225,7 @@ def main():
         li.vider_file()
         li.demarrer_file()
 
+        prealable(li)
         cause_a(li)
         cause_b(li)
         cause_c(li)

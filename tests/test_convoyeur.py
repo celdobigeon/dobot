@@ -228,29 +228,52 @@ class TestRobotReel(unittest.TestCase):
         self.pont.convoyeur(60.0, t)
         trames = self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)
         self.assertEqual(len(trames), 1)
-        index, actif, vitesse = struct.unpack("<2Bf", trames[0])
+        index, actif, vitesse = struct.unpack("<2Bi", trames[0])
         self.assertEqual(index, 0)
         self.assertEqual(actif, 1)
-        self.assertAlmostEqual(vitesse, 60.0 * IMPULSIONS_PAR_MM, places=2)
+        self.assertEqual(vitesse, round(60.0 * IMPULSIONS_PAR_MM))
+
+    def test_la_vitesse_est_un_entier_et_non_un_flottant(self):
+        """
+        Le piege qui a immobilise le tapis pendant une seance entiere.
+
+        Un entier signe et un flottant font tous deux quatre octets : une
+        trame mal typee a donc la BONNE LONGUEUR, le controleur l'accepte
+        sans rien dire, et le moteur ne bouge pas. Pire, le controleur de
+        cette machine acquitte meme des identifiants qui n'existent pas,
+        si bien qu'aucune reponse serie ne peut trahir l'erreur.
+
+        On verifie donc l'ENCODAGE lui-meme : relus comme un flottant,
+        ces quatre octets doivent donner une valeur absurde. C'est la
+        signature d'un entier, et c'est ce qui manquait.
+        """
+        self.pont.convoyeur(60.0, _tapis())
+        trame = self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[0]
+        self.assertEqual(len(trame), 6)
+        comme_flottant = struct.unpack("<f", trame[2:])[0]
+        self.assertLess(abs(comme_flottant), 1e-30,
+                        "la vitesse est encore encodee en flottant : le "
+                        "firmware la lirait comme un milliard d'impulsions "
+                        "par seconde et ne ferait rien")
 
     def test_arret_immediat(self):
         self.pont.arreter_convoyeur(_tapis())
         index, actif, vitesse = struct.unpack(
-            "<2Bf", self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[-1])
+            "<2Bi", self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[-1])
         self.assertEqual(actif, 0)
-        self.assertAlmostEqual(vitesse, 0.0, places=6)
+        self.assertEqual(vitesse, 0)
 
     def test_le_sens_arriere_part_en_negatif(self):
         self.pont.convoyeur(-40.0, _tapis())
         _, actif, vitesse = struct.unpack(
-            "<2Bf", self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[-1])
+            "<2Bi", self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[-1])
         self.assertEqual(actif, 1)
         self.assertLess(vitesse, 0.0)
 
     def test_le_second_moteur_est_adressable(self):
         self.pont.convoyeur(20.0, _tapis(index_moteur=1))
         index, _, _ = struct.unpack(
-            "<2Bf", self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[-1])
+            "<2Bi", self._trames(CommandeDobot.MOTEUR_ETENDU, en_file=False)[-1])
         self.assertEqual(index, 1)
 
     def test_un_programme_televerse_son_convoyeur(self):
@@ -263,10 +286,10 @@ class TestRobotReel(unittest.TestCase):
         self.pont.televerser(r.programme, r.q_depart, outil="ventouse")
         trames = self._trames(CommandeDobot.MOTEUR_ETENDU)
         self.assertEqual(len(trames), 2, "deux reglages de tapis attendus")
-        _, actif, vitesse = struct.unpack("<2Bf", trames[0])
+        _, actif, vitesse = struct.unpack("<2Bi", trames[0])
         self.assertEqual(actif, 1)
-        self.assertAlmostEqual(vitesse, 60.0 * 300.0, places=1)
-        _, actif, vitesse = struct.unpack("<2Bf", trames[1])
+        self.assertEqual(vitesse, round(60.0 * 300.0))
+        _, actif, vitesse = struct.unpack("<2Bi", trames[1])
         self.assertEqual(actif, 0)
 
     def test_le_pas_nominal_sert_de_secours(self):
@@ -276,8 +299,8 @@ class TestRobotReel(unittest.TestCase):
         self.assertEqual(r.programme.instructions[-1].impulsions_par_mm, 0.0)
         self.pont.televerser(r.programme, r.q_depart)
         _, _, vitesse = struct.unpack(
-            "<2Bf", self._trames(CommandeDobot.MOTEUR_ETENDU)[-1])
-        self.assertAlmostEqual(vitesse, 50.0 * IMPULSIONS_PAR_MM, places=1)
+            "<2Bi", self._trames(CommandeDobot.MOTEUR_ETENDU)[-1])
+        self.assertEqual(vitesse, round(50.0 * IMPULSIONS_PAR_MM))
 
     def test_le_capteur_infrarouge_est_allume_une_fois(self):
         t = _tapis(capteur_port=PORTS_GP["GP2"])

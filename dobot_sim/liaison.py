@@ -954,10 +954,19 @@ class LiaisonDobot:
         En file par defaut, pour que le convoyeur s'enchaine avec les
         mouvements du bras. En immediat (`en_file=False`) pour un arret
         qui ne doit pas attendre la fin du programme.
+
+        LA VITESSE PART EN ENTIER SIGNE 32 BITS, pas en flottant. Les
+        deux font quatre octets, donc une trame mal typee a la BONNE
+        LONGUEUR : le controleur l'acquitte sans broncher et le tapis ne
+        bouge pas. Un flottant de 16977 vaut 0x4684A10A, que le firmware
+        lit comme 1 183 097 098 impulsions par seconde -- absurde, donc
+        ignore. Et comme l'exposant domine, toutes les vitesses donnent
+        le meme ordre de grandeur delirant : baisser la consigne ne
+        rattrape rien, et l'erreur est invisible a l'essai.
         """
         self.echanger(CommandeDobot.MOTEUR_ETENDU,
-                      struct.pack("<2Bf", int(index), 1 if actif else 0,
-                                  float(impulsions_s)),
+                      struct.pack("<2Bi", int(index), 1 if actif else 0,
+                                  int(round(impulsions_s))),
                       ecriture=True, en_file=en_file)
         return self._dernier_index
 
@@ -969,13 +978,16 @@ class LiaisonDobot:
         Pratique pour indexer un tapis d'un pas connu sans avoir a le
         chronometrer. Toujours en file : c'est une commande a duree.
 
+        Vitesse en entier signe, comme `moteur_etendu` -- voir la-bas
+        pourquoi un flottant passe inapercu.
+
         NON VERIFIE SUR MACHINE : l'identifiant 136 est deduit de l'ordre
         des commandes dans DobotDll.cpp, le protocole V1.1.5 ne le
         documente pas. En cas de doute, `moteur_etendu` suffit a tout.
         """
         self.echanger(CommandeDobot.MOTEUR_ETENDU_DISTANCE,
-                      struct.pack("<2BfI", int(index), 1 if actif else 0,
-                                  float(impulsions_s), int(impulsions)),
+                      struct.pack("<2BiI", int(index), 1 if actif else 0,
+                                  int(round(impulsions_s)), int(impulsions)),
                       ecriture=True, en_file=True)
         return self._dernier_index
 
