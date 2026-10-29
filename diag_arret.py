@@ -20,8 +20,14 @@ a que trois :
      le declencher sans piece du tout.
 
   B. LE TAPIS NE S'ARRETE PAS QUAND ON LE LUI DIT. L'ordre part en
-     10 ms, mais rien ne garantit que le moteur s'arrete net. Cela se
-     mesure a la regle.
+     10 ms, mais rien ne garantit que le moteur s'arrete net.
+
+     ATTENTION, la phase B ci-dessous ne le voit PAS. Elle mesure la
+     distance totale entre marche et arret, et la rampe de demarrage
+     perd exactement ce que la rampe d'arret gagne : le total tombe
+     juste meme quand la piece depasse de 145 mm. C'est arrive ici.
+     Pour mesurer le depassement SEUL : diag_depassement.py, qui se
+     sert du capteur et vous fait mesurer a l'arret.
 
   C. LA PIECE GLISSE. Posee sur une bande deja lancee, elle patine
      avant d'etre entrainee -- et le patinage n'est jamais deux fois le
