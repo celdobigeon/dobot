@@ -77,35 +77,29 @@ TAPIS = Convoyeur(
     # Ce n'est pas un detail de cablage : voir plus bas, il
     # change la forme meme du cycle sur la machine.
     capteur_port=PORTS_GP["GP4"],
-    # LE TAPIS NE S'ARRETE PAS NET. Mesure sur la cellule : la piece
-    # depasse le capteur de 145 mm apres l'ordre d'arret, a 60 mm/s.
-    # C'est enorme -- 2,4 s de bande -- et c'est invisible si on mesure
-    # la distance totale marche-arret : la rampe de demarrage perd ce
-    # que la rampe d'arret gagne.
+    # LE TAPIS S'ARRETE NET : mesure sur la machine, 8 ms entre la
+    # detection et l'arret effectif, soit 0,2 mm de bande. La piece
+    # s'immobilise au droit du capteur, et elle ne quitte jamais son
+    # faisceau ensuite -- ce qui le prouve sans regle.
     #
-    # La LOI reste a confirmer : proportionnelle a la vitesse (retard
-    # fixe) ou a son carre (rampe) ? Les deux coincident a 60 mm/s et
-    # divergent d'un facteur trois a 20. `diag_depassement.py` mesure a
-    # trois vitesses et tranche. En attendant on prend la plus prudente,
-    # celle qui promet le moins de gain en ralentissant.
-    depassement=145.0,
-    vitesse_depassement=60.0,
-    loi_depassement="retard",
+    # J'avais cru le contraire et declare 145 mm de depassement. C'etait
+    # faux, et la mesure qui m'avait trompe mesurait la distance TOTALE
+    # marche-arret, ou la rampe de demarrage masque celle d'arret.
+    # `diag_depassement.py` sait maintenant mesurer le depassement seul,
+    # par le capteur ; s'il en trouve un sur votre cellule, mettez-le
+    # ici.
+    depassement=0.0,
     # Le maillage du constructeur, recale sur le repere du tapis par
     # convertir_cao.py. Absent, le tapis se dessine en boites.
     maillage=os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "Modele3D", "convoyeur.obj"),
 )
 
-# 25 mm/s et non 60 : le depassement suit la vitesse, et a 60 mm/s la
-# piece filait 145 mm au-dela du capteur. A 25 il en reste une
-# soixantaine -- encore trop pour viser le capteur, mais le point de
-# prise, lui, est place la ou la piece s'arrete VRAIMENT.
-#
-# Le vrai remede est ailleurs : un tapis qui met deux secondes a
-# s'arreter n'est pas un tapis qu'on arrete sur un capteur. Voir le
-# commentaire du point de prise.
-VITESSE_TAPIS = 25                         # mm/s
+# La MEME vitesse qu'a l'etalonnage du point de prise, sinon
+# l'avertissement plus bas vous le rappellera. Le tapis s'arretant net,
+# elle ne change pas l'endroit ou la piece s'immobilise -- mais elle
+# change le temps d'un cycle, et c'est tout.
+VITESSE_TAPIS = 60                         # mm/s
 
 # LE POINT DE PRISE : appris si on l'a appris, calcule sinon.
 #
