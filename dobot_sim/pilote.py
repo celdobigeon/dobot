@@ -175,6 +175,10 @@ class Pilote:
         #: le tapis de la cellule, s'il y en a un. Pose une fois, il sert
         #: de defaut a toutes les commandes de convoyeur du programme.
         self.tapis = None
+        #: instant (perf_counter) ou le capteur a vu la piece,
+        #: pose par attendre_piece_sur_robot
+        self.instant_detection = None
+        self.tours_scrutation = 0
         #: l'axe lineaire, s'il y en a un, et la position courante du
         #: chariot -- retenue pour que `controler` et la simulation
         #: sachent d'ou le bras travaille
@@ -748,11 +752,20 @@ class Pilote:
             raise ValueError("aucun tapis : robot.tapis = Convoyeur(...)")
         pont = _liaison_directe(self.robot, port)
         fin = _time.time() + float(timeout)
+        tours = 0
         while _time.time() < fin:
+            tours += 1
             if bool(pont.capteur_piece(tapis)) == bool(etat):
+                # L'instant de la detection, pour qui veut savoir ce que
+                # le PC a coute entre voir la piece et arreter le tapis.
+                # Un tapis qui depasse accuse souvent le programme ; le
+                # chiffre tranche sans discussion.
+                self.instant_detection = _time.perf_counter()
+                self.tours_scrutation = tours
                 return True
             if periode > 0:
                 _time.sleep(periode)
+        self.instant_detection = None
         return False
 
     def executer_sur_robot(self, vitesse: float = 30.0,

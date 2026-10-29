@@ -30,6 +30,7 @@ import json
 import math
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -293,6 +294,13 @@ try:
         robot.convoyeur_sur_robot(VITESSE_TAPIS)
         vue = robot.attendre_piece_sur_robot(timeout=30)
         robot.convoyeur_sur_robot(0)
+        # Ce que le PC a coute entre voir la piece et arreter le tapis.
+        # Un tapis qui depasse fait toujours accuser le programme : le
+        # chiffre le met hors de cause, ou le confond.
+        if robot.instant_detection is not None:
+            _ms = 1000.0 * (time.perf_counter() - robot.instant_detection)
+            print("  detection -> arret : {:.0f} ms, soit {:.1f} mm de bande"
+                  .format(_ms, VITESSE_TAPIS * _ms / 1000.0))
         if not vue:
             print("cycle {} : aucune piece en 30 s -- on s'arrete la."
                   .format(i + 1))
