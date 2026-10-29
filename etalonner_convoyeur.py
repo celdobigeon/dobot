@@ -22,7 +22,16 @@ obtenu absorbe d'un coup tout ce qu'on ne sait pas mesurer proprement :
   - le retard de la chaine de scrutation, quel qu'il soit ;
   - le decalage entre le BORD de la piece, que le capteur voit, et son
     CENTRE, que la ventouse doit viser ;
-  - la hauteur de la bande et l'ecrasement de la ventouse.
+  - la hauteur de la bande et l'ecrasement de la ventouse ;
+  - et surtout le decalage entre le BORD AVANT de la piece, qui coupe
+    le faisceau, et son CENTRE, que la ventouse doit viser. Sur une
+    piece de 25 mm cela fait deja 25 mm d'erreur si on l'ignore.
+
+L'etalonnage doit donc se faire DANS LES MEMES CONDITIONS que le cycle.
+C'est pourquoi il attend la piece exactement comme lui -- sur un FRONT,
+la piece arrivant en mouvement -- et a la meme vitesse. Un point appris
+sur une piece deja immobile devant le capteur decrit une situation qui
+ne se reproduira pas.
 
 Aucune de ces grandeurs n'a besoin d'etre connue separement. C'est tout
 l'interet, et c'est ainsi qu'on procede sur une vraie cellule.
@@ -49,7 +58,7 @@ from dobot_sim.convoyeur import PORTS_GP                       # noqa: E402
 ESSAIS = 3
 # La MEME que celle du cycle : le depassement du tapis depend de
 # la vitesse, donc un point appris ne vaut que pour elle.
-VITESSE_TAPIS = 25.0
+VITESSE_TAPIS = 60.0
 FICHIER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "examples", "convoyeur_etalonnage.json")
 
