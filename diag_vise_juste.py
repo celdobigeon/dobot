@@ -66,34 +66,52 @@ def main():
     except EOFError:
         pass
 
-    robot.vider_programme()
-    robot.movj(VISEE)
-    robot.executer_sur_robot(vitesse=30, port=port)
+    def aller(titre, T, attendu_xyz):
+        robot.vider_programme()
+        robot.movj(T) if titre == "approche" else robot.movl(T)
+        robot.executer_sur_robot(vitesse=20, port=port)
+        atteint = robot.pose_sur_robot(port=port)[:3, 3]
+        ecart = atteint - attendu_xyz
+        print("")
+        print("  {} :".format(titre.upper()))
+        print("    demande : x={:7.1f}  y={:7.1f}  z={:7.1f}".format(*attendu_xyz))
+        print("    atteint : x={:7.1f}  y={:7.1f}  z={:7.1f}".format(*atteint))
+        print("    ecart   : {:+.1f} / {:+.1f} / {:+.1f} mm   (norme {:.1f})"
+              .format(ecart[0], ecart[1], ecart[2],
+                      float(np.linalg.norm(ecart))))
+        return float(np.linalg.norm(ecart))
 
-    apres = robot.pose_sur_robot(port=port)
-    atteint = apres[:3, 3]
-    ecart = atteint - attendu
+    e1 = aller("approche", VISEE, attendu)
+    print("")
+    print("  La ventouse est {:.0f} mm AU-DESSUS du point de prise.".format(
+        DEGAGEMENT))
+    print("  Est-elle au-dessus de la piece ?")
+    try:
+        rep = input("  DESCENDRE dessus ? (o/n, elle va toucher) ")
+    except EOFError:
+        rep = "o"
+    if rep[:1].lower() == "n":
+        print("")
+        print("  Descente annulee. La ventouse n'etant PAS au-dessus de la")
+        print("  piece alors que le bras atteint sa consigne au dixieme de")
+        print("  millimetre, c'est le point appris qui ne decrit plus la")
+        print("  realite : lancez diag_derive_origine.py pour mesurer de")
+        print("  combien le repere a bouge.")
+        return
+    e2 = aller("descente", PRISE, PRISE[:3, 3])
 
     print("")
     print("=" * 60)
-    print("  demande : x={:7.1f}  y={:7.1f}  z={:7.1f}".format(*attendu))
-    print("  atteint : x={:7.1f}  y={:7.1f}  z={:7.1f}".format(*atteint))
-    print("  ecart   : x={:+7.1f}  y={:+7.1f}  z={:+7.1f}   (norme {:.1f} mm)"
-          .format(ecart[0], ecart[1], ecart[2], float(np.linalg.norm(ecart))))
-    print("=" * 60)
-    print("")
-    if float(np.linalg.norm(ecart)) < 5.0:
-        print("  LE BRAS OBEIT. Il va bien ou on le lui demande, donc le")
-        print("  point appris est atteint. Si la piece n'est pas dessous,")
-        print("  c'est qu'elle ne s'arrete plus la ou elle s'arretait")
-        print("  pendant l'etalonnage -- regardez ou la ventouse pointe")
-        print("  par rapport a la piece, l'ecart se lit a l'oeil.")
+    if max(e1, e2) < 5.0:
+        print("  LE BRAS OBEIT aux deux consignes.")
+        print("  Si la ventouse n'est pas sur la piece, c'est le POINT")
+        print("  APPRIS qui ne correspond plus a l'endroit ou la piece")
+        print("  s'arrete : refaites etalonner_convoyeur.py, dans les")
+        print("  memes conditions que le cycle.")
     else:
-        print("  LE BRAS N'OBEIT PAS : il arrive a {:.0f} mm de la consigne."
-              .format(float(np.linalg.norm(ecart))))
-        print("  La cible n'est pas en cause, la chaine de commande si :")
-        print("  longueur d'outil, biais d'effecteur, ou prise d'origine.")
-        print("  Comparez avec `python dobot.py etat`.")
+        print("  LE BRAS N'OBEIT PAS : {:.0f} mm d'ecart.".format(max(e1, e2)))
+        print("  La cible n'est pas en cause, la chaine de commande si.")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

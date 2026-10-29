@@ -47,3 +47,4 @@ examples/convoyeur_etalonnage.json
 # l'afficher un jour : convertir_cao.py en fait un OBJ leger, et c'est
 # l'OBJ qui aurait sa place ici.
 Modele3D/Camera.step
+examples/repere_fixe.json
