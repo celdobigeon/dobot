@@ -48,3 +48,7 @@ examples/convoyeur_etalonnage.json
 # l'OBJ qui aurait sa place ici.
 Modele3D/Camera.step
 examples/repere_fixe.json
+
+# Journal du dernier essai du convoyeur : une trace de mise au point,
+# refaite a chaque lancement.
+examples/convoyeur_dernier_essai.log
