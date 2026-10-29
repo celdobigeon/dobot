@@ -149,14 +149,14 @@ class TestRecalageCAO(unittest.TestCase):
                          dtype=float)
         return coins + np.asarray(decalage, dtype=float)
 
-    def _recaler(self, sommets, inverser=False):
+    def _recaler(self, sommets, faces=None, inverser=False):
         import importlib.util
         chemin = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "convertir_cao.py")
         spec = importlib.util.spec_from_file_location("convertir_cao", chemin)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        return mod.recaler_tapis(sommets, inverser)
+        return mod.recaler_tapis(sommets, faces, inverser)
 
     def test_l_origine_tombe_a_l_entree_de_la_bande(self):
         r = self._recaler(self._boite())

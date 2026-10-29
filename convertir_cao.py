@@ -81,39 +81,103 @@ def ouvrir(chemin, finesse, grossier):
         gmsh.finalize()
 
 
-def recaler_tapis(sommets, inverser=False):
+def surface_de_la_bande(sommets, faces, axe_haut):
+    """
+    Trouve la BANDE : la plus grande surface horizontale du modele.
+
+    Et surtout, dans quel sens elle regarde. Un modele CAO n'a pas de
+    haut : le dessinateur place son origine et ses axes comme il veut, et
+    un tapis dessine a l'envers s'affiche a l'envers sans que rien ne
+    proteste. Plutot que de supposer que le dessus est le z maximum --
+    ce qui etait faux ici, de 85 mm -- on demande au maillage.
+
+    La bande est reconnaissable : c'est, et de loin, la plus grande
+    surface plane horizontale de l'objet. Le signe de sa normale dit si
+    le modele est a l'endroit.
+
+    Rend (cote de la bande, +1 si le modele est a l'endroit, -1 sinon).
+    """
+    a, b, c = sommets[faces[:, 0]], sommets[faces[:, 1]], sommets[faces[:, 2]]
+    normales = np.cross(b - a, c - a)
+    longueurs = np.linalg.norm(normales, axis=1)
+    garde = longueurs > 1e-9
+    aires = longueurs[garde] / 2.0
+    composante = normales[garde][:, axe_haut] / longueurs[garde]
+    hauteur = ((a + b + c) / 3.0)[garde][:, axe_haut]
+
+    horizontales = np.abs(composante) > 0.99
+    if not horizontales.any():
+        return None, 1
+    # regroupe par tranches de 2 mm : une surface usinee n'est jamais
+    # parfaitement a la meme cote d'un triangle a l'autre
+    tranches = np.round(hauteur[horizontales] / 2.0).astype(int)
+    aires_h = aires[horizontales]
+    signes = composante[horizontales]
+    meilleure, cote, sens = 0.0, None, 1
+    for t in np.unique(tranches):
+        m = tranches == t
+        total = float(aires_h[m].sum())
+        if total > meilleure:
+            meilleure = total
+            cote = float(np.mean(hauteur[horizontales][m]))
+            sens = 1 if float(np.sum(aires_h[m] * signes[m])) > 0 else -1
+    return cote, sens
+
+
+def recaler_tapis(sommets, faces=None, inverser=False):
     """
     Passe du repere du dessinateur a celui du `Convoyeur`.
 
-    La bande est l'arete la plus longue : c'est elle qui donne le sens de
-    marche, sans avoir a le demander. L'origine va a l'une de ses
-    extremites -- `--inverser` choisit l'autre, quand l'entree physique
-    se trouve du mauvais cote.
+    Trois conventions a poser, et chacune se trompe silencieusement :
+
+      LE SENS DE MARCHE. C'est l'arete la plus longue -- une bande est
+      toujours plus longue que large. Pas besoin de le demander.
+
+      LE HAUT. Donne par la BANDE elle-meme, pas par le z maximum : on
+      cherche la plus grande surface horizontale et on regarde ou pointe
+      sa normale. Le modele du constructeur etait dessine a l'envers, et
+      la supposition naive placait la bande 85 mm trop haut, retournee.
+
+      L'ORIGINE. A l'entree de la bande, au milieu de sa largeur, au
+      niveau de sa surface -- pour qu'une piece posee dessus soit a z=0.
+      `--inverser` prend l'autre extremite, quand l'entree physique se
+      trouve du mauvais cote.
     """
     mini, maxi = sommets.min(axis=0), sommets.max(axis=0)
     etendue = maxi - mini
     axe_long = int(np.argmax(etendue))
-    axe_haut = 2                                # z du dessinateur, vers le haut
+    axe_haut = 2                                # z du dessinateur
     if axe_long == axe_haut:
         sys.exit("la plus grande dimension est verticale : modele inattendu")
     axe_large = ({0, 1, 2} - {axe_long, axe_haut}).pop()
 
+    cote, sens = (None, 1)
+    if faces is not None and len(faces):
+        cote, sens = surface_de_la_bande(sommets, faces, axe_haut)
+    if cote is None:                            # pas de surface franche
+        cote, sens = maxi[axe_haut], 1
+
     x = np.zeros(3); x[axe_long] = -1.0 if inverser else 1.0
-    z = np.zeros(3); z[axe_haut] = 1.0
+    z = np.zeros(3); z[axe_haut] = float(sens)
     y = np.cross(z, x)
     R = np.column_stack([x, y, z])              # colonnes = axes du tapis
 
     origine = np.zeros(3)
     origine[axe_long] = maxi[axe_long] if inverser else mini[axe_long]
     origine[axe_large] = (mini[axe_large] + maxi[axe_large]) / 2.0
-    origine[axe_haut] = maxi[axe_haut]          # zero a la SURFACE de la bande
+    origine[axe_haut] = cote
 
     recales = (sommets - origine) @ R
     print("  recale sur le repere du Convoyeur :")
     print("    sens de marche = axe {} du modele{}"
           .format("xyz"[axe_long], " (inverse)" if inverser else ""))
-    print("    longueur {:.0f} mm, largeur {:.0f} mm, hauteur {:.0f} mm"
-          .format(etendue[axe_long], etendue[axe_large], etendue[axe_haut]))
+    if sens < 0:
+        print("    MODELE RETOURNE : la bande regardait vers le bas,")
+        print("    le maillage a ete remis a l'endroit")
+    print("    bande trouvee a la cote {:.0f} du modele".format(cote))
+    print("    longueur {:.0f} mm, largeur {:.0f} mm, hauteur sous bande "
+          "{:.0f} mm".format(etendue[axe_long], etendue[axe_large],
+                             abs(float(recales[:, 2].min()))))
     return recales
 
 
@@ -156,7 +220,7 @@ def main():
 
     print("  {} sommets, {} triangles".format(len(sommets), len(faces)))
     if a.tapis:
-        sommets = recaler_tapis(sommets, a.inverser)
+        sommets = recaler_tapis(sommets, faces, a.inverser)
 
     sortie = a.sortie or os.path.splitext(a.fichier)[0] + ".obj"
     ecrire_obj(sortie, sommets, faces, a.fichier)
