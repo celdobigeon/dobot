@@ -20,12 +20,11 @@ obtenu absorbe d'un coup tout ce qu'on ne sait pas mesurer proprement :
   - la place et l'orientation reelles du tapis ;
   - l'abscisse reelle du capteur le long de la bande ;
   - le retard de la chaine de scrutation, quel qu'il soit ;
-  - le decalage entre le BORD de la piece, que le capteur voit, et son
-    CENTRE, que la ventouse doit viser ;
   - la hauteur de la bande et l'ecrasement de la ventouse ;
-  - et surtout le decalage entre le BORD AVANT de la piece, qui coupe
-    le faisceau, et son CENTRE, que la ventouse doit viser. Sur une
-    piece de 25 mm cela fait deja 25 mm d'erreur si on l'ignore.
+  - et le decalage entre le BORD AVANT de la piece, qui coupe le
+    faisceau, et son CENTRE, que la ventouse doit viser. Sur une piece
+    de 25 mm cela fait deja une demi-piece d'erreur si on l'ignore --
+    c'est exactement ce qui a ete observe sur la cellule.
 
 L'etalonnage doit donc se faire DANS LES MEMES CONDITIONS que le cycle.
 C'est pourquoi il attend la piece exactement comme lui -- sur un FRONT,
