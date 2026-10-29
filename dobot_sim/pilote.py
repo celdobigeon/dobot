@@ -724,6 +724,7 @@ class Pilote:
 
     def attendre_piece_sur_robot(self, timeout: float = 30.0, tapis=None,
                                  etat: bool = True, periode: float = 0.0,
+                                 front: bool = True,
                                  port: Optional[str] = None) -> bool:
         """
         Attend que le capteur du tapis voie une piece, en le SCRUTANT
@@ -756,6 +757,23 @@ class Pilote:
         c'est la VITESSE qu'il faut baisser : elle entre directement dans
         le produit ci-dessus.
 
+        UN FRONT, ET NON UN NIVEAU. `front=True` attend d'abord que le
+        capteur soit LIBRE, puis qu'il voie quelque chose. C'est la
+        difference entre « une piece vient d'arriver » et « il y a une
+        piece quelque part devant moi », et elle decide de tout.
+
+        Sur un niveau, une piece deja presente au demarrage du cycle --
+        celle que le bras vient de manquer, ou la suivante dans la file
+        -- rend la main AUSSITOT : le tapis n'a pas le temps de tourner,
+        et la piece qui a declenche peut etre n'importe ou en amont du
+        capteur. La prise devient erratique sans que le tapis, le
+        capteur ni la cible n'y soient pour rien -- on les soupconne
+        tous les trois, longuement, et on les disculpe un par un.
+
+        Le prix du front : il faut que la bande se libere entre deux
+        pieces. Des pieces qui se touchent ne seront pas separees, et
+        c'est normal -- un capteur de presence ne sait pas les compter.
+
         Ctrl+C rend la main sans rien casser : le tapis continue, c'est a
         l'appelant de l'arreter.
         """
@@ -766,6 +784,19 @@ class Pilote:
             raise ValueError("aucun tapis : robot.tapis = Convoyeur(...)")
         pont = _liaison_directe(self.robot, port)
         fin = _time.time() + float(timeout)
+
+        if front:
+            # on laisse d'abord passer ce qui occupe deja le capteur
+            libre = False
+            while _time.time() < fin:
+                if bool(pont.capteur_piece(tapis)) != bool(etat):
+                    libre = True
+                    break
+                if periode > 0:
+                    _time.sleep(periode)
+            if not libre:
+                self.instant_detection = None
+                return False
         tours = 0
         while _time.time() < fin:
             tours += 1

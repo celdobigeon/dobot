@@ -293,7 +293,11 @@ temoins = []
 try:
     for i in range(CYCLES):
         robot.convoyeur_sur_robot(VITESSE_TAPIS)
-        vue = robot.attendre_piece_sur_robot(timeout=30)
+        # front=True : on attend qu'une piece ARRIVE, pas qu'il y en ait
+        # une quelque part. Sans cela, la piece restee devant le capteur
+        # -- celle qu'on vient de manquer, ou la suivante de la file --
+        # rend la main aussitot et le bras plonge sur rien.
+        vue = robot.attendre_piece_sur_robot(timeout=30, front=True)
         robot.convoyeur_sur_robot(0)
         # Ce que le PC a coute entre voir la piece et arreter le tapis.
         # Un tapis qui depasse fait toujours accuser le programme : le
