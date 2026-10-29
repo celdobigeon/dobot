@@ -41,3 +41,9 @@ examples/perception/etalonnage_camera_robot*.json
 # code. Clone ailleurs, il enverrait le bras ou la piece ne sera pas.
 # L'exemple s'en passe : sans lui il calcule, et il le signale.
 examples/convoyeur_etalonnage.json
+
+# Modele CAO de la camera RealSense : 20 Mo a lui seul, soit la moitie
+# de ce que pese Modele3D une fois nettoye. Il reste sur le poste. Pour
+# l'afficher un jour : convertir_cao.py en fait un OBJ leger, et c'est
+# l'OBJ qui aurait sa place ici.
+Modele3D/Camera.step
