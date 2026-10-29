@@ -290,6 +290,7 @@ robot.repli()
 robot.executer_sur_robot(vitesse=30)
 
 retards = []
+temoins = []
 try:
     for i in range(CYCLES):
         robot.convoyeur_sur_robot(VITESSE_TAPIS)
@@ -303,6 +304,34 @@ try:
             retards.append(_ms)
             print("  detection -> arret : {:.0f} ms, soit {:.1f} mm de bande"
                   .format(_ms, VITESSE_TAPIS * _ms / 1000.0))
+
+            # LE CAPTEUR COMME TEMOIN. La piece est dans son faisceau au
+            # moment de l'arret. Si elle en sort ensuite, c'est que la
+            # bande tourne ENCORE -- et cela se mesure sans regle, sans
+            # yeux, et sans rien avoir a recopier.
+            _t0 = time.perf_counter()
+            _libere = None
+            while time.perf_counter() - _t0 < 5.0:
+                if not robot.capteur_piece_sur_robot():
+                    _libere = time.perf_counter() - _t0
+                    break
+            if _libere is None:
+                _verdict = ("la piece reste devant le capteur : la bande "
+                            "s'est bien arretee")
+            elif _libere < 0.05:
+                # Deja hors faisceau au moment ou l'on coupe : la piece
+                # avait donc depasse le capteur AVANT qu'on la voie. Ce
+                # n'est plus un probleme d'arret mais de detection.
+                _verdict = ("la piece etait DEJA hors du faisceau a "
+                            "l'arret : elle avait depasse le capteur "
+                            "avant d'etre vue")
+            else:
+                _verdict = ("la piece a QUITTE le capteur {:.2f} s apres "
+                            "l'arret : la bande tournait encore, soit "
+                            "~{:.0f} mm"
+                            .format(_libere, VITESSE_TAPIS * _libere))
+            print("  " + _verdict)
+            temoins.append((_ms, _libere))
         if not vue:
             print("cycle {} : aucune piece en 30 s -- on s'arrete la."
                   .format(i + 1))
@@ -333,6 +362,26 @@ finally:
         print("  le pire : {:.0f} ms, soit {:.1f} mm de bande a {:.0f} mm/s"
               .format(_pire, VITESSE_TAPIS * _pire / 1000.0, VITESSE_TAPIS))
         print("")
+        try:
+            _journal = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "convoyeur_dernier_essai.log")
+            with open(_journal, "w", encoding="utf-8") as _f:
+                print("vitesse du tapis : {:.0f} mm/s".format(VITESSE_TAPIS),
+                      file=_f)
+                print("point de prise   : {}".format(
+                      "appris" if os.path.exists(_APPRIS) else "calcule"),
+                      file=_f)
+                for _k, (_r, _l) in enumerate(temoins, 1):
+                    _etat = ("jamais : la bande etait arretee" if _l is None
+                             else "{:.2f} s apres l'arret, soit ~{:.0f} mm"
+                             .format(_l, VITESSE_TAPIS * _l))
+                    print("cycle {} : detection->arret {:.0f} ms ; "
+                          "capteur libere {}".format(_k, _r, _etat),
+                          file=_f)
+            print("  journal ecrit : {}".format(_journal))
+        except OSError as _exc:
+            print("  journal non ecrit : {}".format(_exc))
+
         if _pire < 200:
             print("  Le programme n'y est pour rien. Si la piece depasse de")
             print("  plusieurs centimetres, cherchez ailleurs : le capteur")

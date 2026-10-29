@@ -708,6 +708,20 @@ class Pilote:
         pont.convoyeur(float(vitesse), tapis if tapis is not None else self.tapis)
         return self
 
+    def capteur_piece_sur_robot(self, tapis=None,
+                                port: Optional[str] = None) -> bool:
+        """
+        Lit le capteur de presence du tapis, une fois, sur la machine.
+
+        Utile comme TEMOIN apres un ordre d'arret : si la piece quitte
+        le faisceau alors qu'on vient de couper le tapis, c'est que la
+        bande tourne encore. Le capteur mesure alors ce qu'aucun
+        chronometre cote PC ne peut voir -- l'obeissance du materiel.
+        """
+        pont = _liaison_directe(self.robot, port)
+        return bool(pont.capteur_piece(tapis if tapis is not None
+                                       else self.tapis))
+
     def attendre_piece_sur_robot(self, timeout: float = 30.0, tapis=None,
                                  etat: bool = True, periode: float = 0.0,
                                  port: Optional[str] = None) -> bool:
