@@ -135,8 +135,13 @@ if os.path.exists(_APPRIS):
     # endroit si on change la cadence. Le signaler vaut mieux que de
     # laisser le bras plonger a cote.
     _v_apprise = float(_p.get("vitesse_tapis", VITESSE_TAPIS))
-    if abs(_v_apprise - VITESSE_TAPIS) > 1e-6:
-        _ecart = TAPIS.depassement_a(_v_apprise) - TAPIS.depassement_a(VITESSE_TAPIS)
+    _ecart = (TAPIS.depassement_a(_v_apprise)
+              - TAPIS.depassement_a(VITESSE_TAPIS))
+    # Avertir seulement si la vitesse change VRAIMENT quelque chose. Tant
+    # que le depassement est nul -- et il l'est, mesure a 0,2 mm -- la
+    # piece s'arrete au meme endroit quelle que soit la cadence, et crier
+    # au loup pour zero millimetre apprend a ignorer les avertissements.
+    if abs(_ecart) > 1.0:
         print("ATTENTION : appris a {:.0f} mm/s, le cycle tourne a {:.0f}."
               .format(_v_apprise, VITESSE_TAPIS))
         print("  La piece s'arretera {:.0f} mm {} qu'a l'etalonnage."
