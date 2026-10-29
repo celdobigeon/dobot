@@ -220,3 +220,74 @@ class TestRecalageCAO(unittest.TestCase):
             self.assertAlmostEqual(
                 float(np.linalg.norm(apres[i] - apres[j])),
                 float(np.linalg.norm(avant[i] - avant[j])), places=6)
+
+
+class TestProjection2D(unittest.TestCase):
+    """
+    L'empreinte au sol d'une boite, pour la vue de secours.
+
+    Quand OpenGL manque, le simulateur retombe sur deux projections. Le
+    tapis et le rail doivent s'y voir aussi : un poste ou les commandes
+    marchent sans que rien ne s'affiche est pire qu'un poste qui refuse
+    de demarrer, parce qu'il ne previent pas.
+    """
+
+    def setUp(self):
+        from dobot_sim.viewer2d import contour_xy, sommets_boite
+        self.contour_xy = contour_xy
+        self.sommets_boite = sommets_boite
+
+    def _boite(self, centre=(100.0, 0.0, 0.0), dims=(200.0, 60.0, 10.0),
+               rz=0.0):
+        from dobot_sim.robot import repere_travail
+        R = repere_travail(x=centre[0], y=centre[1], z=centre[2], rz=rz)
+        return {"centre": R[:3, 3], "axes": R[:3, :3], "dims": dims,
+                "role": "bande"}
+
+    def test_une_boite_a_huit_coins(self):
+        self.assertEqual(self.sommets_boite(self._boite()).shape, (8, 3))
+
+    def test_le_contour_est_ferme(self):
+        C = self.contour_xy(self.sommets_boite(self._boite()))
+        np.testing.assert_allclose(C[0], C[-1])
+
+    def test_une_boite_droite_donne_son_rectangle(self):
+        C = self.contour_xy(self.sommets_boite(self._boite()))
+        self.assertAlmostEqual(float(C[:, 0].min()), 0.0, places=6)
+        self.assertAlmostEqual(float(C[:, 0].max()), 200.0, places=6)
+        self.assertAlmostEqual(float(C[:, 1].min()), -30.0, places=6)
+        self.assertAlmostEqual(float(C[:, 1].max()), 30.0, places=6)
+
+    def test_une_boite_tournee_reste_un_rectangle(self):
+        """Un quart de tour echange longueur et largeur, rien de plus."""
+        C = self.contour_xy(self.sommets_boite(self._boite(rz=90.0)))
+        self.assertEqual(len(C), 5, "quatre coins et la fermeture")
+        self.assertAlmostEqual(float(C[:, 0].max() - C[:, 0].min()), 60.0,
+                               places=6)
+        self.assertAlmostEqual(float(C[:, 1].max() - C[:, 1].min()), 200.0,
+                               places=6)
+
+    def test_une_boite_de_biais_a_quatre_coins_distincts(self):
+        C = self.contour_xy(self.sommets_boite(self._boite(rz=30.0)))
+        self.assertEqual(len(C), 5)
+        aire = 0.5 * abs(sum(C[i, 0] * C[i + 1, 1] - C[i + 1, 0] * C[i, 1]
+                             for i in range(len(C) - 1)))
+        self.assertAlmostEqual(aire, 200.0 * 60.0, delta=1.0,
+                               msg="une rotation ne change pas l'aire")
+
+    def test_le_contour_ne_depend_pas_de_l_ordre_des_points(self):
+        S = self.sommets_boite(self._boite(rz=30.0))
+        a = self.contour_xy(S)
+        b = self.contour_xy(S[::-1])
+        self.assertEqual(len(a), len(b))
+
+    def test_un_tapis_entier_se_projette(self):
+        """Le cas reel : toutes les boites du modele, d'un coup."""
+        t = Convoyeur(repere=repere_travail(x=230, y=250, rz=-90),
+                      longueur=698)
+        t.regler(50.0, 0.0)
+        t.poser(0.0, t0=0.0)
+        for forme in t.boites(1.0):
+            C = self.contour_xy(self.sommets_boite(forme))
+            self.assertGreaterEqual(len(C), 2, forme["role"])
+            self.assertTrue(np.isfinite(C).all(), forme["role"])
