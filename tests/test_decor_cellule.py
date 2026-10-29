@@ -129,3 +129,94 @@ class TestDecorAxeLineaire(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRecalageCAO(unittest.TestCase):
+    """
+    Le recalage d'un modele CAO sur le repere du Convoyeur.
+
+    C'est l'etape qui se trompe sans rien dire : un maillage mal recale
+    s'affiche parfaitement, simplement pas au bon endroit -- et c'est en
+    envoyant le bras dans le vide qu'on s'en apercoit. Les conventions
+    sont donc verifiees ici, une par une.
+    """
+
+    def _boite(self, long_x=700.0, large_y=220.0, haut_z=85.0,
+               decalage=(1000.0, -50.0, 300.0)):
+        """Les huit coins d'un pave, places n'importe ou dans l'espace."""
+        coins = np.array([[x, y, z] for x in (0, long_x)
+                          for y in (0, large_y) for z in (0, haut_z)],
+                         dtype=float)
+        return coins + np.asarray(decalage, dtype=float)
+
+    def _recaler(self, sommets, inverser=False):
+        import importlib.util
+        chemin = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "convertir_cao.py")
+        spec = importlib.util.spec_from_file_location("convertir_cao", chemin)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.recaler_tapis(sommets, inverser)
+
+    def test_l_origine_tombe_a_l_entree_de_la_bande(self):
+        r = self._recaler(self._boite())
+        self.assertAlmostEqual(float(r[:, 0].min()), 0.0, places=6)
+        self.assertAlmostEqual(float(r[:, 0].max()), 700.0, places=6)
+
+    def test_le_zero_est_a_la_SURFACE_de_la_bande(self):
+        """Une piece posee dessus est a z=0, pas a z=+85."""
+        r = self._recaler(self._boite())
+        self.assertAlmostEqual(float(r[:, 2].max()), 0.0, places=6)
+        self.assertAlmostEqual(float(r[:, 2].min()), -85.0, places=6)
+
+    def test_la_bande_est_centree_en_largeur(self):
+        r = self._recaler(self._boite())
+        self.assertAlmostEqual(float(r[:, 1].min()), -110.0, places=6)
+        self.assertAlmostEqual(float(r[:, 1].max()), 110.0, places=6)
+
+    def test_le_sens_de_marche_suit_la_plus_grande_dimension(self):
+        """Peu importe l'axe que le dessinateur a choisi."""
+        long_selon_y = self._boite(long_x=220.0, large_y=700.0)
+        r = self._recaler(long_selon_y)
+        self.assertAlmostEqual(float(r[:, 0].max()), 700.0, places=6)
+        self.assertAlmostEqual(float(r[:, 1].max()), 110.0, places=6)
+
+    def test_inverser_prend_l_autre_bout_comme_entree(self):
+        droit = self._recaler(self._boite())
+        inverse = self._recaler(self._boite(), inverser=True)
+        self.assertAlmostEqual(float(inverse[:, 0].min()), 0.0, places=6)
+        self.assertAlmostEqual(float(inverse[:, 0].max()), 700.0, places=6)
+        # le meme coin ne se retrouve pas au meme bout
+        self.assertNotAlmostEqual(float(droit[0, 0]), float(inverse[0, 0]),
+                                  places=3)
+
+    def test_le_recalage_ne_retourne_pas_le_modele(self):
+        """
+        Un repere indirect retournerait la piece comme un gant : elle
+        s'afficherait tres bien, en miroir, et le capteur se retrouverait
+        de l'autre cote de la bande sans que rien ne proteste.
+
+        On le verifie sur le PRODUIT MIXTE de trois aretes : son signe ne
+        doit pas changer, et sa valeur non plus -- une rotation conserve
+        les volumes.
+        """
+        avant = self._boite()
+        apres = self._recaler(avant)
+
+        def mixte(p):
+            a, b, c = p[1] - p[0], p[2] - p[0], p[4] - p[0]
+            return float(np.dot(np.cross(a, b), c))
+
+        self.assertGreater(mixte(avant) * mixte(apres), 0.0,
+                           "le modele a ete mis en miroir")
+        self.assertAlmostEqual(abs(mixte(apres)), abs(mixte(avant)),
+                               delta=1e-6, msg="le volume a change")
+
+    def test_le_recalage_conserve_les_distances(self):
+        """Une rotation et une translation, rien d'autre : pas d'echelle."""
+        avant = self._boite()
+        apres = self._recaler(avant)
+        for i, j in ((0, 1), (0, 2), (0, 4), (3, 5)):
+            self.assertAlmostEqual(
+                float(np.linalg.norm(apres[i] - apres[j])),
+                float(np.linalg.norm(avant[i] - avant[j])), places=6)

@@ -113,6 +113,31 @@ class Convoyeur:
     camera_s: float = 300.0
     camera_champ: float = 80.0
 
+    #: Distance parcourue APRES l'ordre d'arret, en mm, et la vitesse a
+    #: laquelle elle a ete mesuree. Le tapis ne s'arrete pas net : le
+    #: moteur decelere, et la piece continue.
+    #:
+    #: ATTENTION, c'est invisible a la mesure naive. Chronometrer la
+    #: distance totale entre « marche » et « arret » ne le montre PAS :
+    #: la rampe de demarrage perd exactement ce que la rampe d'arret
+    #: gagne, et le total tombe juste. Il faut mesurer le depassement
+    #: SEUL, apres l'ordre d'arret.
+    depassement: float = 0.0
+    vitesse_depassement: float = 60.0
+    #: "retard" : la piece avance d'un temps fixe, depassement ~ vitesse.
+    #: "rampe"  : deceleration constante, depassement ~ vitesse au carre.
+    #: Les deux coincident a la vitesse de mesure et divergent ailleurs --
+    #: d'un facteur trois entre 60 et 20 mm/s. `diag_depassement.py`
+    #: mesure a plusieurs vitesses et tranche.
+    loi_depassement: str = "retard"
+
+    #: maillage OBJ du tapis, DEJA exprime dans le repere du Convoyeur --
+    #: origine a l'entree, x dans le sens de marche, zero a la surface de
+    #: la bande. `convertir_cao.py --tapis` produit exactement cela a
+    #: partir du STEP du constructeur. None : le tapis est dessine en
+    #: boites schematiques, ce qui suffit pour raisonner.
+    maillage: Optional[str] = None
+
     pieces: List[Piece] = field(default_factory=list)
 
     #: changements de vitesse dates : (instant, vitesse en mm/s)
@@ -230,6 +255,34 @@ class Convoyeur:
         return None
 
     # -- geometrie, pour le dessin et les cibles ----------------------------
+
+    def depassement_a(self, vitesse_mm_s: float) -> float:
+        """
+        De combien la piece depasse le capteur, a cette vitesse-la.
+
+        Nul tant que le depassement n'a pas ete mesure : mieux vaut un
+        modele qui avoue ignorer qu'un modele qui invente.
+        """
+        if not self.depassement:
+            return 0.0
+        v = abs(float(vitesse_mm_s))
+        v0 = abs(float(self.vitesse_depassement)) or 1.0
+        if self.loi_depassement == "rampe":
+            return float(self.depassement) * (v / v0) ** 2
+        return float(self.depassement) * (v / v0)
+
+    def abscisse_arret(self, vitesse_mm_s: Optional[float] = None) -> float:
+        """
+        Ou la piece s'immobilise vraiment, le long du tapis.
+
+        C'est l'abscisse du capteur PLUS le depassement. C'est la que le
+        bras doit aller chercher la piece -- pas au droit du capteur,
+        qui n'est que l'endroit ou on l'a vue passer.
+        """
+        if self.capteur_s is None:
+            raise ValueError("aucun capteur declare sur ce tapis")
+        v = self.vitesse_depassement if vitesse_mm_s is None else vitesse_mm_s
+        return float(self.capteur_s) + self.depassement_a(v)
 
     def boites(self, t: float = 0.0) -> List[dict]:
         """

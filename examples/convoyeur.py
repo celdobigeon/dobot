@@ -67,7 +67,7 @@ REEL = "--reel" in sys.argv
 # capteur au bon endroit.
 TAPIS = Convoyeur(
     repere=repere_travail(x=230, y=250, z=0, rz=-90),
-    longueur=500,          # mm, de l'entree a la sortie
+    longueur=698,          # mm, releve sur le STEP du constructeur
     largeur=60,
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
     capteur_s=250,         # abscisse du capteur : pile devant le robot
@@ -76,7 +76,35 @@ TAPIS = Convoyeur(
     # Ce n'est pas un detail de cablage : voir plus bas, il
     # change la forme meme du cycle sur la machine.
     capteur_port=PORTS_GP["GP4"],
+    # LE TAPIS NE S'ARRETE PAS NET. Mesure sur la cellule : la piece
+    # depasse le capteur de 145 mm apres l'ordre d'arret, a 60 mm/s.
+    # C'est enorme -- 2,4 s de bande -- et c'est invisible si on mesure
+    # la distance totale marche-arret : la rampe de demarrage perd ce
+    # que la rampe d'arret gagne.
+    #
+    # La LOI reste a confirmer : proportionnelle a la vitesse (retard
+    # fixe) ou a son carre (rampe) ? Les deux coincident a 60 mm/s et
+    # divergent d'un facteur trois a 20. `diag_depassement.py` mesure a
+    # trois vitesses et tranche. En attendant on prend la plus prudente,
+    # celle qui promet le moins de gain en ralentissant.
+    depassement=145.0,
+    vitesse_depassement=60.0,
+    loi_depassement="retard",
+    # Le maillage du constructeur, recale sur le repere du tapis par
+    # convertir_cao.py. Absent, le tapis se dessine en boites.
+    maillage=os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "Modele3D", "convoyeur.obj"),
 )
+
+# 25 mm/s et non 60 : le depassement suit la vitesse, et a 60 mm/s la
+# piece filait 145 mm au-dela du capteur. A 25 il en reste une
+# soixantaine -- encore trop pour viser le capteur, mais le point de
+# prise, lui, est place la ou la piece s'arrete VRAIMENT.
+#
+# Le vrai remede est ailleurs : un tapis qui met deux secondes a
+# s'arreter n'est pas un tapis qu'on arrete sur un capteur. Voir le
+# commentaire du point de prise.
+VITESSE_TAPIS = 25                         # mm/s
 
 # LE POINT DE PRISE : appris si on l'a appris, calcule sinon.
 #
@@ -107,16 +135,29 @@ if os.path.exists(_APPRIS):
     PRISE = cible(x=_p["x"], y=_p["y"], z=_p["z"], rz=_p["rz"])
     print("point de prise APPRIS sur {} essai(s) : "
           "x={x:.1f} y={y:.1f} z={z:.1f}".format(_p.get("essais", 1), **_p))
+    # Un point appris vaut POUR LA VITESSE A LAQUELLE IL A ETE APPRIS :
+    # le depassement en depend, donc la piece ne s'arrete plus au meme
+    # endroit si on change la cadence. Le signaler vaut mieux que de
+    # laisser le bras plonger a cote.
+    _v_apprise = float(_p.get("vitesse_tapis", VITESSE_TAPIS))
+    if abs(_v_apprise - VITESSE_TAPIS) > 1e-6:
+        _ecart = TAPIS.depassement_a(_v_apprise) - TAPIS.depassement_a(VITESSE_TAPIS)
+        print("ATTENTION : appris a {:.0f} mm/s, le cycle tourne a {:.0f}."
+              .format(_v_apprise, VITESSE_TAPIS))
+        print("  La piece s'arretera {:.0f} mm {} qu'a l'etalonnage."
+              .format(abs(_ecart), "plus tot" if _ecart > 0 else "plus loin"))
+        print("  Relancez etalonner_convoyeur.py, ou remettez "
+              "VITESSE_TAPIS a {:.0f}.".format(_v_apprise))
 else:
     # z=85 : hauteur relevee sur la cellule, et non une valeur
     # de principe. Ne la remettez pas a zero.
-    PRISE = TAPIS.cible(250, 0, 85) @ hg.rot_z(math.radians(-90))
+    PRISE = (TAPIS.cible(TAPIS.abscisse_arret(VITESSE_TAPIS), 0, 85)
+             @ hg.rot_z(math.radians(-90)))
     print("point de prise CALCULE sur des cotes non relevees -- lancez")
     print("etalonner_convoyeur.py si le bras ne tombe pas sur la piece.")
 DEPOSE = cible(x=170, y=-140, z=100)        # a cote, sur la table
 HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
 
-VITESSE_TAPIS = 60                         # mm/s
 
 # ---------------------------------------------------------------------------
 # 2. LE PROGRAMME

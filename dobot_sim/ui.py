@@ -1331,6 +1331,20 @@ class DialogueCalibrage(QtWidgets.QDialog):
 
 # ===========================================================================
 
+def _maillage_convoyeur() -> Optional[str]:
+    """
+    Le maillage du convoyeur, s'il a ete converti.
+
+    Produit par `convertir_cao.py --tapis` a partir du STEP du
+    constructeur. Absent, le tapis se dessine en boites schematiques :
+    un modele 3D manquant ne doit pas faire disparaitre le convoyeur de
+    la scene.
+    """
+    chemin = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "Modele3D", "convoyeur.obj")
+    return chemin if os.path.isfile(chemin) else None
+
+
 class FenetrePrincipale(QtWidgets.QMainWindow):
 
     def __init__(self):
@@ -2217,7 +2231,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.sp_tapis_x = spin(-600, 600, 230, "mm", 5)
         self.sp_tapis_y = spin(-600, 600, 250, "mm", 5)
         self.sp_tapis_rz = spin(-180, 180, -90, "deg", 15)
-        self.sp_tapis_long = spin(100, 2000, 500, "mm", 10)
+        self.sp_tapis_long = spin(100, 2000, 698, "mm", 10)
         self.sp_tapis_larg = spin(20, 300, 60, "mm", 5)
         self.sp_tapis_imp = spin(1, 2000, 282.9, "imp/mm", 1, 1)
         self.sp_tapis_capteur = spin(0, 2000, 250, "mm", 10)
@@ -2365,7 +2379,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 index_moteur=self.cb_tapis_moteur.currentIndex(),
                 impulsions_par_mm=self.sp_tapis_imp.value(),
                 capteur_s=self.sp_tapis_capteur.value(),
-                camera_s=max(0.0, self.sp_tapis_capteur.value() - 100.0))
+                camera_s=max(0.0, self.sp_tapis_capteur.value() - 100.0),
+                maillage=_maillage_convoyeur())
             self.tapis.pieces = pieces
         self._cellule_redessiner()
 

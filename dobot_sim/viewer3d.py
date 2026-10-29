@@ -526,7 +526,53 @@ class Vue3D(gl.GLViewWidget):
         """
         for item in getattr(self, "_items_tapis", []):
             self.removeItem(item)
-        self._items_tapis = [] if tapis is None else self._peindre(tapis.boites(t))
+        self._items_tapis = []
+        if tapis is None:
+            return
+
+        # Le maillage du constructeur remplace le BATI schematique, pas
+        # le reste : le capteur, sa fenetre, le champ de la camera et les
+        # pieces n'existent dans aucune CAO -- ce sont des grandeurs de
+        # la cellule, pas de la mecanique.
+        maillage = self._maillage_tapis(tapis)
+        if maillage is None:
+            self._items_tapis = self._peindre(tapis.boites(t))
+            return
+
+        self._items_tapis = [maillage]
+        maillage.setTransform(_qmat(np.asarray(tapis.repere, dtype=float)))
+        garde = {"bande", "bati"}
+        self._items_tapis += self._peindre(
+            [b for b in tapis.boites(t) if b.get("role") not in garde])
+
+    def _maillage_tapis(self, tapis):
+        """
+        Le maillage OBJ du tapis, charge une fois et garde.
+
+        Rend None si le tapis n'en declare pas, ou si le fichier manque :
+        on retombe alors sur les boites, et la scene reste lisible. Un
+        modele 3D absent ne doit pas faire disparaitre le convoyeur.
+        """
+        chemin = getattr(tapis, "maillage", None)
+        if not chemin:
+            return None
+        cache = getattr(self, "_cache_tapis", {})
+        if chemin not in cache:
+            try:
+                from .meshes import charger_obj
+                V, F = charger_obj(chemin)
+                md = gl.MeshData(vertexes=V.astype(np.float32),
+                                 faces=F.astype(np.uint32))
+                cache[chemin] = gl.GLMeshItem(
+                    meshdata=md, smooth=True, color=(0.62, 0.64, 0.68, 1.0),
+                    shader=NUANCEUR, glOptions="opaque")
+            except Exception:
+                cache[chemin] = None
+            self._cache_tapis = cache
+        item = cache[chemin]
+        if item is not None and item not in self.items:
+            self.addItem(item)
+        return item
 
     def definir_rail(self, axe, l: float = 0.0) -> None:
         """

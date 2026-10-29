@@ -47,7 +47,9 @@ from dobot_sim import Convoyeur, Pilote                        # noqa: E402
 from dobot_sim.convoyeur import PORTS_GP                       # noqa: E402
 
 ESSAIS = 3
-VITESSE_TAPIS = 60.0
+# La MEME que celle du cycle : le depassement du tapis depend de
+# la vitesse, donc un point appris ne vaut que pour elle.
+VITESSE_TAPIS = 25.0
 FICHIER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "examples", "convoyeur_etalonnage.json")
 
