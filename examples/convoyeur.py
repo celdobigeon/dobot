@@ -289,6 +289,7 @@ robot.vider_programme()
 robot.repli()
 robot.executer_sur_robot(vitesse=30)
 
+retards = []
 try:
     for i in range(CYCLES):
         robot.convoyeur_sur_robot(VITESSE_TAPIS)
@@ -299,6 +300,7 @@ try:
         # chiffre le met hors de cause, ou le confond.
         if robot.instant_detection is not None:
             _ms = 1000.0 * (time.perf_counter() - robot.instant_detection)
+            retards.append(_ms)
             print("  detection -> arret : {:.0f} ms, soit {:.1f} mm de bande"
                   .format(_ms, VITESSE_TAPIS * _ms / 1000.0))
         if not vue:
@@ -317,3 +319,25 @@ finally:
     robot.repli()
     robot.executer_sur_robot(vitesse=30)
     print("cellule au repos")
+
+    # Le recapitulatif, en DERNIER : c'est le chiffre qui dit si un
+    # depassement du tapis vient du programme ou de la mecanique, et il
+    # ne doit pas avoir defile hors de l'ecran quand on le cherche.
+    if retards:
+        print("")
+        print("=" * 60)
+        print("RETARD DU PC, DE LA DETECTION A L'ORDRE D'ARRET")
+        print("=" * 60)
+        print("  {}".format(", ".join("{:.0f} ms".format(r) for r in retards)))
+        _pire = max(retards)
+        print("  le pire : {:.0f} ms, soit {:.1f} mm de bande a {:.0f} mm/s"
+              .format(_pire, VITESSE_TAPIS * _pire / 1000.0, VITESSE_TAPIS))
+        print("")
+        if _pire < 200:
+            print("  Le programme n'y est pour rien. Si la piece depasse de")
+            print("  plusieurs centimetres, cherchez ailleurs : le capteur")
+            print("  qui signale tard, ou le tapis qui n'obeit pas a l'ordre")
+            print("  d'arret -- pas le temps de calcul, qui est ici")
+            print("  negligeable.")
+        else:
+            print("  Le PC met trop longtemps. C'est bien le programme.")
