@@ -84,6 +84,9 @@ REEL = "--reel" in sys.argv
 # --viser : on va AU POINT DE PRISE et on s'y arrete, pour mesurer
 # l'ecart a la piece au reglet. Rien ne se referme, rien ne se depose.
 VISER = "--viser" in sys.argv
+# --pas-a-pas : un mouvement a la fois, et on relit la pose atteinte
+# apres chacun. C'est la seule facon de voir OU un cycle derive.
+PAS_A_PAS = "--pas-a-pas" in sys.argv
 
 # ---------------------------------------------------------------------------
 # 1. L'EN-TETE
@@ -377,6 +380,45 @@ if not REEL:
     robot.simuler()
     sys.exit(0)
 
+if PAS_A_PAS:
+    # On rejoue le programme UN MOUVEMENT A LA FOIS, en relisant la pose
+    # apres chacun. Un cycle qui derive le fait quelque part : ici on
+    # voit lequel, et de combien.
+    print("")
+    print("PAS A PAS -- un mouvement, puis la pose relue sur la machine.")
+    print("Ctrl+C pour arreter.")
+    _instructions = list(robot.programme.instructions)
+    robot.vider_programme()
+    for _k, _ins in enumerate(_instructions, 1):
+        robot.programme.ajouter(_ins)
+        robot.executer_sur_robot(vitesse=20)
+        robot.vider_programme()
+        if _ins.type not in ("MOVJ", "MOVL", "MOVC"):
+            print("  {:02d}  {:10s} {}".format(_k, _ins.type, _ins.commentaire))
+            continue
+        _lu = robot.pose_sur_robot()[:3, 3]
+        _vise = _ins.matrice(robot.robot, robot.programme.repere_objet)[:3, 3]             if getattr(_ins, "mode", "cartesien") != "articulaire" else None
+        if _vise is None:
+            print("  {:02d}  {:10s} atteint x={:7.1f} y={:7.1f} z={:7.1f}"
+                  .format(_k, _ins.type, *_lu))
+        else:
+            _e = float(np.max(np.abs(_lu - _vise)))
+            print("  {:02d}  {:10s} vise {:7.1f} {:7.1f} {:7.1f}  "
+                  "atteint {:7.1f} {:7.1f} {:7.1f}  ECART {:5.1f} mm{}"
+                  .format(_k, _ins.type, _vise[0], _vise[1], _vise[2],
+                          _lu[0], _lu[1], _lu[2], _e,
+                          "   <<< ICI" if _e > 3.0 else ""))
+    print("")
+    print("  Le premier ECART notable designe le mouvement fautif.")
+    sys.exit(0)
+
+# LE RATIO DE VITESSE. En pas a pas -- un mouvement, un arret -- le
+# bras atteint ses consignes au dixieme de millimetre a 20 %. Enchaine,
+# le controleur passe d'un point au suivant sans reprendre son souffle,
+# et c'est la que des pas peuvent se perdre. On garde donc la meme
+# cadence que celle ou la precision est verifiee.
+RATIO = 20
+
 print("")
 print("LE ROBOT VA BOUGER.")
 
@@ -400,7 +442,7 @@ else:
     print("     replier, et cela doit se voir.")
 print("")
 
-robot.executer_sur_robot(vitesse=30)
+robot.executer_sur_robot(vitesse=RATIO)
 
 if VISER:
     print("")
@@ -422,5 +464,5 @@ if VISER:
     robot.vider_programme()
     robot.movl(PRISE @ HAUT, vitesse=20)
     robot.repli()
-    robot.executer_sur_robot(vitesse=30)
+    robot.executer_sur_robot(vitesse=RATIO)
     print("  bras degage")
