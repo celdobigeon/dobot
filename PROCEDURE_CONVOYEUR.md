@@ -38,7 +38,7 @@ capteurs d'angle ne se devine pas, et il ne se transporte pas d'un robot
 |---|---|---|---|
 | robot au convoyeur | COM6, CP210x | 3.7.0 | **J3 fautif** |
 | robot « 7 » | CH340 | — | sains |
-| **robot 5** | COM4, CH340 | **3.3.0** | **sains** |
+| **robot 5** | COM4, CH340 | **3.7.0** | **sains** |
 
 C'est l'**étiquette** qui identifie une machine. Ni le port, ni le pont
 USB : le CH340 est partagé par plusieurs robots, et le port change d'une
@@ -96,7 +96,39 @@ seule sûre.
 
 ---
 
-## 0 ter. Deux pièges qui n'existent que sur le firmware 3.3.0
+## 0 ter. Le firmware, et ce qu'une mise à jour emporte
+
+**Il faut au moins la 3.7.0 pour lire le capteur du convoyeur.** Le
+robot 5 était en 3.3.0 : sa diode s'allumait à chaque passage de pièce,
+et le contrôleur rendait la **même valeur sur un port occupé que sur un
+port vide** — quatre ports balayés, vingt entrées EIO, quatre formes de
+trame essayées (`diag_capteur_trame.py`), toutes figées. Rien ne dit
+que la commande n'existe pas : ce contrôleur acquitte tout.
+
+Passé en 3.7.0, le capteur répond du premier coup.
+
+### Après une mise à jour, reprenez l'origine — et sachez ce qui a bougé
+
+Un flashage n'est pas une mise sous tension : il réécrit la flash.
+Relevé sur le robot 5 le 30/10/2026 :
+
+- les **paramètres d'effecteur** sont passés de `xBias = 61` à **zéro**.
+  Le pont les relit à chaque connexion et s'y adapte seul, mais le
+  contrôleur annonce désormais des x inférieurs de 61 mm pour la même
+  posture — ne vous y trompez pas en comparant des relevés ;
+- le **point de parcage** se relit 61 mm plus court, et désigne le même
+  point physique : c'est la même conversion, pas une valeur perdue.
+  Inutile de relancer `reparer_point_origine.py` ;
+- `GetHOMEParams`, muet en 3.3.0, **répond** en 3.7.0 ;
+- l'avis `0x00` s'efface de nouveau normalement.
+
+**Sans prise d'origine après le flashage, le bras se décale sur tous
+les axes.** C'est la panne qui suit immédiatement une mise à jour, et
+elle ressemble à s'y méprendre à une erreur de repère.
+
+---
+
+## 0 quater. Deux pièges qui n'existent que sur le firmware 3.3.0
 
 Relevés le 30/10/2026 sur le robot 5, et ils ont coûté une
 après-midi à eux deux. Les deux sont **muets** : la machine est saine,
@@ -298,11 +330,21 @@ piste de la mise au point, et chacun ne répond qu'à une question.
 
 ## 7. Deux particularités de cette cellule
 
-**Le capteur est un infrarouge sur GP4.** La file du contrôleur ne sait pas
+**Le capteur est un infrarouge sur GP5.** La file du contrôleur ne sait pas
 attendre sur un port GP : le cycle est donc **mené depuis le PC**, morceau
 par morceau, et le robot reste attaché à l'ordinateur pendant tout le
 cycle. Un capteur tout-ou-rien sur une entrée EIO rendrait la machine
 autonome — c'est un choix d'implantation, pas un détail de câblage.
+
+> **Et il se pourrait qu'on l'ait déjà.** Sur le robot 5, en 3.7.0,
+> `diag_capteur.py` a vu bouger **GP5 et l'entrée EIO 5** en même temps,
+> en sens inverse l'une de l'autre : c'est la même broche, lisible par
+> les deux voies. Or la file du contrôleur, elle, sait attendre sur une
+> EIO. Le cycle pourrait donc redevenir un programme d'un seul tenant,
+> `attendre_piece(5)` à la place de la scrutation, et le PC se
+> débrancher. **Non essayé** : il reste à vérifier que la broche reste
+> lisible quand la fonction infrarouge n'est pas activée, car c'est
+> peut-être elle qui la pilote.
 
 **Le pont USB est un CP210x** sur la machine au convoyeur. La carte reste
 muette un instant après la mise sous tension : la première connexion
@@ -322,3 +364,22 @@ répétable.
 
 **L'axe linéaire** n'est pas monté. Sa direction, `+y`, est une hypothèse
 déclarée comme telle dans le code, avec la procédure pour la mesurer.
+
+**Deux façons de déclarer l'outil qui ne commandent pas la même
+hauteur.** C'est le défaut le plus gênant de ceux qui restent, parce
+qu'il est invisible à la lecture :
+
+```python
+robot.definir_repere_outil(Tz(-89.3) @ Rx(180))   # geo.lt reste au catalogue (62)
+robot.regler_longueur_outil(89.3)                 # geo.lt = 89,3
+```
+
+Les deux produisent le **même repère outil**. Mais c'est `geo.lt`, et
+non le repère outil, qui entre dans la conversion du pont
+(`z_ctrl = z_tcp + lt − d1 + zBias`) : 27,3 mm d'écart à la commande.
+
+Les exemples s'en tiennent tous à la première forme, celle qui est
+validée sur la machine. Il faudra trancher par la mesure : amener la
+pointe au contact du plan, relever le z annoncé, et faire converger les
+deux chemins sur la valeur trouvée. Tant que ce n'est pas fait, **ne
+mélangez pas les deux déclarations dans un même programme**.
