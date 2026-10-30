@@ -20,6 +20,7 @@ donne un résultat qui a l'air juste.
 | 4. étalonnage **dans les conditions du cycle** | décalage bord/centre | erreur d'une **demi-pièce**, toujours du même côté |
 | 5. une seule pièce à la fois | détection sur une pièce déjà là | le tapis ne convoie pas, la prise est erratique |
 | 6. **ne jamais pousser le bras à la main** | J1 perdu par le contrôleur | le bras garde son rayon et change d'**angle** |
+| 7. partir d'une posture au **milieu** de la course | prise d'origine en butée | la base tourne, tape, et force sans s'arrêter |
 
 > Le piège commun à toutes : **rien ne proteste**. Le programme s'exécute,
 > le tapis tourne, le bras bouge. Seule la pièce non attrapée le dit, et
@@ -29,8 +30,19 @@ donne un résultat qui a l'air juste.
 
 ## 0 bis. Vérifier que le robot sait où est son bras
 
-**À faire avant tout le reste**, et c'est nouveau : le capteur d'angle
-**J3** de cette machine est fautif.
+**À faire avant tout le reste**, et **sur chaque machine** : l'état des
+capteurs d'angle ne se devine pas, et il ne se transporte pas d'un robot
+à l'autre.
+
+| Machine | Port, pont | Firmware | Capteurs d'angle |
+|---|---|---|---|
+| robot au convoyeur | COM6, CP210x | 3.7.0 | **J3 fautif** |
+| robot « 7 » | CH340 | — | sains |
+| **robot 5** | COM4, CH340 | **3.3.0** | **sains** |
+
+C'est l'**étiquette** qui identifie une machine. Ni le port, ni le pont
+USB : le CH340 est partagé par plusieurs robots, et le port change d'une
+prise à l'autre.
 
 ```bash
 python diag_capteurs_angle.py COM6
@@ -84,6 +96,53 @@ seule sûre.
 
 ---
 
+## 0 ter. Deux pièges qui n'existent que sur le firmware 3.3.0
+
+Relevés le 30/10/2026 sur le robot 5, et ils ont coûté une
+après-midi à eux deux. Les deux sont **muets** : la machine est saine,
+rien ne proteste, et rien ne part.
+
+### L'avis de réinitialisation ne s'efface jamais
+
+`alarme 0x00 : reinitialisation du controleur` reste affichée quoi qu'on
+fasse — ni l'effacement, ni une prise d'origine menée à son terme ne la
+font tomber. Sur le 3.7.0, elle tombait.
+
+Ce n'est **pas un défaut**, c'est un avis : « j'ai été remis sous
+tension, l'origine est à refaire ». Le code la laisse donc passer
+(`liaison.alarmes_bloquantes`) et s'arrête sur tout le reste. Avant
+cette correction, elle rouvrait l'assistant de mise en route **à chaque
+commande**, sans qu'aucun geste puisse l'en sortir.
+
+### Le point de parcage était enregistré hors course
+
+Celui-ci est le plus retors de toute la mise au point. L'endroit où le
+bras se gare **à la fin** de la prise d'origine est un nombre
+**persistant, en flash**. Sur cette machine il valait J1 ≈ −135,2° pour
+une butée à −135.
+
+Conséquence : la prise d'origine réussissait, la base retrouvait bien sa
+référence — et le bras finissait **hors de sa propre course**. Au
+premier mouvement, `0x41 : J1 en butee negative`, et plus rien ne
+partait. Le contrôleur disait la vérité ; c'est l'endroit où il se garait
+qui était faux.
+
+Et rien ne le montre : `GetHOMEParams` renvoie **zéro octet** sur ce
+firmware. On ne peut pas relire la valeur fautive, seulement la
+remplacer.
+
+```bash
+python reparer_point_origine.py COM4
+```
+
+Le bras va au repli, le script lit ce que le contrôleur annonce **de
+lui-même** à cet endroit, et écrit cela. Aucune conversion de repère ne
+s'interpose, donc aucune ne peut se tromper. À faire **une fois par
+machine** ; vérifiez derrière par une prise d'origine, le bras doit se
+garer au repli et `etat` annoncer J1 proche de zéro.
+
+---
+
 ## 1. Dégager le bras
 
 Si le voyant est **rouge**, ou si un cycle a été interrompu, le bras est
@@ -91,6 +150,12 @@ probablement contre une butée.
 
 Bouton de la fourche maintenu, amenez-le à une posture franche : **bras
 arrière vertical, avant-bras horizontal**. Relâchez.
+
+**Et ramenez la base au milieu de sa course**, bras face à l'avant.
+Partie d'une butée, elle n'a de la place que d'un côté : sur le robot 5,
+la prise d'origine lancée depuis J1 = −135° a fait tourner la base
+jusqu'à la butée, où elle a forcé sans s'arrêter. Repartie du milieu, la
+même commande a trouvé son index du premier coup.
 
 > Tant qu'il touche une butée, la prise d'origine échoue — et elle échoue
 > en affichant « prise d'origine terminée », ce qui est trompeur. C'est la
@@ -239,9 +304,11 @@ par morceau, et le robot reste attaché à l'ordinateur pendant tout le
 cycle. Un capteur tout-ou-rien sur une entrée EIO rendrait la machine
 autonome — c'est un choix d'implantation, pas un détail de câblage.
 
-**Le pont USB est un CP210x.** La carte reste muette un instant après la
-mise sous tension : la première connexion échoue parfois en « aucune
-réponse en 1,0 s ». Relancez, la seconde passe.
+**Le pont USB est un CP210x** sur la machine au convoyeur. La carte reste
+muette un instant après la mise sous tension : la première connexion
+échoue parfois en « aucune réponse en 1,0 s ». Relancez, la seconde
+passe. Le robot 5, lui, est en CH340 et n'a pas ce défaut — une raison
+de plus de ne jamais identifier une machine par son pont.
 
 ---
 
