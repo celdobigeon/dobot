@@ -102,10 +102,17 @@ TAPIS = Convoyeur(
     capteur_s=300,         # mm depuis l'axe moteur -- releve au reglet,
                            # ce qui met le capteur a y = -100 du robot
     camera_s=200,          # abscisse du champ de la camera, en amont
-    # Le capteur de presence est l'INFRAROUGE du kit, sur GP4.
+    # Le capteur de presence est l'INFRAROUGE du kit, sur GP5.
     # Ce n'est pas un detail de cablage : voir plus bas, il
     # change la forme meme du cycle sur la machine.
-    capteur_port=PORTS_GP["GP4"],
+    #
+    # Il etait sur GP4 ; deplace sur GP5 le 30/10/2026 en cherchant
+    # pourquoi le robot 5 ne le lisait pas. Ce n'etait pas le port --
+    # c'etait son FIRMWARE 3.3.0, qui rendait la meme valeur sur un
+    # port occupe que sur un port vide. Passe en 3.7.0, le capteur
+    # repond. Relancez diag_capteur.py si vous le rebranchez ailleurs :
+    # il balaie les quatre ports et le dit.
+    capteur_port=PORTS_GP["GP5"],
     # LE TAPIS S'ARRETE NET : mesure sur la machine, 8 ms entre la
     # detection et l'arret effectif, soit 0,2 mm de bande. La piece
     # s'immobilise au droit du capteur, et elle ne quitte jamais son
@@ -199,9 +206,30 @@ print("  position x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
 robot = Pilote(nom="convoyeur", outil="ventouse",
                vitesse=140, acceleration=600, vitesse_articulaire=60)
 robot.tapis = TAPIS                        # sert de defaut aux commandes
-robot.regler_longueur_outil(89.3)          # ventouse mesuree sur la
-                                           # machine : 79,3 faisait
-                                           # plonger 10 mm trop bas
+# LE REPERE OUTIL, declare comme dans prise_depose_matrices.py -- et
+# surtout PAS par regler_longueur_outil(89.3), qui n'est pas la meme
+# chose malgre les apparences.
+#
+# Les deux donnent le meme repere outil, Tz(-89,3).Rx(180). Mais
+# `regler_longueur_outil` ecrit aussi `geo.lt`, et c'est `geo.lt` --
+# non le repere outil -- qui entre dans la conversion du pont vers le
+# controleur : z_ctrl = z_tcp + lt - d1 + zBias.
+#
+# Resultat mesure le 30/10/2026 sur le robot 5 : avec lt=89,3 au lieu
+# des 62 du catalogue, le controleur recoit 27,3 mm de trop et la
+# ventouse s'arrete d'autant trop haut. Le repere outil etait pourtant
+# identique dans les deux cas.
+#
+# DEUX FACONS DE DIRE "la ventouse fait 89,3 mm" QUI COMMANDENT DES
+# HAUTEURS DIFFERENTES : c'est un defaut du code, pas un choix, et il
+# demande une seance de mesure pour etre tranche proprement. En
+# attendant, on s'en tient a la declaration VALIDEE sur la machine --
+# trois prises bonnes sur trois le 30/10/2026.
+OUTIL = np.array([[1,  0,  0,     0],
+                  [0, -1,  0,     0],
+                  [0,  0, -1, -89.3],
+                  [0,  0,  0,     1]], dtype=float)
+robot.definir_repere_outil(OUTIL)
 
 CYCLES = 10
 
