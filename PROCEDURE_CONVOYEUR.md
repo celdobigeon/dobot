@@ -32,8 +32,13 @@ donne un résultat qui a l'air juste.
 **À faire avant tout le reste**, et c'est nouveau : le capteur d'angle
 **J3** de cette machine est fautif.
 
+```bash
+python diag_capteurs_angle.py COM6
+```
+
 Bras en équerre — arrière vertical, avant-bras horizontal — les angles
-lus doivent valoir `J2 = 0` et `J3 = 0`. Relevé le 30/10/2026 sur quatre
+lus doivent valoir `J2 = 0` et `J3 = 0`. Le script relit cinq fois, en
+rouvrant la liaison à chaque essai, et conclut. Relevé le 30/10/2026 sur quatre
 connexions successives, bras immobile : `J3 = −2,5`, puis `−162,6`,
 `−157,8`, `−161,8`. **La bonne valeur sort une fois sur quatre.**
 
