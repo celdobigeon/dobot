@@ -128,6 +128,27 @@ ouvre sa propre liaison.
 > une prise d'origine le rétablit. C'est pourquoi `--equerre` fait les
 > deux, **dans la liaison qui travaille**.
 
+### Le contournement, vérifié — et peut-être simplifiable
+
+```bash
+python examples/convoyeur.py --reel --equerre
+```
+
+Trois lancements séparés sur le robot 2, trois prises bonnes. Chacun
+rouvre sa liaison, donc relit les capteurs fautifs, et se corrige
+lui-même.
+
+**Et les deux derniers l'ont fait sans déclarer l'équerre** : le bouton
+« Passer » du dialogue, puis la seule prise d'origine. Si cela se
+confirme, l'ingrédient actif est **l'origine dans la liaison qui
+travaille**, pas la déclaration de posture — ce qui supprimerait le
+placement à la main, donc la perte de J1 qu'il entraîne.
+
+> **Deux succès ne font pas une démonstration.** Cette machine
+> réussissait déjà une fois sur deux : deux réussites de suite arrivent
+> par hasard une fois sur quatre. À confirmer sur cinq ou six
+> lancements avant d'alléger la procédure.
+
 ### Et surtout : répétable ne veut pas dire juste
 
 Dans ce relevé-là, les dix-neuf lectures stables annonçaient **J1 = 0,0
