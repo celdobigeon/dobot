@@ -26,15 +26,15 @@ le tapis une duree connue, mesurez le deplacement, et corrigez ici. Le
 nombre voyage ensuite avec le programme jusqu'au robot.
 """
 
-import json
-import math
 import os
 import sys
 import time
 
+import numpy as np
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dobot_sim import Convoyeur, Pilote, cible, repere_travail   # noqa: E402
+from dobot_sim import Convoyeur, Pilote, repere_travail          # noqa: E402
 from dobot_sim.convoyeur import PORTS_GP                         # noqa: E402
 from dobot_sim import homogeneous as hg                          # noqa: E402
 
@@ -76,10 +76,16 @@ REEL = "--reel" in sys.argv
 # donc les y. D'ou rz=-90, qui couche l'axe x du tapis -- son sens de
 # marche -- sur le -y du robot.
 #
-# `sens` reste a +1 : il ne decrit pas la geometrie mais le CABLAGE du
-# moteur. Une consigne positive a bien fait avancer la bande dans le
-# sens declare ici ; si vous rebranchez le moteur a l'envers, c'est
-# `sens=-1` qu'il faudra, et rien d'autre a toucher.
+# `sens` ne decrit PAS la geometrie mais le CABLAGE du moteur, et c'est
+# pourquoi il est separe de tout le reste. Il valait +1 sur le robot au
+# convoyeur ; sur le robot 5, branche le 30/10/2026 a sa place, la meme
+# consigne positive a fait descendre la bande a contresens. Le tapis
+# n'avait pas bouge, ni les cotes : seul le controleur qui le pilote
+# avait change. D'ou `sens=-1` -- un nombre, et rien d'autre a reprendre.
+#
+# C'est tout le benefice d'avoir pris l'AXE MOTEUR comme reference
+# geometrique : le sens de marche se deduit (x = y ^ z), et le cablage
+# reste une question separee, qui se regle a un endroit.
 #
 # A MESURER CHEZ VOUS : x, y et longueur ci-dessous sont plausibles, pas
 # releves. Mettez-y vos cotes -- le reste du programme suit.
@@ -92,6 +98,7 @@ TAPIS = Convoyeur(
     longueur=698,          # mm, releve sur le STEP du constructeur
     largeur=100,          # mm, bande utile (bati 120)
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
+    sens=-1,               # CABLAGE du moteur, pas geometrie -- voir plus haut
     capteur_s=300,         # mm depuis l'axe moteur -- releve au reglet,
                            # ce qui met le capteur a y = -100 du robot
     camera_s=200,          # abscisse du champ de la camera, en amont
@@ -123,62 +130,66 @@ TAPIS = Convoyeur(
 # change le temps d'un cycle, et c'est tout.
 VITESSE_TAPIS = 60                         # mm/s
 
-# LE POINT DE PRISE : appris si on l'a appris, calcule sinon.
+# LE POINT DE PRISE : UNE CHAINE DE REPERES, et non un point appris.
 #
-# Calcule, il vaut ce que valent les cotes du tapis ci-dessus -- qui sont
-# plausibles et non relevees. Sur la machine, cela a envoye le bras a
-# cent millimetres de la piece. Le tapis, le capteur et l'arret etaient
-# pourtant justes : c'etait le repere du tapis qui ne correspondait a
-# rien de reel.
+# Le point appris -- `etalonner_convoyeur.py` -- reste l'outil de
+# DEBOGAGE : on amene la ventouse sur la piece au clavier, et les trois
+# nombres obtenus absorbent tout ce qu'on n'a pas su mesurer. Il depanne,
+# mais il n'explique rien, et il meurt a la prochaine prise d'origine.
 #
-# Appris, il absorbe d'un coup la place reelle du tapis, l'abscisse
-# reelle du capteur, le retard de la scrutation, et le decalage entre le
-# bord de la piece que le capteur voit et son centre que la ventouse
-# vise. Aucune de ces grandeurs n'a besoin d'etre connue separement.
+# Ici on ecrit ce que l'on sait, chaque cote a sa place :
 #
-#     python etalonner_convoyeur.py COM6
+#     TAPIS.repere      ou est le convoyeur par rapport au ROBOT
+#     CAPTEUR           ou est le capteur le long de la BANDE
+#     DANS_LE_CAPTEUR   ou est la ventouse par rapport a la PIECE
 #
-# Le quart de tour, lui, reste utile dans les deux cas : une cible prise
-# dans le repere du tapis en herite l'orientation, et ce tapis est pose
-# a rz=-90, ce qui mettrait J4 sur sa butee. Une ventouse se moque de
-# son orientation autour de z ; avec une PINCE elle serait imposee par
-# la piece, et il faudrait deplacer le tapis plutot que tordre le
-# poignet.
-_APPRIS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "convoyeur_etalonnage.json")
-if os.path.exists(_APPRIS):
-    with open(_APPRIS, encoding="utf-8") as _f:
-        _p = json.load(_f)
-    PRISE = cible(x=_p["x"], y=_p["y"], z=_p["z"], rz=_p["rz"])
-    print("point de prise APPRIS sur {} essai(s) : "
-          "x={x:.1f} y={y:.1f} z={z:.1f}".format(_p.get("essais", 1), **_p))
-    # Un point appris vaut POUR LA VITESSE A LAQUELLE IL A ETE APPRIS :
-    # le depassement en depend, donc la piece ne s'arrete plus au meme
-    # endroit si on change la cadence. Le signaler vaut mieux que de
-    # laisser le bras plonger a cote.
-    _v_apprise = float(_p.get("vitesse_tapis", VITESSE_TAPIS))
-    _ecart = (TAPIS.depassement_a(_v_apprise)
-              - TAPIS.depassement_a(VITESSE_TAPIS))
-    # Avertir seulement si la vitesse change VRAIMENT quelque chose. Tant
-    # que le depassement est nul -- et il l'est, mesure a 0,2 mm -- la
-    # piece s'arrete au meme endroit quelle que soit la cadence, et crier
-    # au loup pour zero millimetre apprend a ignorer les avertissements.
-    if abs(_ecart) > 1.0:
-        print("ATTENTION : appris a {:.0f} mm/s, le cycle tourne a {:.0f}."
-              .format(_v_apprise, VITESSE_TAPIS))
-        print("  La piece s'arretera {:.0f} mm {} qu'a l'etalonnage."
-              .format(abs(_ecart), "plus tot" if _ecart > 0 else "plus loin"))
-        print("  Relancez etalonner_convoyeur.py, ou remettez "
-              "VITESSE_TAPIS a {:.0f}.".format(_v_apprise))
-else:
-    # z=85 : hauteur relevee sur la cellule, et non une valeur
-    # de principe. Ne la remettez pas a zero.
-    PRISE = (TAPIS.cible(TAPIS.abscisse_arret(VITESSE_TAPIS), 0, 85)
-             @ hg.rot_z(math.radians(-90)))
-    print("point de prise CALCULE sur des cotes non relevees -- lancez")
-    print("etalonner_convoyeur.py si le bras ne tombe pas sur la piece.")
-DEPOSE = cible(x=170, y=-140, z=100)        # a cote, sur la table
+# Deplacer le capteur de 30 mm ne touche qu'une matrice, et une seule
+# cote dans cette matrice. C'est la difference entre une cellule qu'on
+# comprend et trois nombres qu'on recommence.
+#
+# Rien n'est recopie du repere du tapis : il est DEDUIT de la
+# declaration ci-dessus, qui reste l'unique endroit ou vivent x, y, z
+# et l'orientation du convoyeur.
+
+# Le capteur, le long de la bande, depuis l'axe moteur. Une translation
+# pure : le capteur ne tourne pas par rapport au tapis.
+CAPTEUR = np.array([[1, 0, 0, TAPIS.capteur_s],
+                    [0, 1, 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1]], dtype=float)
+
+COTE = 25.0                                # cube de 25 mm, mesure
+
+# La ventouse dans le repere de la PIECE arretee au capteur.
+#
+#   -COTE/2 le long de la bande : le capteur voit le BORD AVANT de la
+#   piece, la ventouse vise son CENTRE. Une demi-piece, soit la moitie
+#   des prises ratees de cette cellule tant qu'elle est restee implicite.
+#
+#   +COTE en z : le dessus du cube, ou la ventouse se pose.
+#
+#   La partie rotation retourne l'outil -- z vers le BAS -- et lui donne
+#   le quart de tour qui garde J4 loin de sa butee.
+DANS_LE_CAPTEUR = np.array([[ 0, -1,  0, -COTE / 2],
+                            [-1,  0,  0,         0],
+                            [ 0,  0, -1,      COTE],
+                            [ 0,  0,  0,         1]], dtype=float)
+
+PRISE = TAPIS.repere @ CAPTEUR @ DANS_LE_CAPTEUR
+
+# LA DEPOSE, HORS DE L'EMPRISE DU TAPIS. Elle etait en x=170, c'est-a-
+# dire AU-DESSUS DE LA BANDE (x = 150 a 270) : le bras y reposait la
+# piece sur le convoyeur, qui la remmenait. Cotes relevees sur la
+# cellule, et verifiees en cycle le 30/10/2026.
+DEPOSE = np.array([[0.156434,  0.987688,  0,  15.00],
+                   [0.987688, -0.156434,  0, 219.21],
+                   [0,         0,        -1,  92.00],
+                   [0,         0,         0,      1]], dtype=float)
+
 HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
+
+print("PRISE = TAPIS.repere @ CAPTEUR @ DANS_LE_CAPTEUR")
+print("  position x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +199,9 @@ HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
 robot = Pilote(nom="convoyeur", outil="ventouse",
                vitesse=140, acceleration=600, vitesse_articulaire=60)
 robot.tapis = TAPIS                        # sert de defaut aux commandes
-robot.regler_longueur_outil(79.3)          # mesuree sur la machine
+robot.regler_longueur_outil(89.3)          # ventouse mesuree sur la
+                                           # machine : 79,3 faisait
+                                           # plonger 10 mm trop bas
 
 CYCLES = 10
 
@@ -396,8 +409,8 @@ finally:
             with open(_journal, "w", encoding="utf-8") as _f:
                 print("vitesse du tapis : {:.0f} mm/s".format(VITESSE_TAPIS),
                       file=_f)
-                print("point de prise   : {}".format(
-                      "appris" if os.path.exists(_APPRIS) else "calcule"),
+                print("point de prise   : chaine de reperes, "
+                      "x={:.1f} y={:.1f} z={:.1f}".format(*PRISE[:3, 3]),
                       file=_f)
                 for _k, (_r, _l) in enumerate(temoins, 1):
                     _etat = ("jamais : la bande etait arretee" if _l is None
