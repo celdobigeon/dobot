@@ -261,8 +261,22 @@ print("  position x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
 # 2. LE PROGRAMME
 # ---------------------------------------------------------------------------
 
+# LA SURVITESSE VENAIT DE L'ARTICULAIRE, PAS DU CARTESIEN.
+#
+# Le controle annonçait "266 mm/s > limite 250" a CHAQUE execution. J'ai
+# d'abord baisse `vitesse` de 140 a 120 : l'avertissement n'a pas bouge
+# d'un millimetre par seconde, ce qui l'a designe lui-meme.
+#
+# Le calcul le confirme : 60 deg/s de rotation de BASE a 250 mm de rayon
+# font 1,05 rad/s, soit 262 mm/s. C'est `vitesse_articulaire` qui
+# depassait, par un mouvement MOVJ, et non les trajectoires droites.
+#
+# A 50 deg/s : 218 mm/s, sous la limite. Un avertissement qu'on finit
+# par ne plus lire est un avertissement perdu -- et une survitesse fait
+# perdre des pas sans rien dire, sur une machine dont la rotation de
+# base n'a pas de capteur et se compte en pas.
 robot = Pilote(nom="convoyeur", outil="ventouse",
-               vitesse=140, acceleration=600, vitesse_articulaire=60)
+               vitesse=120, acceleration=600, vitesse_articulaire=50)
 robot.tapis = TAPIS                        # sert de defaut aux commandes
 # LE REPERE OUTIL, declare comme dans prise_depose_matrices.py -- et
 # surtout PAS par regler_longueur_outil(89.3), qui n'est pas la meme

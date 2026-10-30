@@ -79,8 +79,16 @@ TOLERANCE = 5.0        # degres
 #: connexion a l'autre a deja tout dit, quelle que soit sa posture.
 #:
 #: Cette variante demande donc seulement de NE PLUS TOUCHER AU BRAS.
-#: Elle peut rater un capteur regulierement faux -- stable mais decale
-#: --, ce que l'equerre, elle, verrait.
+#:
+#: ELLE EST FAIBLE, ET IL FAUT LE SAVOIR. Elle ne voit que la
+#: REPETABILITE : un controleur qui se fixe sur une valeur fausse et s'y
+#: tient passe pour sain. Releve sur le robot 2 le 30/10/2026 -- J1 lu a
+#: 0,0 dix-neuf fois de suite, bras physiquement a -21 degres. Le bilan
+#: le dit desormais en tete, et non en reserve de bas de page.
+#:
+#: Et si le bras vient d'etre DEPLACE A LA MAIN, elle ne mesure rien du
+#: tout : J1 n'a pas de capteur, le controleur le compte en pas, et
+#: moteurs relaches ces pas sont perdus. Prise d'origine d'abord.
 TEL_QUEL = "--tel-quel" in sys.argv
 
 
@@ -186,6 +194,25 @@ def main():
             fautifs.append(noms[i])
 
     print("")
+    if TEL_QUEL:
+        print("  AVERTISSEMENT -- ce que cet essai NE PEUT PAS voir.")
+        print("")
+        print("  Sans posture connue, il ne juge que la REPETABILITE. Or")
+        print("  une valeur repetee n'est pas une valeur juste : le")
+        print("  controleur peut se fixer sur une lecture fausse et s'y")
+        print("  tenir. Releve sur le robot 2 le 30/10/2026 -- J1 lu a")
+        print("  0,0 dix-neuf fois de suite alors que le bras etait a")
+        print("  -21 degres.")
+        print("")
+        print("  ET SI VOUS VENEZ DE DEPLACER LE BRAS A LA MAIN, rien ici")
+        print("  n'est utilisable : la rotation de base N'A PAS DE")
+        print("  CAPTEUR, le controleur la compte en pas, et moteurs")
+        print("  relaches ces pas ne sont pas comptes. J1 est perdu, par")
+        print("  construction, jusqu'a la prochaine prise d'origine.")
+        print("")
+        print("  Pour conclure vraiment : prise d'origine, puis cet essai")
+        print("  BRAS EN EQUERRE, sans --tel-quel.")
+        print("")
     if incoherents and TEL_QUEL:
         print("  LECTURES INCOHERENTES : {}".format(", ".join(incoherents)))
         print("")
@@ -209,12 +236,9 @@ def main():
         return
     if not fautifs:
         if TEL_QUEL:
-            print("  LES LECTURES SE REPETENT. Le bras etant immobile, aucun")
-            print("  capteur ne s'est contredit d'une connexion a l'autre.")
-            print("")
-            print("  Reserve : sans l'equerre, un capteur REGULIEREMENT faux")
-            print("  -- stable mais decale -- passerait au travers. Pour")
-            print("  l'exclure, refaire l'essai bras en equerre.")
+            print("  LES LECTURES SE REPETENT -- et c'est TOUT ce que cela")
+            print("  dit. Voir l'avertissement ci-dessus : repetable n'est")
+            print("  pas juste.")
         else:
             print("  CAPTEURS SAINS. Les lectures se repetent et correspondent")
             print("  a la posture. Cette machine sait ou est son bras, et une")

@@ -90,11 +90,29 @@ l'établissement lui-même.
 > en équerre, c'est la première qui est juste (−2,5°) et les quatre
 > suivantes qui mentent (−160°). Les deux motifs sont symétriques, et
 > leur position ne les sépare pas.
->
-> Ce qui tranche, c'est la **posture connue**. À l'équerre on sait que la
-> bonne valeur est zéro ; sans elle, on constate seulement l'incohérence.
-> `diag_capteurs_angle.py` dit maintenant exactement cela, et propose de
-> refaire l'essai bras immobile pour lever le doute.
+
+### Et surtout : répétable ne veut pas dire juste
+
+Dans ce relevé-là, les dix-neuf lectures stables annonçaient **J1 = 0,0
+alors que le bras était physiquement à −21°**. La valeur répétée était
+la fausse, et J3 était faux aussi.
+
+Deux conséquences, et elles priment sur tout ce qui précède :
+
+**Un essai sans posture connue ne prouve rien.** Il ne mesure que la
+répétabilité ; un contrôleur qui se fixe sur une lecture fausse et s'y
+tient passe pour sain. Seule l'**équerre** — où l'on sait que J2 et J3
+valent zéro — permet de conclure.
+
+**Et le relevé lui-même violait l'étape 6.** Pour mettre le bras dans
+une posture d'essai, on l'avait poussé à la main — or la rotation de
+base **n'a pas de capteur** : le contrôleur la compte en pas, et
+moteurs relâchés ces pas sont perdus. J1 était donc faux *par
+construction*, avant même la première lecture. Les trois relevés faits
+ainsi ne mesuraient pas la machine, mais les dégâts de la méthode.
+
+> Après tout déplacement manuel : **prise d'origine d'abord**, mesure
+> ensuite. Dans cet ordre, et jamais l'inverse.
 
 C'est l'**étiquette** qui identifie une machine. Ni le port, ni le pont
 USB : le CH340 est partagé par plusieurs robots, et le port change d'une
