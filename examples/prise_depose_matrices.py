@@ -87,6 +87,14 @@ VISER = "--viser" in sys.argv
 # --pas-a-pas : un mouvement a la fois, et on relit la pose atteinte
 # apres chacun. C'est la seule facon de voir OU un cycle derive.
 PAS_A_PAS = "--pas-a-pas" in sys.argv
+# --cycles N : combien de prises-deposes. Un seul cycle tient dans la
+# file du controleur (32 commandes) ; trois la debordent et obligent a
+# la reapprovisionner PENDANT l'execution. C'est la seule difference
+# entre un cycle qui passe et un cycle qui derive, et ce drapeau permet
+# de la mettre a l'epreuve.
+CYCLES = 3
+if "--cycles" in sys.argv:
+    CYCLES = int(sys.argv[sys.argv.index("--cycles") + 1])
 
 # ---------------------------------------------------------------------------
 # 1. L'EN-TETE
@@ -279,7 +287,7 @@ if VISER:
     # regarde ou la ventouse arrive, on ne produit pas.
     robot.movj(PRISE @ HAUT)
     robot.movl(PRISE, vitesse=15)
-for _ in range(0 if VISER else 3):
+for _ in range(0 if VISER else CYCLES):
     # prise : ARRET AU POINT, sinon la ventouse aspire avant d'y etre
     robot.movj(PRISE @ HAUT, lissage=70)
     robot.movl(PRISE, vitesse=40)
