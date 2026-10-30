@@ -37,7 +37,7 @@ capteurs d'angle ne se devine pas, et il ne se transporte pas d'un robot
 | Machine | Port, pont | Firmware | Capteurs d'angle |
 |---|---|---|---|
 | robot au convoyeur | COM6, CP210x | 3.7.0 | **J3 fautif, ~160°** |
-| robot 2 | COM9, CP210x | 3.7.0 | sains **au repos** — voir ci-dessous |
+| **robot 2** | COM9, CP210x | 3.7.0 | **J1 +21°, J3 +35°** à chaque réouverture |
 | robot « 7 » | CH340 | — | sains |
 | robot 5 | COM4, CH340 | 3.7.0 | sains |
 
@@ -90,6 +90,43 @@ l'établissement lui-même.
 > en équerre, c'est la première qui est juste (−2,5°) et les quatre
 > suivantes qui mentent (−160°). Les deux motifs sont symétriques, et
 > leur position ne les sépare pas.
+
+### L'essai qui conclut : `--origine`
+
+```bash
+python diag_capteurs_angle.py COM9 --origine
+```
+
+Trois façons de donner une posture de référence au bras, et **deux sont
+mauvaises** :
+
+| Méthode | Pourquoi elle échoue |
+|---|---|
+| le placer **à la main** (équerre) | imprécis, et surtout **J1 est perdu** — la base n'a pas de capteur |
+| lui **commander** le repli | n'arrive à destination que si le contrôleur sait d'où il part. Sur le robot 2, J3 faux de 34° : le bras est parti **en butée** |
+| la **prise d'origine** | amène les axes sur leurs références mécaniques, sans rien supposer |
+
+Seule la troisième ne demande aucune hypothèse. Le script fait donc
+l'origine, lit les angles **dans la liaison qui vient de la faire**,
+puis ferme, rouvre, et relit. L'écart est l'erreur du contrôleur,
+mesurée sans intermédiaire.
+
+Relevé sur le robot 2 le 30/10/2026, bras immobile :
+
+| | J1 | J2 | J3 |
+|---|---|---|---|
+| référence, après l'origine | −21,5 | 15,2 | 30,1 |
+| réouverture, 4 s plus tard | **0,0** | 15,4 | **65,0** |
+| réouverture, 10 s plus tard | **0,0** | 15,5 | **65,2** |
+
+**J2 juste, J1 faux de 21°, J3 faux de 35°**, et le bras n'a pas bougé.
+C'est pourquoi un lancement réussissait et le suivant non : chacun
+ouvre sa propre liaison.
+
+> Notez que **J1 n'a pas de capteur du tout** — le contrôleur le compte
+> en pas. Déclarer la posture d'équerre corrige J2 et J3, pas J1 : seule
+> une prise d'origine le rétablit. C'est pourquoi `--equerre` fait les
+> deux, **dans la liaison qui travaille**.
 
 ### Et surtout : répétable ne veut pas dire juste
 

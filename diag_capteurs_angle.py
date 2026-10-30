@@ -3,7 +3,16 @@
 """
 Les capteurs d'angle de ce robot disent-ils la verite ?
 
-    python diag_capteurs_angle.py COM6
+    python diag_capteurs_angle.py COM9 --origine     le seul concluant
+    python diag_capteurs_angle.py COM9               bras en equerre, a la main
+    python diag_capteurs_angle.py COM9 --tel-quel    repetabilite seule
+
+PRENEZ --origine. Le bras y est reference par une PRISE D'ORIGINE, qui
+amene les axes sur leurs butees mecaniques sans rien supposer de ce que
+le controleur croit savoir. Les autres essais demandent de placer le
+bras, a la main ou par une commande -- et un bras place a la main perd
+J1, tandis qu'un mouvement commande n'arrive a destination que si le
+controleur sait deja ou il est.
 
 RIEN NE BOUGE : on ouvre la liaison, on lit, on ferme, on recommence.
 
@@ -91,6 +100,34 @@ TOLERANCE = 5.0        # degres
 #: moteurs relaches ces pas sont perdus. Prise d'origine d'abord.
 TEL_QUEL = "--tel-quel" in sys.argv
 
+#: --origine : LA SEULE POSTURE VRAIMENT CONNUE.
+#:
+#: Trois facons de donner une posture de reference au bras, et deux
+#: d'entre elles sont mauvaises :
+#:
+#:   - LE PLACER A LA MAIN (equerre). Imprecis, et surtout il PERD J1 :
+#:     la rotation de base n'a pas de capteur, le controleur la compte
+#:     en pas, et moteurs relaches ces pas ne sont pas comptes. On
+#:     mesure alors les degats de la methode.
+#:
+#:   - LUI COMMANDER LE REPLI. Semble propre -- les moteurs travaillent,
+#:     aucune main -- mais un mouvement commande n'arrive a destination
+#:     que si le controleur sait D'OU IL PART. Sur le robot 2, le
+#:     30/10/2026, avec un J3 faux de 34 degres, la commande de repli a
+#:     envoye le bras 34 degres trop loin : EN BUTEE. La posture n'etait
+#:     donc pas connue du tout.
+#:
+#:   - LA PRISE D'ORIGINE. Elle amene les axes sur leurs references
+#:     MECANIQUES, sans rien supposer de ce que le controleur croit.
+#:     C'est la seule qui ne demande aucune hypothese.
+#:
+#: On fait donc l'origine, on lit les angles dans la liaison qui vient
+#: de la faire, puis on ferme et on relit. L'ecart entre la premiere
+#: lecture et les suivantes est l'erreur du capteur, mesuree sans
+#: intermediaire.
+ORIGINE = "--origine" in sys.argv
+REPLI = "--repli" in sys.argv
+
 
 def main():
     port = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -104,7 +141,15 @@ def main():
     print(__doc__.split("Ce que l'essai")[0].strip())
     print("")
     print("=" * 64)
-    if TEL_QUEL:
+    if ORIGINE:
+        print("  PRISE D'ORIGINE : LE BRAS PARCOURT TOUTE SA COURSE.")
+        print("  Degagez la zone. Aucun placement a la main, et aucune")
+        print("  hypothese sur ce que le controleur croit savoir.")
+    elif REPLI:
+        print("  LE BRAS VA SE REPLIER, par les moteurs.")
+        print("  ATTENTION : si un capteur est fautif, le bras n'arrivera")
+        print("  PAS au repli -- il partira en butee. Preferez --origine.")
+    elif TEL_QUEL:
         print("  NE TOUCHEZ PLUS AU BRAS, ou qu'il soit.")
         print("  On ne juge que sur l'ETENDUE des lectures : un bras")
         print("  immobile doit annoncer cinq fois la meme chose.")
@@ -120,6 +165,44 @@ def main():
     except (EOFError, KeyboardInterrupt):
         print("")
 
+    reference = None
+    if ORIGINE:
+        li = LiaisonDobot(port).ouvrir()
+        try:
+            depart_file = li.index_courant()
+            fin = li.prise_origine()
+            li.demarrer_file()
+            print("  prise d'origine en cours...")
+            t0 = time.time()
+            while li.index_courant() < fin and time.time() - t0 < 120:
+                time.sleep(0.5)
+            time.sleep(1.0)
+            reference = np.asarray(li.pose().angles, dtype=float)
+            print("  origine terminee. Angles DANS CETTE LIAISON :")
+            print("          | {:6.1f} {:6.1f} {:6.1f} {:6.1f}"
+                  .format(*reference))
+            del depart_file
+        finally:
+            li.fermer()
+        print("")
+        print("  on ferme la liaison et on relit, sans rien toucher.")
+        time.sleep(2.0)
+    elif REPLI:
+        from dobot_sim import Commande
+        c = Commande(simulateur=False, robot=True, port=port,
+                     outil="ventouse")
+        try:
+            c.repli()
+        finally:
+            c.fermer()
+        print("")
+        print("  bras au repli. On ferme la liaison et on relit.")
+        time.sleep(2.0)
+        # La carte (pont CP210x) reste muette un instant apres la
+        # fermeture : rouvrir dans la foulee donne "aucune reponse en
+        # 1,0 s". On lui laisse le temps de se reveiller.
+        time.sleep(2.0)
+
     print("")
     print("    t(s) |   J1      J2      J3      J4")
     lectures = []
@@ -133,8 +216,18 @@ def main():
             continue
         try:
             a = np.asarray(li.pose().angles, dtype=float)
-        finally:
+        except ErreurLiaison as exc:
+            # La carte peut etre encore endormie : on note et on passe.
+            # Une lecture manquante ne fausse rien, contrairement a une
+            # lecture inventee.
+            print("   {:5.1f}   pas de reponse : {}"
+                  .format(time.time() - depart, str(exc)[:38]))
             li.fermer()
+            time.sleep(PAUSE)
+            continue
+        finally:
+            if li.ouverte:
+                li.fermer()
         lectures.append(a)
         print("   {:5.1f} | {:6.1f} {:6.1f} {:6.1f} {:6.1f}"
               .format(time.time() - depart, *a))
@@ -174,27 +267,63 @@ def main():
     print("=" * 64)
     fautifs = []
     incoherents = []
+    ecarts_repli = []
     for i in range(4):
         etendue = float(L[:, i].max() - L[:, i].min())
         if etendue > TOLERANCE:
             incoherents.append(noms[i])
+        if reference is not None:
+            # La reference est la lecture faite DANS LA LIAISON QUI A
+            # FAIT L'ORIGINE : la seule ou le controleur sache ou est son
+            # bras. L'ecart des lectures suivantes est son erreur.
+            d = float(np.median(L[:, i]) - reference[i])
+            ecarts_repli.append(d)
+            if abs(d) > 10.0:
+                fautifs.append("{} ({:+.1f} deg)".format(noms[i], d))
         hors = not (lim.q_min[i] <= L[:, i].min()
                     and L[:, i].max() <= lim.q_max[i])
         ecart = ""
-        if i in (1, 2) and not TEL_QUEL:
+        if reference is not None:
+            ecart = "   ecart a l'origine {:+.1f} deg".format(ecarts_repli[i])
+        elif i in (1, 2) and not TEL_QUEL:
             ecart = "   ecart a l'equerre {:+.1f} deg".format(
                 float(np.median(L[:, i]) - EQUERRE[i - 1]))
         print("  {:16s} etendue {:6.1f} deg{}{}"
               .format(noms[i], etendue, ecart,
                       "   HORS BUTEES" if hors else ""))
-        if (etendue > TOLERANCE and not TEL_QUEL) or hors:
+        if reference is None and not REPLI and (
+                (etendue > TOLERANCE and not TEL_QUEL) or hors):
             fautifs.append(noms[i])
-        elif (i in (1, 2) and not TEL_QUEL
+        elif (reference is None and i in (1, 2) and not TEL_QUEL
               and abs(np.median(L[:, i]) - EQUERRE[i - 1]) > 10.0):
+            # L'ecart a l'equerre n'a de sens QUE si le bras y a ete mis.
+            # Sans ce garde-fou, le mode --origine ajoutait J2 et J3 aux
+            # fautifs parce qu'ils ne valaient pas zero -- alors qu'ils
+            # valaient 15 et 30, ce qui etait precisement juste.
             fautifs.append(noms[i])
 
     print("")
-    if TEL_QUEL:
+    if reference is not None and not fautifs:
+        print("  CAPTEURS SAINS, et l'essai le PROUVE.")
+        print("")
+        print("  Le bras a ete reference par une PRISE D'ORIGINE -- aucune")
+        print("  main, aucune hypothese -- et le controleur retrouve la")
+        print("  meme posture a chaque reouverture de liaison.")
+        print("")
+        print("  Une erreur de cycle sera a chercher ailleurs.")
+        return
+    if reference is not None:
+        print("  CAPTEUR(S) FAUTIF(S) : {}".format(", ".join(fautifs)))
+        print("")
+        print("  Le bras n'a pas bouge depuis la prise d'origine, et le")
+        print("  controleur ne retrouve plus la posture qu'il annonçait")
+        print("  juste apres. L'ecart ci-dessus EST son erreur.")
+        print("")
+        print("  CONTOURNEMENT : --equerre sur les exemples, qui declare")
+        print("  la posture DANS LA LIAISON qui va travailler. Voir")
+        print("  PROCEDURE_CONVOYEUR.md, section 0 bis.")
+        return
+    if TEL_QUEL and not REPLI and reference is None:
         print("  AVERTISSEMENT -- ce que cet essai NE PEUT PAS voir.")
         print("")
         print("  Sans posture connue, il ne juge que la REPETABILITE. Or")
@@ -213,7 +342,7 @@ def main():
         print("  Pour conclure vraiment : prise d'origine, puis cet essai")
         print("  BRAS EN EQUERRE, sans --tel-quel.")
         print("")
-    if incoherents and TEL_QUEL:
+    if incoherents and TEL_QUEL and not REPLI and reference is None:
         print("  LECTURES INCOHERENTES : {}".format(", ".join(incoherents)))
         print("")
         print("  Le bras etant immobile, elles devraient se repeter. DEUX")
