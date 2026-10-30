@@ -330,21 +330,32 @@ piste de la mise au point, et chacun ne répond qu'à une question.
 
 ## 7. Deux particularités de cette cellule
 
-**Le capteur est un infrarouge sur GP5.** La file du contrôleur ne sait pas
+**Le capteur est un infrarouge sur GP4.** La file du contrôleur ne sait pas
 attendre sur un port GP : le cycle est donc **mené depuis le PC**, morceau
 par morceau, et le robot reste attaché à l'ordinateur pendant tout le
 cycle. Un capteur tout-ou-rien sur une entrée EIO rendrait la machine
 autonome — c'est un choix d'implantation, pas un détail de câblage.
 
-> **Et il se pourrait qu'on l'ait déjà.** Sur le robot 5, en 3.7.0,
-> `diag_capteur.py` a vu bouger **GP5 et l'entrée EIO 5** en même temps,
-> en sens inverse l'une de l'autre : c'est la même broche, lisible par
-> les deux voies. Or la file du contrôleur, elle, sait attendre sur une
-> EIO. Le cycle pourrait donc redevenir un programme d'un seul tenant,
-> `attendre_piece(5)` à la place de la scrutation, et le PC se
-> débrancher. **Non essayé** : il reste à vérifier que la broche reste
-> lisible quand la fonction infrarouge n'est pas activée, car c'est
-> peut-être elle qui la pilote.
+> **Et on l'a déjà.** Mesuré le 30/10/2026 par
+> `diag_capteur_autonome.py` : la broche du capteur se lit **aussi en
+> entrée numérique**, et elle bouge **fonction infrarouge éteinte**. Ce
+> n'est donc pas la commande 138 qui la pilote — l'entrée vaut pour
+> elle-même, et la file du contrôleur peut l'attendre.
+>
+> | Port GP | Entrée numérique |
+> |---|---|
+> | GP4 | **EIO 7** |
+> | GP5 | EIO 5 |
+>
+> Le cycle pourrait redevenir un programme d'un seul tenant, PC
+> débranché. **Pas encore fait**, et ce n'est pas qu'une ligne de
+> déclaration : il faut remplacer la scrutation menée depuis le PC par
+> une instruction d'attente dans la file.
+>
+> Et attention à la **polarité** : l'EIO est lue en sens **inverse** de
+> l'infrarouge — pièce présente, GP4 vaut `True` et EIO 7 vaut `False`.
+> Déclarer `capteur_eio=7` sans reprendre la logique retournerait le
+> cycle, silencieusement.
 
 **Le pont USB est un CP210x** sur la machine au convoyeur. La carte reste
 muette un instant après la mise sous tension : la première connexion

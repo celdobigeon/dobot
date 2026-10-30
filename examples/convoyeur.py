@@ -102,17 +102,30 @@ TAPIS = Convoyeur(
     capteur_s=300,         # mm depuis l'axe moteur -- releve au reglet,
                            # ce qui met le capteur a y = -100 du robot
     camera_s=200,          # abscisse du champ de la camera, en amont
-    # Le capteur de presence est l'INFRAROUGE du kit, sur GP5.
+    # Le capteur de presence est l'INFRAROUGE du kit, sur GP4.
     # Ce n'est pas un detail de cablage : voir plus bas, il
     # change la forme meme du cycle sur la machine.
     #
-    # Il etait sur GP4 ; deplace sur GP5 le 30/10/2026 en cherchant
+    # Il a fait un detour par GP5 le 30/10/2026, le temps de chercher
     # pourquoi le robot 5 ne le lisait pas. Ce n'etait pas le port --
     # c'etait son FIRMWARE 3.3.0, qui rendait la meme valeur sur un
-    # port occupe que sur un port vide. Passe en 3.7.0, le capteur
-    # repond. Relancez diag_capteur.py si vous le rebranchez ailleurs :
-    # il balaie les quatre ports et le dit.
-    capteur_port=PORTS_GP["GP5"],
+    # port occupe que sur un port vide. En 3.7.0, GP4 et GP5 repondent
+    # aussi bien l'un que l'autre. Relancez diag_capteur.py si vous le
+    # rebranchez : il balaie les quatre ports et le dit.
+    capteur_port=PORTS_GP["GP4"],
+    # LA MEME BROCHE SE LIT AUSSI EN ENTREE NUMERIQUE : GP4 tombe sur
+    # l'EIO 7 (GP5 sur l'EIO 5), et diag_capteur_autonome.py a montre
+    # qu'elle bouge FONCTION INFRAROUGE ETEINTE. La file du controleur
+    # peut donc l'attendre elle-meme, et le cycle redeviendrait un
+    # programme d'un seul tenant, PC debranche.
+    #
+    # Pas encore fait, et ce n'est pas qu'une ligne : il faut remplacer
+    # la scrutation menee depuis le PC par une instruction d'attente
+    # dans la file. ATTENTION AUSSI A LA POLARITE -- l'EIO est lue en
+    # sens INVERSE de l'infrarouge (piece presente : GP4 True, EIO 7
+    # False). La declarer en `capteur_eio=7` sans reprendre la logique
+    # retournerait le cycle, silencieusement.
+
     # LE TAPIS S'ARRETE NET : mesure sur la machine, 8 ms entre la
     # detection et l'arret effectif, soit 0,2 mm de bande. La piece
     # s'immobilise au droit du capteur, et elle ne quitte jamais son
