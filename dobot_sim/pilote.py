@@ -1092,7 +1092,7 @@ class Pilote:
         """Simulateur ferme : le script tient lui-meme la liaison."""
         import time as _time
 
-        from .liaison import resume_alarmes
+        from .liaison import alarmes_bloquantes, resume_alarmes
 
         try:
             pont = _liaison_directe(self.robot, port)
@@ -1100,7 +1100,7 @@ class Pilote:
             _echouer("CONNEXION AU ROBOT IMPOSSIBLE", [str(exc)])
         bouge = False
         try:
-            if pont.liaison.alarmes():
+            if alarmes_bloquantes(pont.liaison.alarmes()):
                 _signaler("robot en defaut : ouverture de l'assistant de mise "
                           "en route", resume_alarmes(pont.liaison.alarmes()))
                 from .ui import mise_en_route_autonome

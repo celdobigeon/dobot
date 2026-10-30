@@ -246,7 +246,8 @@ def deplacer(a) -> int:
 
 def effacer(a) -> int:
     from dobot_sim import DobotMagician
-    from dobot_sim.liaison import resume_alarmes
+    from dobot_sim.liaison import (ALARME_REINIT, alarmes_bloquantes,
+                                   resume_alarmes)
     from dobot_sim.pilote import _fermer_liaison_directe, _liaison_directe
     pont = _liaison_directe(DobotMagician(), a.port)
     try:
@@ -256,8 +257,14 @@ def effacer(a) -> int:
         li.effacer_alarmes()
         time.sleep(0.3)
         reste = li.alarmes()
-        if not reste:
+        if not alarmes_bloquantes(reste):
             print("alarmes effacees")
+            if ALARME_REINIT in reste:
+                print("  L'avis de reinitialisation reste affiche : sur le")
+                print("  firmware 3.3.0 rien ne l'efface, pas meme une prise")
+                print("  d'origine menee a son terme. Il n'arrete plus rien ;")
+                print("  il rappelle seulement que l'origine est a refaire")
+                print("  apres chaque mise sous tension.")
             return 0
         print("certaines alarmes restent :")
         for ligne in resume_alarmes(reste):

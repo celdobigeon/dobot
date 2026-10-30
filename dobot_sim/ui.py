@@ -769,7 +769,8 @@ def mise_en_route_autonome(pont, robot, sans_posture: bool = False) -> bool:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     DialogueMiseEnRoute(_HoteMiseEnRoute(pont, robot), sans_posture).exec_()
     try:
-        return not pont.liaison.alarmes()
+        from .liaison import alarmes_bloquantes
+        return not alarmes_bloquantes(pont.liaison.alarmes())
     except Exception:
         return False
 

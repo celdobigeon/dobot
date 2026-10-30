@@ -964,12 +964,12 @@ class Commande:
 
     def _assurer_sans_defaut(self) -> None:
         """Rien ne part tant que le robot signale un defaut."""
-        from .liaison import resume_alarmes
+        from .liaison import alarmes_bloquantes, resume_alarmes
         try:
             alarmes = self._pont.liaison.alarmes()
         except Exception as exc:
             _echouer("LECTURE DES ALARMES IMPOSSIBLE", [str(exc)])
-        if not alarmes:
+        if not alarmes_bloquantes(alarmes):
             return
         _signaler("robot en defaut : ouverture de l'assistant de mise en "
                   "route", resume_alarmes(alarmes))

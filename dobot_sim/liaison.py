@@ -1039,6 +1039,33 @@ class LiaisonDobot:
         return int(p[0]), int(p[1]), int(p[2])
 
 
+#: « reinitialisation du controleur » : un AVIS, pas un defaut.
+ALARME_REINIT = 0x00
+
+
+def alarmes_bloquantes(indices: Sequence[int]) -> List[int]:
+    """
+    Les alarmes qui doivent empecher un mouvement : toutes sauf 0x00.
+
+    0x00 ne dit pas « je suis en panne », elle dit « j'ai ete remis sous
+    tension » -- l'origine est donc a refaire. C'est une information, et
+    la prise d'origine est la reponse.
+
+    Mais sur le firmware 3.3.0 (robot 5), elle NE S'EFFACE PAS : ni
+    ClearAllAlarmsState, ni une prise d'origine menee a son terme ne la
+    font tomber. Releve le 30/10/2026, base referencee et bras gare, elle
+    etait toujours la. Sur le 3.7.0 elle tombait.
+
+    En faire un verrou condamnait donc une machine parfaitement saine a
+    rouvrir l'assistant de mise en route a CHAQUE commande, sans qu'aucun
+    geste puisse l'en sortir. Elle reste affichee a chaque connexion --
+    l'information a de la valeur -- mais elle n'arrete plus rien. Ce qui
+    protege d'un robot non reference, c'est la procedure et le controle
+    de posture de `Pilote._verifier_posture_annoncee`.
+    """
+    return [a for a in indices if a != ALARME_REINIT]
+
+
 def resume_alarmes(indices: Sequence[int]) -> List[str]:
     """Traduit les bits d'alarme connus en phrases lisibles."""
     connus: Dict[int, str] = {

@@ -53,7 +53,7 @@ from typing import Callable, List, Optional, Tuple
 import numpy as np
 
 from .liaison import (CommandeDobot, ErreurLiaison, FilePleine, FonctionES,
-                      LiaisonDobot, PTP, resume_alarmes)
+                      LiaisonDobot, PTP, alarmes_bloquantes, resume_alarmes)
 from .robot import decomposer_cible
 
 __all__ = ["PontReel", "ErreurPont", "EtatReel"]
@@ -241,7 +241,14 @@ class PontReel:
                      pose_controleur=(p.x, p.y, p.z, p.r),
                      index_courant=li.index_courant(),
                      index_final=self.index_final,
-                     alarmes=resume_alarmes(li.alarmes()))
+                     # Ce champ est lu comme « ce qui doit arreter le
+                     # mouvement » -- par la surveillance d'execution, la
+                     # cellule et l'interface. L'avis de reinitialisation
+                     # n'en fait pas partie : il reste affiche a la
+                     # connexion, mais il n'interrompt rien. Voir
+                     # liaison.alarmes_bloquantes.
+                     alarmes=resume_alarmes(
+                         alarmes_bloquantes(li.alarmes())))
         e._depart = self._index_depart
         return e
 
