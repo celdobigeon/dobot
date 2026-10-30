@@ -10,10 +10,16 @@ L'idee, et pourquoi elle change tout
 -------------------------------------
 On n'ecrit PAS la cible par rapport a la base du robot. On ecrit :
 
-    1. ou se trouve le CAPTEUR, dans le repere du robot ;
-    2. ou se trouve la piece, dans le repere du CAPTEUR.
+    1. ou se trouve le CONVOYEUR, dans le repere du ROBOT ;
+    2. ou se trouve le CAPTEUR, sur le convoyeur ;
+    3. ou se trouve la piece, dans le repere du CAPTEUR.
 
-    PRISE = CAPTEUR @ DANS_LE_CAPTEUR
+    PRISE = CONVOYEUR @ CAPTEUR @ DANS_LE_CAPTEUR
+
+La reference principale reste LA BASE DU ROBOT. Chaque matrice ne decrit
+QU'UNE chose, et on sait laquelle corriger : le tapis a bouge ->
+CONVOYEUR ; le capteur a glisse le long de la bande -> CAPTEUR ; les
+pieces ont change de taille -> COTE.
 
 Deplacez le capteur de trois centimetres, tournez le tapis d'un quart
 de tour : vous changez UNE matrice, celle du capteur, et la cible suit
@@ -26,15 +32,25 @@ d'ou ils viennent. Il depanne ; il ne s'entretient pas. Et sur cette
 machine il a un defaut de plus : pousser le bras a la main fait perdre
 J1 au controleur, qui ne relit que deux capteurs d'angle sur trois.
 
-Le repere du capteur
----------------------
-    origine   le faisceau, au ras de la bande
-    axe x     le SENS DE MARCHE du tapis
-    axe y     en travers de la bande
-    axe z     vers le haut
+Le repere du convoyeur
+-----------------------
+    origine   l'entree de la bande, au ras de la courroie
+    axe y     L'AXE DU MOTEUR -- la reference, materielle, qu'on montre
+              du doigt, et qui ne depend pas du cablage
+    axe z     la verticale, vers le haut
+    axe x     le SENS DE MARCHE, et il se DEDUIT : x = y ^ z
 
-Ce choix n'est pas gratuit : il rend les trois nombres suivants
-LISIBLES. Dans ce repere, la piece arretee par le capteur se trouve a
+On ne choisit donc pas le sens de marche, on le calcule, et le repere
+reste direct. D'ou la regle : INVERSER LE TAPIS, c'est prendre l'axe
+moteur dans l'autre sens -- une colonne change de signe, sa voisine
+suit, et rien d'autre ne bouge.
+
+Le capteur, lui, est POSE SUR LE TAPIS : sa place se mesure le long de
+la bande, depuis l'entree. Une seule cote, dans l'unite ou on la mesure
+vraiment -- un reglet pose sur le bati.
+
+Ce decoupage rend les trois nombres suivants LISIBLES. Dans le repere du
+capteur, la piece arretee se trouve a
 
     x = -cote/2    le capteur voit le BORD AVANT, la ventouse vise le
                    CENTRE : une demi-piece en amont, et c'est tout
@@ -88,59 +104,72 @@ OUTIL = np.array([[1,  0,  0,     0],
 robot.definir_repere_outil(OUTIL)
 
 # ---------------------------------------------------------------------------
-# 3. LE REPERE DU CAPTEUR
+# 3. LE CONVOYEUR, DANS LE REPERE DU ROBOT
 # ---------------------------------------------------------------------------
 #
-# LA SEULE CHOSE A MESURER. Origine au faisceau, axe x dans le sens de
-# marche du tapis, axe z vers le haut.
-#
-# Ici le capteur est a 230 mm devant le robot, dans son axe, et la bande
-# descend les y -- de la gauche vers la droite de l'operateur. L'axe x
-# du capteur vaut donc (0 ; -1 ; 0) dans le repere du robot, et c'est la
-# PREMIERE COLONNE de la matrice.
-#
-#   premiere colonne  ( 0 ; -1 ;  0)   sens de marche du tapis
-#   deuxieme colonne  ( 1 ;  0 ;  0)   en travers de la bande
-#   troisieme colonne ( 0 ;  0 ;  1)   vers le haut
-#   quatrieme colonne (230 ;  0 ;  0)  ou se trouve le faisceau
+#   premiere colonne  ( 0 ;  1 ; 0)    sens de marche, = y ^ z
+#   deuxieme colonne  (-1 ;  0 ; 0)    L'AXE MOTEUR, la reference
+#   troisieme colonne ( 0 ;  0 ; 1)    vers le haut
+#   quatrieme colonne (230 ; -448 ; 0) l'ENTREE de la bande
 
-CAPTEUR = np.array([[ 0, 1, 0, 230],
-                    [-1, 0, 0,   0],
-                    [ 0, 0, 1,   0],
-                    [ 0, 0, 0,   1]], dtype=float)
+CONVOYEUR = np.array([[ 0, -1, 0,  230],
+                      [ 1,  0, 0, -448],
+                      [ 0,  0, 1,    0],
+                      [ 0,  0, 0,    1]], dtype=float)
+
+# Le meme convoyeur, moteur dans l'autre sens -- pour montrer ce que
+# coute une inversion : une colonne, et sa voisine qui suit.
+#
+# CONVOYEUR = np.array([[0,  1, 0, 230],
+#                       [-1, 0, 0, 250],
+#                       [0,  0, 1,   0],
+#                       [0,  0, 0,   1]], dtype=float)
 
 # ---------------------------------------------------------------------------
-# 4. LA PIECE, DANS LE REPERE DU CAPTEUR
+# 4. LE CAPTEUR, SUR LE CONVOYEUR
+# ---------------------------------------------------------------------------
+#
+# Une seule cote : sa position le long de la bande, depuis l'entree. Il
+# ne tourne pas par rapport au tapis, donc la matrice est une simple
+# translation -- et c'est ce qui la rend relisible.
+
+CAPTEUR = np.array([[1, 0, 0, 448],
+                    [0, 1, 0,   0],
+                    [0, 0, 1,   0],
+                    [0, 0, 0,   1]], dtype=float)
+
+# ---------------------------------------------------------------------------
+# 5. LA PIECE, DANS LE REPERE DU CAPTEUR
 # ---------------------------------------------------------------------------
 
 COTE = 25.0            # mm, taille de la piece dans le sens de marche
-HAUTEUR = 75.0         # mm, dessus de la piece au-dessus du faisceau
+HAUTEUR = 75.0         # mm, dessus de la piece au-dessus de la bande
 
 # -COTE/2 : le capteur voit le BORD AVANT, la ventouse vise le CENTRE.
-# C'est le decalage qui, laisse implicite, coute une demi-piece a chaque
-# prise -- toujours du meme cote, donc facile a prendre pour un reglage.
-
-# L'orientation, elle, porte un QUART DE TOUR autour de z, et il faut
-# dire pourquoi. Le repere du capteur est tourne de -90 deg par rapport
-# au robot -- le tapis est en travers. Une cible ecrite dedans en herite
-# l'orientation, et le poignet doit alors fournir ces 90 deg a lui seul :
-# J4 part a -93 deg, hors de sa butee de +/-90. controler() le dit.
+# Ce decalage, laisse implicite, coute une demi-piece a chaque prise --
+# toujours du meme cote, donc facile a prendre pour un reglage.
 #
-# Une ventouse se moque de son orientation autour de z. On choisit donc
-# celle qui remet le poignet au large, et le quart de tour s'annule avec
-# celui du capteur. Avec une PINCE il serait au contraire impose par la
-# piece, et c'est le tapis ou le robot qu'il faudrait deplacer.
+# ATTENTION : le quart de tour de l'orientation SUIT le repere du
+# convoyeur. Inversez l'axe moteur et il doit changer de signe, sinon J4
+# saute de 0 a 180 deg. controler() le dit, et c'est la raison de le
+# lancer avant toute descente sur la machine.
 #
-#   premiere colonne  (0 ; 1 ; 0)    l'outil tourne d'un quart de tour
-#   deuxieme colonne  (1 ; 0 ; 0)
-#   troisieme colonne (0 ; 0 ; -1)   z de l'outil vers le bas
+#   premiere colonne  ( 0 ; -1 ;  0)   l'outil tourne d'un quart de tour
+#   deuxieme colonne  (-1 ;  0 ;  0)
+#   troisieme colonne ( 0 ;  0 ; -1)   z de l'outil vers le bas
 
-DANS_LE_CAPTEUR = np.array([[0,  1,  0, -12.5],
-                            [1,  0,  0,     0],
-                            [0,  0, -1,  75.0],
-                            [0,  0,  0,     1]], dtype=float)
+DANS_LE_CAPTEUR = np.array([[ 0, -1,  0, -12.5],
+                            [-1,  0,  0,     0],
+                            [ 0,  0, -1,  75.0],
+                            [ 0,  0,  0,     1]], dtype=float)
 
-PRISE = CAPTEUR @ DANS_LE_CAPTEUR
+# ---------------------------------------------------------------------------
+# 6. LA CIBLE : LA CHAINE COMPLETE
+# ---------------------------------------------------------------------------
+#
+#     base du robot  ->  convoyeur  ->  capteur  ->  piece
+
+PRISE = CONVOYEUR @ CAPTEUR @ DANS_LE_CAPTEUR
 
 # La depose, elle, ne depend pas du capteur : c'est un endroit de la
 # table. On l'ecrit donc dans le repere du ROBOT.
@@ -185,25 +214,41 @@ robot.repli()
 # ---------------------------------------------------------------------------
 
 np.set_printoptions(precision=1, suppress=True)
-print("CAPTEUR  (ou est le faisceau, dans le repere du robot)")
-print(CAPTEUR)
-print("  position x={:.1f}  y={:.1f}  z={:.1f}".format(*CAPTEUR[:3, 3]))
-print("  sens de marche du tapis : {}".format(np.round(CAPTEUR[:3, 0], 1)))
+print("CONVOYEUR  (l'entree de la bande, dans le repere du robot)")
+print(CONVOYEUR)
+print("  axe moteur       : {}".format(np.round(CONVOYEUR[:3, 1], 1)))
+print("  sens de marche   : {}  (= y ^ z)".format(np.round(CONVOYEUR[:3, 0], 1)))
 print("")
-print("PRISE = CAPTEUR @ DANS_LE_CAPTEUR")
+print("CAPTEUR  (sur le convoyeur, a {:.0f} mm de l'entree)"
+      .format(CAPTEUR[0, 3]))
+print("  dans le repere du robot : {}"
+      .format(np.round((CONVOYEUR @ CAPTEUR)[:3, 3], 1)))
+print("")
+print("PRISE = CONVOYEUR @ CAPTEUR @ DANS_LE_CAPTEUR")
 print(PRISE)
 print("  position x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
 print("  axe z de l'outil : {} -- vers le bas".format(np.round(PRISE[:3, 2], 1)))
 print("")
 
-# Ce que l'on gagne : deplacer le capteur ne touche qu'UNE matrice.
-CAPTEUR_DEPLACE = np.array([[ 0, 1, 0, 230],
-                            [-1, 0, 0,  30],
-                            [ 0, 0, 1,   0],
-                            [ 0, 0, 0,   1]], dtype=float)
-print("Si le capteur avance de 30 mm le long du tapis :")
-print("  la prise passe de y={:.1f} a y={:.1f} -- sans toucher au reste"
-      .format(PRISE[1, 3], (CAPTEUR_DEPLACE @ DANS_LE_CAPTEUR)[1, 3]))
+# Ce que la chaine fait gagner : chaque defaut se corrige a UN endroit.
+CAPTEUR_PLUS_LOIN = np.array([[1, 0, 0, 478],
+                              [0, 1, 0,   0],
+                              [0, 0, 1,   0],
+                              [0, 0, 0,   1]], dtype=float)
+CONVOYEUR_RECULE = np.array([[ 0, -1, 0,  260],
+                             [ 1,  0, 0, -448],
+                             [ 0,  0, 1,    0],
+                             [ 0,  0, 0,    1]], dtype=float)
+print("Ce qu'il faut changer, et ou :")
+print("  capteur glisse de 30 mm le long de la bande  -> CAPTEUR seul")
+print("     la prise passe de y={:.1f} a y={:.1f}"
+      .format(PRISE[1, 3],
+              (CONVOYEUR @ CAPTEUR_PLUS_LOIN @ DANS_LE_CAPTEUR)[1, 3]))
+print("  tapis recule de 30 mm                        -> CONVOYEUR seul")
+print("     la prise passe de x={:.1f} a x={:.1f}"
+      .format(PRISE[0, 3],
+              (CONVOYEUR_RECULE @ CAPTEUR @ DANS_LE_CAPTEUR)[0, 3]))
+print("  pieces de 40 mm au lieu de 25                -> COTE seul")
 print("")
 
 avertissements = robot.controler()

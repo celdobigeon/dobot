@@ -44,8 +44,16 @@ REEL = "--reel" in sys.argv
 # 1. LA CELLULE
 # ---------------------------------------------------------------------------
 
-# Le tapis passe DEVANT le robot, en travers, et sa bande va vers les y
-# NEGATIFS -- constate sur la machine le 28/10/2026.
+# Le tapis passe DEVANT le robot, en travers. REFERENCE : L'AXE DU
+# MOTEUR est l'axe y du tapis. C'est lui qu'on montre du doigt, il est
+# materiel, et il ne depend pas de la facon dont le moteur est cable.
+#
+# Le sens de marche n'est alors plus un choix mais un calcul : x = y ^ z,
+# et le repere reste direct. Inverser le tapis, c'est prendre l'axe
+# moteur dans l'autre sens -- rien d'autre a reprendre.
+#
+# Ici la bande va vers les y POSITIFS du robot : elle entre a y=-448 et
+# sort a y=+250.
 #
 # Comment on le sait, et pourquoi ce n'est pas une evidence. Un operateur
 # place face au robot le voit deplier son bras en s'eloignant de lui :
@@ -67,7 +75,7 @@ REEL = "--reel" in sys.argv
 # piece arrive hors de portee. controler() le dit, mais autant poser le
 # capteur au bon endroit.
 TAPIS = Convoyeur(
-    repere=repere_travail(x=230, y=250, z=0, rz=-90),
+    repere=repere_travail(x=230, y=-448, z=0, rz=90),
     longueur=698,          # mm, releve sur le STEP du constructeur
     largeur=60,
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
