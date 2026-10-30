@@ -52,8 +52,21 @@ REEL = "--reel" in sys.argv
 # et le repere reste direct. Inverser le tapis, c'est prendre l'axe
 # moteur dans l'autre sens -- rien d'autre a reprendre.
 #
-# Ici la bande va vers les y POSITIFS du robot : elle entre a y=-448 et
-# sort a y=+250.
+# COTES RELEVEES SUR LA CELLULE le 30/10/2026, photo a l'appui
+# (Cellule_Dobot_Convoyeur_reelle.jpg) :
+#
+#   x = 210    du centre du robot au CENTRE du convoyeur
+#   y = -400   l'axe moteur, a 400 mm sur la DROITE de l'operateur --
+#              et la droite de l'operateur est le -y du robot
+#   z = 60     hauteur de la bande
+#
+# L'origine du repere est donc l'AXE MOTEUR, a l'extremite droite du
+# tapis, et la bande part vers les y POSITIFS : elle entre a y=-400 et
+# sort a y=+298.
+#
+# Le maillage le confirme : sa section fait 218 mm de large a s=0 --
+# le moteur en debord -- contre 120 ailleurs, soit exactement le bati
+# mesure. L'entree du repere est bien du cote moteur.
 #
 # Comment on le sait, et pourquoi ce n'est pas une evidence. Un operateur
 # place face au robot le voit deplier son bras en s'eloignant de lui :
@@ -75,12 +88,13 @@ REEL = "--reel" in sys.argv
 # piece arrive hors de portee. controler() le dit, mais autant poser le
 # capteur au bon endroit.
 TAPIS = Convoyeur(
-    repere=repere_travail(x=210, y=-448, z=60, rz=90),
+    repere=repere_travail(x=210, y=-400, z=60, rz=90),
     longueur=698,          # mm, releve sur le STEP du constructeur
     largeur=100,          # mm, bande utile (bati 120)
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
-    capteur_s=250,         # abscisse du capteur : pile devant le robot
-    camera_s=150,          # abscisse du champ de la camera, en amont
+    capteur_s=300,         # mm depuis l'axe moteur -- releve au reglet,
+                           # ce qui met le capteur a y = -100 du robot
+    camera_s=200,          # abscisse du champ de la camera, en amont
     # Le capteur de presence est l'INFRAROUGE du kit, sur GP4.
     # Ce n'est pas un detail de cablage : voir plus bas, il
     # change la forme meme du cycle sur la machine.

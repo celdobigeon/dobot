@@ -2229,18 +2229,23 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         gl_ = QtWidgets.QGridLayout(self.grp_tapis)
         gl_.setContentsMargins(8, 4, 8, 6)
 
-        self.sp_tapis_x = spin(-600, 600, 230, "mm", 5)
-        self.sp_tapis_y = spin(-600, 600, 250, "mm", 5)
-        self.sp_tapis_rz = spin(-180, 180, -90, "deg", 15)
+        # Valeurs par defaut : la cellule du labo, relevee le 30/10/2026.
+        # L'origine est l'AXE MOTEUR, a l'extremite droite de l'operateur,
+        # et la bande part vers les y positifs du robot.
+        self.sp_tapis_x = spin(-600, 600, 210, "mm", 5)
+        self.sp_tapis_y = spin(-600, 600, -400, "mm", 5)
+        self.sp_tapis_z = spin(0, 400, 60, "mm", 5)
+        self.sp_tapis_rz = spin(-180, 180, 90, "deg", 15)
         self.sp_tapis_long = spin(100, 2000, 698, "mm", 10)
-        self.sp_tapis_larg = spin(20, 300, 60, "mm", 5)
+        self.sp_tapis_larg = spin(20, 300, 100, "mm", 5)
         self.sp_tapis_imp = spin(1, 2000, 282.9, "imp/mm", 1, 1)
-        self.sp_tapis_capteur = spin(0, 2000, 250, "mm", 10)
+        self.sp_tapis_capteur = spin(0, 2000, 300, "mm", 10)
         self.cb_tapis_moteur = QtWidgets.QComboBox()
         self.cb_tapis_moteur.addItems(["Stepper1", "Stepper2"])
 
-        champs = [("x de l'entree", self.sp_tapis_x),
-                  ("y de l'entree", self.sp_tapis_y),
+        champs = [("x de l'axe moteur", self.sp_tapis_x),
+                  ("y de l'axe moteur", self.sp_tapis_y),
+                  ("hauteur de bande", self.sp_tapis_z),
                   ("orientation", self.sp_tapis_rz),
                   ("longueur", self.sp_tapis_long),
                   ("largeur", self.sp_tapis_larg),
@@ -2330,9 +2335,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         # ------------------------------------------------------------ cablage
         self.grp_tapis.toggled.connect(self._cellule_tapis_change)
         self.grp_axe.toggled.connect(self._cellule_axe_change)
-        for s in (self.sp_tapis_x, self.sp_tapis_y, self.sp_tapis_rz,
-                  self.sp_tapis_long, self.sp_tapis_larg, self.sp_tapis_imp,
-                  self.sp_tapis_capteur):
+        for s in (self.sp_tapis_x, self.sp_tapis_y, self.sp_tapis_z,
+                  self.sp_tapis_rz, self.sp_tapis_long, self.sp_tapis_larg,
+                  self.sp_tapis_imp, self.sp_tapis_capteur):
             s.valueChanged.connect(self._cellule_tapis_change)
         self.cb_tapis_moteur.currentIndexChanged.connect(self._cellule_tapis_change)
         for s in (self.sp_axe_course,):
@@ -2373,7 +2378,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             pieces = list(self.tapis.pieces) if self.tapis is not None else []
             self.tapis = Convoyeur(
                 repere=repere_travail(x=self.sp_tapis_x.value(),
-                                      y=self.sp_tapis_y.value(), z=0.0,
+                                      y=self.sp_tapis_y.value(),
+                                      z=self.sp_tapis_z.value(),
                                       rz=self.sp_tapis_rz.value()),
                 longueur=self.sp_tapis_long.value(),
                 largeur=self.sp_tapis_larg.value(),
