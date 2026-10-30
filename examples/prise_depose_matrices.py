@@ -225,13 +225,36 @@ DANS_LE_CAPTEUR = np.array([[ 0, -1,  0, -12.5],
 
 PRISE = CONVOYEUR @ CAPTEUR @ DANS_LE_CAPTEUR
 
-# La depose, elle, ne depend pas du capteur : c'est un endroit de la
-# table. On l'ecrit donc dans le repere du ROBOT.
+# La depose ne depend pas du capteur : c'est un endroit de la table. On
+# l'ecrit donc dans le repere du ROBOT, et les quatre nombres se lisent
+# directement sur le panneau Commande du simulateur.
+#
+# ELLE DOIT ETRE HORS DE L'EMPRISE DU CONVOYEUR. Le bati occupe
+# x = 150 a 270 -- centre a 210, large de 120 -- sur toute la longueur
+# de la bande. Une depose precedente, a (170 ; -140 ; 75), tombait
+# DEDANS et 15 mm au-dessus de la courroie : le bras posait la piece sur
+# le tapis et heurtait le rail, d'ou des pas perdus et un robot qui
+# semblait avoir perdu son origine en cours de cycle.
+#
+# Et le modele ne pouvait pas le dire : tant que le convoyeur n'est pas
+# DECLARE, controler() ne le voit pas. Il verifie les butees et les
+# collisions avec ce qu'il connait. Un obstacle non declare n'existe
+# pas pour lui -- c'est la limite de la programmation hors ligne, et
+# elle merite d'etre dite en TP.
+#
+# Celle-ci est a x = 15 : largement a l'ecart.
+#
+# c = cos 81   s = sin 81, a SIX decimales.
+#
+# Quatre ne suffisent pas : 0,1564^2 + 0,9877^2 vaut 1,000012, et le
+# modele refuse la cible -- « partie rotation non orthonormale ». La
+# rigueur n'est pas pedante, une rotation approximative deforme le
+# repere de l'outil.
 
-DEPOSE = np.array([[1,  0,  0,  170],
-                   [0, -1,  0, -140],
-                   [0,  0, -1,   75],
-                   [0,  0,  0,    1]], dtype=float)
+DEPOSE = np.array([[0.156434,  0.987688,  0,  15.00],
+                   [0.987688, -0.156434,  0, 219.21],
+                   [0,         0,        -1,  92.00],
+                   [0,         0,         0,      1]], dtype=float)
 
 # un degagement de 70 mm vers le haut, dans le repere de l'OUTIL
 HAUT = np.array([[1, 0, 0,   0],
@@ -310,6 +333,36 @@ print("     la prise passe de x={:.1f} a x={:.1f}"
               (CONVOYEUR_RECULE @ CAPTEUR @ DANS_LE_CAPTEUR)[0, 3]))
 print("  pieces de 40 mm au lieu de 25                -> COTE seul")
 print("")
+
+# L'EMPRISE DU CONVOYEUR, verifiee a la main.
+#
+# controler() regarde les butees, l'atteignabilite et les vitesses. Il
+# ne regarde PAS les obstacles : le simulateur ne connait que ce qu'on
+# y a declare, et ce programme ne declare aucun tapis. Une depose posee
+# sur la courroie passait donc tous les controles, et c'est le rail en
+# aluminium qui l'a arretee -- en faisant perdre ses pas au robot.
+#
+# Dix lignes valent mieux qu'un commentaire : on verifie que chaque
+# cible est hors de la bande occupee par le bati.
+
+LARGEUR_BATI = 120.0
+_x_tapis = CONVOYEUR[0, 3]
+_dedans = []
+for _nom, _T in (("PRISE", PRISE), ("DEPOSE", DEPOSE)):
+    if abs(_T[0, 3] - _x_tapis) <= LARGEUR_BATI / 2 and _T[2, 3] < 150:
+        _dedans.append(_nom)
+if "DEPOSE" in _dedans:
+    print("")
+    print("!!! LA DEPOSE TOMBE SUR LE CONVOYEUR")
+    print("    le bati occupe x = {:.0f} a {:.0f}, et la depose est a x = {:.0f}"
+          .format(_x_tapis - LARGEUR_BATI / 2, _x_tapis + LARGEUR_BATI / 2,
+                  DEPOSE[0, 3]))
+    print("    le bras poserait la piece sur la courroie et heurterait le")
+    print("    rail : des pas perdus, et un robot qui semble avoir perdu")
+    print("    son origine. Deplacez la depose hors de cette bande.")
+    sys.exit(1)
+print("depose hors de l'emprise du convoyeur (x = {:.0f} a {:.0f})"
+      .format(_x_tapis - LARGEUR_BATI / 2, _x_tapis + LARGEUR_BATI / 2))
 
 avertissements = robot.controler()
 if avertissements:
