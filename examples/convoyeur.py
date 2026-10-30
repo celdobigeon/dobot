@@ -361,6 +361,9 @@ finally:
         print("RETARD DU PC, DE LA DETECTION A L'ORDRE D'ARRET")
         print("=" * 60)
         print("  {}".format(", ".join("{:.0f} ms".format(r) for r in retards)))
+        if robot.tours_scrutation:
+            print("  derniere attente : {} lectures du capteur"
+                  .format(robot.tours_scrutation))
         _pire = max(retards)
         print("  le pire : {:.0f} ms, soit {:.1f} mm de bande a {:.0f} mm/s"
               .format(_pire, VITESSE_TAPIS * _pire / 1000.0, VITESSE_TAPIS))

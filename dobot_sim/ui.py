@@ -16,6 +16,7 @@ import struct
 import sys
 import time
 import traceback
+import types
 from typing import List, Optional, Sequence
 
 import numpy as np
@@ -4682,6 +4683,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return self._recevoir_commande(charge["commande"] or {})
         if "saisie" in charge:
             return self._recevoir_saisie(charge["saisie"] or {})
+        if "tapis" in charge:
+            return self._recevoir_tapis(charge["tapis"] or {})
         if "scene" in charge:
             # objets poses sur la table, vus par une camera : affichage seul
             sc = charge["scene"] or {}
@@ -4728,6 +4731,49 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             return
         if charge.get("lancer"):
             self.demarrer_lecture()
+
+    def _recevoir_tapis(self, demande: dict) -> dict:
+        """
+        Commande de convoyeur venue d'un script, la fenetre tenant le port.
+
+        Sans cela, un script ne pourrait piloter le tapis qu'en ouvrant
+        lui-meme la liaison -- donc jamais pendant qu'un simulateur est
+        connecte, alors que c'est precisement ce qu'on veut en cours : la
+        scene 3D d'un cote, la machine de l'autre. L'execution d'un
+        programme savait deja emprunter ce chemin ; le tapis le prend
+        desormais aussi.
+
+        Le script n'envoie pas son objet `Convoyeur` mais les quelques
+        nombres dont le pont a besoin -- index du moteur, pas, port du
+        capteur. Une passerelle ne doit transporter que des donnees.
+        """
+        if not self.pont.connecte:
+            # Refuser AVANT d'agir : le script, voyant le refus, ouvrira
+            # lui-meme la liaison. Le port est libre, la fenetre ne le
+            # tient pas.
+            raise RuntimeError("simulateur ouvert mais robot non connecte")
+
+        decrit = types.SimpleNamespace(
+            index_moteur=int(demande.get("index", 0)),
+            impulsions_par_mm=float(demande.get("pas", 0.0)),
+            capteur_port=demande.get("capteur_port"),
+            capteur_eio=demande.get("capteur_eio"))
+
+        if demande.get("action") == "capteur":
+            return {"vu": bool(self.pont.capteur_piece(decrit))}
+
+        vitesse = float(demande.get("mm_s", 0.0))
+        self.pont.convoyeur(vitesse, decrit)
+        # le tapis declare dans le panneau Cellule suit la consigne, pour
+        # que la scene montre ce que la machine fait
+        if getattr(self, "tapis", None) is not None:
+            self._v_tapis = vitesse
+            self.tapis.regler(vitesse, self._t_tapis)
+            if vitesse:
+                self.minuteur_tapis.start()
+            else:
+                self.minuteur_tapis.stop()
+        return {}
 
     def _reel_executer_script(self, vitesse: float) -> None:
         """

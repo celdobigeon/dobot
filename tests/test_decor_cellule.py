@@ -291,3 +291,55 @@ class TestProjection2D(unittest.TestCase):
             C = self.contour_xy(self.sommets_boite(forme))
             self.assertGreaterEqual(len(C), 2, forme["role"])
             self.assertTrue(np.isfinite(C).all(), forme["role"])
+
+
+class TestDescripteurPasserelle(unittest.TestCase):
+    """
+    Ce qu'un tapis dit de lui-meme pour traverser la passerelle.
+
+    Un script et le simulateur sont deux processus : l'objet `Convoyeur`
+    ne passe pas de l'un a l'autre. Seuls quelques nombres voyagent, et
+    il faut qu'ils suffisent -- un pas oublie, et le tapis tourne a une
+    vitesse qui n'est pas celle demandee, sans que rien ne proteste.
+    """
+
+    def setUp(self):
+        from dobot_sim.pilote import _decrire_tapis
+        self.decrire = _decrire_tapis
+
+    def test_tout_le_necessaire_voyage(self):
+        from dobot_sim.convoyeur import PORTS_GP
+        t = Convoyeur(index_moteur=1, impulsions_par_mm=300.0,
+                      capteur_port=PORTS_GP["GP4"])
+        d = self.decrire(t)
+        self.assertEqual(d["index"], 1)
+        self.assertAlmostEqual(d["pas"], 300.0)
+        self.assertEqual(d["capteur_port"], PORTS_GP["GP4"])
+        self.assertIsNone(d["capteur_eio"])
+
+    def test_le_pas_nominal_sert_de_secours(self):
+        """Un pas nul enverrait une vitesse nulle, donc un tapis muet."""
+        from dobot_sim.convoyeur import IMPULSIONS_PAR_MM
+        d = self.decrire(Convoyeur(impulsions_par_mm=0.0))
+        self.assertAlmostEqual(d["pas"], IMPULSIONS_PAR_MM)
+
+    def test_un_capteur_sur_entree_tout_ou_rien_voyage_aussi(self):
+        d = self.decrire(Convoyeur(capteur_port=None, capteur_eio=5))
+        self.assertEqual(d["capteur_eio"], 5)
+        self.assertIsNone(d["capteur_port"])
+
+    def test_le_descripteur_est_serialisable(self):
+        """Il traverse la passerelle en JSON : rien d'exotique dedans."""
+        import json
+        d = self.decrire(Convoyeur())
+        self.assertEqual(json.loads(json.dumps(d)), d)
+
+    def test_un_objet_quelconque_est_accepte(self):
+        """
+        Le simulateur reconstruit un descripteur, pas un Convoyeur : le
+        pont ne doit exiger que des attributs, pas une classe.
+        """
+        import types
+        faux = types.SimpleNamespace(index_moteur=0, impulsions_par_mm=282.9,
+                                     capteur_port=2, capteur_eio=None)
+        self.assertEqual(self.decrire(faux)["capteur_port"], 2)

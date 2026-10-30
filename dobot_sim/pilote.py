@@ -59,6 +59,22 @@ __all__ = ["Pilote", "ErreurExecution"]
 _PONT_DIRECT = {}
 
 
+def _decrire_tapis(tapis) -> dict:
+    """
+    Ce qu'un tapis doit dire de lui-meme pour traverser la passerelle.
+
+    Quelques nombres, pas un objet : une passerelle transporte des
+    donnees, et le simulateur n'a pas a reconstruire un `Convoyeur` pour
+    commander un moteur.
+    """
+    from .convoyeur import IMPULSIONS_PAR_MM
+    pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or IMPULSIONS_PAR_MM)
+    return {"index": int(getattr(tapis, "index_moteur", 0) or 0),
+            "pas": pas,
+            "capteur_port": getattr(tapis, "capteur_port", None),
+            "capteur_eio": getattr(tapis, "capteur_eio", None)}
+
+
 def _liaison_directe(robot, port: Optional[str]):
     """
     La liaison du script avec le robot, ouverte au premier besoin et
@@ -701,11 +717,25 @@ class Pilote:
         capteur de presence est un infrarouge sur un port GP : la file du
         controleur ne sait pas attendre dessus.
 
-        La liaison est celle de `executer_sur_robot` : ouverte au premier
-        besoin, reutilisee, fermee a la fin du script.
+        DEUX CHEMINS, comme `executer_sur_robot`, et pour la meme raison :
+        un simulateur ouvert et connecte TIENT le port serie. Sans cela,
+        l'exemple du convoyeur ne pourrait pas tourner pendant qu'une
+        fenetre est connectee -- alors que c'est justement ce qu'on veut
+        en cours, la scene 3D d'un cote et la machine de l'autre.
+
+        1. un simulateur ouvert et connecte : on lui confie la commande,
+           il la passe avec SA liaison et anime son tapis en meme temps ;
+        2. sinon, le script ouvre la liaison lui-meme et la garde.
         """
+        from .passerelle import demander
+
+        tapis = tapis if tapis is not None else self.tapis
+        if demander({"tapis": dict(_decrire_tapis(tapis),
+                                   action="vitesse",
+                                   mm_s=float(vitesse))}) is not None:
+            return self
         pont = _liaison_directe(self.robot, port)
-        pont.convoyeur(float(vitesse), tapis if tapis is not None else self.tapis)
+        pont.convoyeur(float(vitesse), tapis)
         return self
 
     def capteur_piece_sur_robot(self, tapis=None,
@@ -717,10 +747,50 @@ class Pilote:
         le faisceau alors qu'on vient de couper le tapis, c'est que la
         bande tourne encore. Le capteur mesure alors ce qu'aucun
         chronometre cote PC ne peut voir -- l'obeissance du materiel.
+
+        Passe par le simulateur s'il tient le port, comme les commandes
+        de tapis.
         """
+        from .passerelle import demander
+
+        tapis = tapis if tapis is not None else self.tapis
+        rep = demander({"tapis": dict(_decrire_tapis(tapis),
+                                      action="capteur")})
+        if rep is not None:
+            return bool(rep.get("vu"))
         pont = _liaison_directe(self.robot, port)
-        return bool(pont.capteur_piece(tapis if tapis is not None
-                                       else self.tapis))
+        return bool(pont.capteur_piece(tapis))
+
+    def _lecteur_capteur(self, tapis, port: Optional[str] = None):
+        """
+        Rend une fonction qui lit le capteur, le chemin etant choisi UNE
+        SEULE FOIS.
+
+        Scruter en interrogeant la passerelle a chaque tour ouvrirait une
+        connexion locale par lecture. On decide donc au depart -- fenetre
+        connectee ou liaison directe -- et la boucle garde ce chemin.
+
+        Le chemin choisi se paie en PRECISION, et il faut le savoir : la
+        dispersion de la position d'arret vaut la vitesse du tapis
+        multipliee par la periode de scrutation. En direct, une lecture
+        coute une dizaine de millisecondes ; par la passerelle, un
+        aller-retour de socket s'y ajoute. L'exemple du convoyeur affiche
+        la periode mesuree a chaque essai plutot que de la promettre.
+        """
+        from .passerelle import demander
+
+        charge = {"tapis": dict(_decrire_tapis(tapis), action="capteur")}
+        if demander(charge) is not None:
+            def par_la_passerelle():
+                rep = demander(charge)
+                if rep is None:
+                    raise RuntimeError(
+                        "le simulateur a ferme pendant l'attente du capteur")
+                return bool(rep.get("vu"))
+            return par_la_passerelle
+
+        pont = _liaison_directe(self.robot, port)
+        return lambda: bool(pont.capteur_piece(tapis))
 
     def attendre_piece_sur_robot(self, timeout: float = 30.0, tapis=None,
                                  etat: bool = True, periode: float = 0.0,
@@ -782,14 +852,14 @@ class Pilote:
         tapis = tapis if tapis is not None else self.tapis
         if tapis is None:
             raise ValueError("aucun tapis : robot.tapis = Convoyeur(...)")
-        pont = _liaison_directe(self.robot, port)
+        lire = self._lecteur_capteur(tapis, port)
         fin = _time.time() + float(timeout)
 
         if front:
             # on laisse d'abord passer ce qui occupe deja le capteur
             libre = False
             while _time.time() < fin:
-                if bool(pont.capteur_piece(tapis)) != bool(etat):
+                if bool(lire()) != bool(etat):
                     libre = True
                     break
                 if periode > 0:
@@ -800,7 +870,7 @@ class Pilote:
         tours = 0
         while _time.time() < fin:
             tours += 1
-            if bool(pont.capteur_piece(tapis)) == bool(etat):
+            if bool(lire()) == bool(etat):
                 # L'instant de la detection, pour qui veut savoir ce que
                 # le PC a coute entre voir la piece et arreter le tapis.
                 # Un tapis qui depasse accuse souvent le programme ; le
