@@ -65,8 +65,36 @@ la première.
 > accuse.
 
 Attendez donc que le bras soit posé et relâché **avant** de lancer
-`diag_capteurs_angle.py`. Le temps d'établissement exact reste à
-mesurer.
+`diag_capteurs_angle.py`.
+
+### Le délai, mesuré
+
+Vingt lectures enchaînées, bras relâché puis relevé aussitôt :
+
+```
+  t(s) |   J1     J2     J3
+   0.6 |  21.1    9.0   29.7      <- périmée
+   6.6 |   0.0    8.7   75.9
+  12.6 |   0.0    9.3   76.3
+   ...      ...                   <- et ainsi jusqu'à 20 lectures
+```
+
+**Une seule lecture fausse, sur deux axes à la fois, et tout stable
+ensuite.** Le contrôleur rend d'abord une valeur périmée, puis la bonne
+dès la connexion suivante — six secondes ici, qui sont le temps d'une
+réouverture de liaison sur cette carte, pas forcément celui de
+l'établissement lui-même.
+
+> **Attention à ne pas en faire une règle trop simple.** « La première
+> lecture ment » est faux en général : sur la machine du convoyeur, bras
+> en équerre, c'est la première qui est juste (−2,5°) et les quatre
+> suivantes qui mentent (−160°). Les deux motifs sont symétriques, et
+> leur position ne les sépare pas.
+>
+> Ce qui tranche, c'est la **posture connue**. À l'équerre on sait que la
+> bonne valeur est zéro ; sans elle, on constate seulement l'incohérence.
+> `diag_capteurs_angle.py` dit maintenant exactement cela, et propose de
+> refaire l'essai bras immobile pour lever le doute.
 
 C'est l'**étiquette** qui identifie une machine. Ni le port, ni le pont
 USB : le CH340 est partagé par plusieurs robots, et le port change d'une

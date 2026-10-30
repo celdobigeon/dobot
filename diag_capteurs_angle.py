@@ -49,6 +49,24 @@ from dobot_sim import DobotMagician
 from dobot_sim.liaison import ErreurLiaison, LiaisonDobot, ports_disponibles
 
 ESSAIS = 5
+PAUSE = 0.8            # secondes entre deux lectures
+
+#: --essais N --pause S : suivre l'ETABLISSEMENT de la lecture.
+#:
+#: Apres un deplacement a la main, le controleur rend d'abord l'ANCIENNE
+#: valeur, puis la nouvelle. Pour mesurer en combien de temps : relachez
+#: le bras, lancez AUSSITOT avec
+#:
+#:     python diag_capteurs_angle.py COM9 --tel-quel --essais 20 --pause 1
+#:
+#: et regardez a quelle lecture la valeur bascule. Chaque lecture rouvre
+#: la liaison -- c'est la seule facon de relire le capteur, le controleur
+#: ne le consultant qu'a l'ouverture.
+if "--essais" in sys.argv:
+    ESSAIS = int(sys.argv[sys.argv.index("--essais") + 1])
+if "--pause" in sys.argv:
+    PAUSE = float(sys.argv[sys.argv.index("--pause") + 1])
+
 #: posture d'equerre : les deux angles valent zero
 EQUERRE = (0.0, 0.0)
 TOLERANCE = 5.0        # degres
@@ -95,36 +113,63 @@ def main():
         print("")
 
     print("")
-    print("  essai |   J1      J2      J3      J4")
+    print("    t(s) |   J1      J2      J3      J4")
     lectures = []
+    depart = time.time()
     for k in range(ESSAIS):
         try:
             li = LiaisonDobot(port).ouvrir()
         except ErreurLiaison as exc:
-            print("    {}   ouverture impossible : {}".format(k + 1,
-                                                              str(exc)[:40]))
+            print("   {:5.1f}   ouverture impossible : {}"
+                  .format(time.time() - depart, str(exc)[:40]))
             continue
         try:
             a = np.asarray(li.pose().angles, dtype=float)
         finally:
             li.fermer()
         lectures.append(a)
-        print("    {}   | {:6.1f} {:6.1f} {:6.1f} {:6.1f}"
-              .format(k + 1, *a))
-        time.sleep(0.8)
+        print("   {:5.1f} | {:6.1f} {:6.1f} {:6.1f} {:6.1f}"
+              .format(time.time() - depart, *a))
+        time.sleep(PAUSE)
 
     if len(lectures) < 2:
         sys.exit("\n  pas assez de lectures pour conclure")
 
     L = np.array(lectures)
     noms = ("J1 base", "J2 bras arriere", "J3 avant-bras", "J4 outil")
+
+    # POURQUOI CE SCRIPT N'ACCUSE PLUS PERSONNE SANS L'EQUERRE.
+    #
+    # Des lectures incoherentes ont DEUX causes, et l'etendue seule ne
+    # les separe pas :
+    #
+    #   - un capteur fautif. Machine du convoyeur, bras en equerre :
+    #     J3 = -2,5 (juste) puis -162,6, -157,8, -161,8. Ce sont les
+    #     lectures TARDIVES qui mentent.
+    #
+    #   - un releve commence trop tot apres un deplacement A LA MAIN.
+    #     Robot 2, vingt lectures : la PREMIERE donnait J1 = 21,1 et
+    #     J3 = 29,7, les dix-neuf suivantes J1 = 0,0 et J3 = 75,x.
+    #
+    # Les deux motifs sont symetriques -- dans un cas la premiere lecture
+    # est la bonne, dans l'autre la mauvaise -- et aucune regle sur leur
+    # POSITION ne les distingue. J'avais d'abord ecrit une telle regle :
+    # elle classait le capteur reellement fautif en "premiere lecture
+    # aberrante", ce qui est exactement l'erreur a ne pas faire.
+    #
+    # Ce qui tranche, c'est la POSTURE CONNUE : a l'equerre, on sait que
+    # la bonne valeur est zero. Sans elle, on constate l'incoherence et
+    # on dit comment la lever.
     print("")
     print("=" * 64)
     print("BILAN")
     print("=" * 64)
     fautifs = []
+    incoherents = []
     for i in range(4):
         etendue = float(L[:, i].max() - L[:, i].min())
+        if etendue > TOLERANCE:
+            incoherents.append(noms[i])
         hors = not (lim.q_min[i] <= L[:, i].min()
                     and L[:, i].max() <= lim.q_max[i])
         ecart = ""
@@ -134,13 +179,34 @@ def main():
         print("  {:16s} etendue {:6.1f} deg{}{}"
               .format(noms[i], etendue, ecart,
                       "   HORS BUTEES" if hors else ""))
-        if etendue > TOLERANCE or hors:
+        if (etendue > TOLERANCE and not TEL_QUEL) or hors:
             fautifs.append(noms[i])
         elif (i in (1, 2) and not TEL_QUEL
               and abs(np.median(L[:, i]) - EQUERRE[i - 1]) > 10.0):
             fautifs.append(noms[i])
 
     print("")
+    if incoherents and TEL_QUEL:
+        print("  LECTURES INCOHERENTES : {}".format(", ".join(incoherents)))
+        print("")
+        print("  Le bras etant immobile, elles devraient se repeter. DEUX")
+        print("  causes possibles, et cet essai NE LES SEPARE PAS :")
+        print("")
+        print("   1. le releve a commence trop tot apres un deplacement")
+        print("      DU BRAS A LA MAIN. Le controleur rend alors une")
+        print("      valeur perimee, puis la bonne -- environ six secondes")
+        print("      plus tard, le temps d'une reouverture de liaison.")
+        print("   2. un capteur d'angle fautif, et la machine ne saura")
+        print("      jamais ou est son bras.")
+        print("")
+        print("  POUR TRANCHER : ne touchez plus au bras, attendez une")
+        print("  dizaine de secondes, et relancez cet essai.")
+        print("    - stable cette fois  -> c'etait le releve, pas la")
+        print("      machine ;")
+        print("    - encore incoherent  -> c'est le capteur. Refaites")
+        print("      alors l'essai BRAS EN EQUERRE, sans --tel-quel :")
+        print("      la posture connue dira quelle valeur ment.")
+        return
     if not fautifs:
         if TEL_QUEL:
             print("  LES LECTURES SE REPETENT. Le bras etant immobile, aucun")
