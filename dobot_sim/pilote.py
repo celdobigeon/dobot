@@ -705,6 +705,18 @@ class Pilote:
         x, y, z, r = pont.depuis_controleur(p.x, p.y, p.z, p.r)
         return _cible(x=x, y=y, z=z, rz=r)
 
+    def angles_sur_robot(self, port: Optional[str] = None) -> np.ndarray:
+        """
+        Les quatre angles articulaires lus sur la machine, en degres.
+
+        Le bras ne bouge pas : on lit. Pendant du `pose_sur_robot`, mais
+        en articulaire -- et c'est ce qu'il faut pour savoir si le robot
+        est DEJA a une posture donnee. Un mouvement qui ne produit rien
+        parce que la cible est atteinte ressemble, vu de l'atelier, a un
+        mouvement qui n'a pas eu lieu.
+        """
+        return _liaison_directe(self.robot, port).angles_reels()
+
     def convoyeur_sur_robot(self, vitesse: float = 0.0, tapis=None,
                             port: Optional[str] = None) -> "Pilote":
         """

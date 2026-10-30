@@ -326,6 +326,27 @@ if not REEL:
 
 print("")
 print("LE ROBOT VA BOUGER.")
+
+# OU EST LE BRAS AVANT DE PARTIR. Un repli qui ne produit aucun
+# mouvement -- parce que le bras y est deja -- ressemble, vu de
+# l'atelier, a un repli qui n'a pas eu lieu. On le dit plutot que de
+# laisser deviner.
+_q = robot.angles_sur_robot()
+_repli = np.asarray(robot.robot.q_home, dtype=float)
+_ecart = float(np.max(np.abs(_q - _repli)))
+print("  posture actuelle : J = ({:.1f}, {:.1f}, {:.1f}, {:.1f}) deg"
+      .format(*_q))
+print("  repli            : J = ({:.1f}, {:.1f}, {:.1f}, {:.1f}) deg"
+      .format(*_repli))
+if _ecart < 1.0:
+    print("  -> le bras EST DEJA replie : le premier mouvement ne se verra")
+    print("     pas, et c'est normal.")
+else:
+    print("  -> {:.0f} deg d'ecart sur l'axe le plus loin : le bras VA se"
+          .format(_ecart))
+    print("     replier, et cela doit se voir.")
+print("")
+
 robot.executer_sur_robot(vitesse=30)
 
 if VISER:
