@@ -3,12 +3,26 @@
 """
 Le convoyeur : tapis, capteur de presence, et prise au vol.
 
-    python examples/convoyeur.py              simulation
-    python examples/convoyeur.py --reel       sur la machine
+    python examples/convoyeur.py                     simulation
+    python examples/convoyeur.py --reel              sur la machine
+    python examples/convoyeur.py --reel --autonome   PC debranchable
 
 Le cycle, dix fois : le tapis avance, le capteur voit arriver une piece,
 le tapis s'arrete, le robot la prend et la depose a cote, le tapis
 repart.
+
+Deux formes de cycle, et la difference est de fond
+--------------------------------------------------
+MENE DEPUIS LE PC (par defaut). Le capteur infrarouge se lit par une
+commande IMMEDIATE : la file du controleur ne sait pas s'y
+synchroniser. Le PC scrute, decoupe le cycle en morceaux, et le robot
+lui reste attache du debut a la fin.
+
+AUTONOME (`--autonome`). La MEME broche se lit aussi en entree
+numerique -- GP4 tombe sur l'EIO 7 -- et sur une entree, la file SAIT
+attendre. Le cycle redevient un seul programme, televerse une fois, et
+le PC se debranche. Limite : la file ne tient que 32 commandes, soit un
+cycle. Une cellule autonome se dimensionne a la file de son automate.
 
 Le tapis sur la table
 ---------------------
@@ -39,6 +53,22 @@ from dobot_sim.convoyeur import PORTS_GP                         # noqa: E402
 from dobot_sim import homogeneous as hg                          # noqa: E402
 
 REEL = "--reel" in sys.argv
+# --autonome : le cycle part EN ENTIER dans la file du controleur, et le
+# PC peut etre debranche. Voir la section 4 bis.
+AUTONOME = "--autonome" in sys.argv
+CYCLES_AUTONOMES = 1
+if "--cycles" in sys.argv:
+    CYCLES_AUTONOMES = int(sys.argv[sys.argv.index("--cycles") + 1])
+
+# LE CAPTEUR, VU COMME ENTREE NUMERIQUE. La meme broche que GP4, lue par
+# l'autre voie : GP4 -> EIO 7, GP5 -> EIO 5 (releve le 30/10/2026).
+#
+# POLARITE INVERSEE, et c'est le piege : piece presente, GP4 vaut True et
+# l'EIO 7 vaut False. D'ou `etat=False` dans l'attente ci-dessous. Garder
+# `etat=True` par habitude retournerait le cycle -- le robot attendrait
+# que la piece PARTE -- sans que rien ne le signale.
+CAPTEUR_EIO = 7
+PIECE_PRESENTE = False
 
 # ---------------------------------------------------------------------------
 # 1. LA CELLULE
@@ -359,6 +389,70 @@ print("LE ROBOT ET LE TAPIS VONT BOUGER.")
 print("Le capteur est un infrarouge sur un port GP : le cycle est mene")
 print("depuis le PC, morceau par morceau. Ctrl+C arrete tout.")
 print("")
+
+# ---------------------------------------------------------------------------
+# 4 bis. LE CYCLE AUTONOME : --autonome
+# ---------------------------------------------------------------------------
+#
+# Tout ce qui precede decoupe le cycle depuis le PC, parce que la file du
+# controleur ne sait pas attendre sur un port GP. Mais le capteur se lit
+# AUSSI en entree numerique, et sur une entree la file sait attendre --
+# c'est TRIG, en mode niveau.
+#
+# Le cycle redevient alors ce qu'il devrait etre : UN programme, televerse
+# une fois, qui attend sa piece tout seul. Le PC se debranche.
+#
+# LA LIMITE, ET ELLE EST VRAIE. La file ne tient que 32 commandes. Un
+# cycle de prise-depose en demande une vingtaine : deux cycles n'y entrent
+# pas. `deposer_sur_robot` refuse plutot que de laisser croire -- un
+# programme trop long demarre quand meme et a l'air de bien partir, le PC
+# le nourrissant en douce.
+#
+# C'est une contrainte de la machine, pas du programme, et elle vaut la
+# peine d'etre montree : une cellule autonome se dimensionne a la file de
+# son automate.
+#
+# SANS PIECE, LE BRAS ATTEND INDEFINIMENT. TRIG n'a pas de delai : c'est
+# le prix de l'autonomie, le controleur n'a personne a qui se plaindre.
+if AUTONOME:
+    print("")
+    print("CYCLE AUTONOME : le programme part en entier dans la file,")
+    print("et le PC pourra etre debranche.")
+    print("")
+    robot.vider_programme()
+    robot.repli()
+    for i in range(CYCLES_AUTONOMES):
+        robot.convoyeur(VITESSE_TAPIS, commentaire="le tapis amene")
+        # UN FRONT, ET NON UN NIVEAU -- en deux attentes.
+        #
+        # TRIG attend un NIVEAU : une piece deja devant le capteur
+        # satisfait la condition tout de suite. C'est ce qui est arrive
+        # au premier essai, le 30/10/2026 : le cycle s'est deroule en
+        # entier dans le vide, sur une piece restee la du cycle
+        # precedent, et la file est allee jusqu'au bout sans rien
+        # attendre. On a d'abord accuse TRIG de ne pas bloquer -- il
+        # bloquait tres bien (diag_attente_file.py).
+        #
+        # On attend donc que le capteur soit LIBRE, puis qu'une piece
+        # ARRIVE. Deux niveaux font un front, et la piece qui trainait
+        # part avec la bande.
+        robot.attendre_piece(CAPTEUR_EIO, etat=not PIECE_PRESENTE,
+                             commentaire="le capteur se libere")
+        robot.attendre_piece(CAPTEUR_EIO, etat=PIECE_PRESENTE,
+                             commentaire="la piece arrive (TRIG)")
+        robot.convoyeur(0, commentaire="arret sous le bras")
+        prise_depose(robot)
+    robot.repli()
+    robot.convoyeur(0, commentaire="fin de cycle")
+    robot.deposer_sur_robot(vitesse=30)
+    print("")
+    print("  programme depose et lance. LE PC PEUT ETRE DEBRANCHE.")
+    print("  Posez une piece : le controleur l'attend tout seul.")
+    sys.exit(0)
+
+# ---------------------------------------------------------------------------
+# 4 ter. LE CYCLE MENE DEPUIS LE PC
+# ---------------------------------------------------------------------------
 
 robot.vider_programme()
 robot.repli()

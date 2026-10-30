@@ -1088,6 +1088,76 @@ class Pilote:
             "puis relisez : si la valeur reste impossible, c'est le",
             "capteur, et il faudra le contourner comme sur l'autre robot."])
 
+    def deposer_sur_robot(self, vitesse: float = 30.0,
+                          port: Optional[str] = None) -> bool:
+        """
+        Televerse le programme, le lance, ET REND LA MAIN. PC debranchable.
+
+        C'est la forme AUTONOME, celle d'une vraie cellule : le programme
+        part en entier dans la file du controleur, l'execution demarre, et
+        l'ordinateur n'a plus rien a faire. `executer_sur_robot`, lui,
+        surveille jusqu'au bout et alimente la file au fur et a mesure --
+        le robot y reste attache du debut a la fin.
+
+        LA CONDITION, ET ELLE EST DURE. La file du Magician ne tient que
+        32 commandes. Ce qui n'y entre pas est garde dans le PC et envoye
+        pendant l'execution : un programme qui depasse n'est donc PAS
+        autonome, meme s'il demarre et s'il a l'air de bien partir. On
+        refuse plutot que de laisser croire.
+
+        Ce qui rend la chose possible, c'est que le capteur se lise en
+        ENTREE NUMERIQUE : la file sait attendre dessus (TRIG), alors
+        qu'elle ne sait pas attendre sur un port GP. Le cycle n'a plus
+        besoin d'etre decoupe depuis le PC.
+        """
+        from .reel import BLOQUANTS_TELEVERSEMENT
+
+        vitesse = float(min(max(vitesse, 1.0), 100.0))
+        if not self.programme.instructions:
+            print("deposer_sur_robot : le programme est vide")
+            return True
+        partie = self.programme
+        q0 = np.asarray(self.q_depart, dtype=float)
+
+        defauts = [a for a in partie.construire(self.robot, q0).controler(0.05)
+                   if any(m in a for m in BLOQUANTS_TELEVERSEMENT)]
+        if defauts:
+            _echouer("DEPOT REFUSE : {} defaut(s) sur la trajectoire"
+                     .format(len(defauts)), defauts[:8])
+
+        try:
+            pont = _liaison_directe(self.robot, port)
+        except RuntimeError as exc:
+            _echouer("CONNEXION AU ROBOT IMPOSSIBLE", [str(exc)])
+
+        from .liaison import alarmes_bloquantes, resume_alarmes
+        if alarmes_bloquantes(pont.liaison.alarmes()):
+            _echouer("DEPOT REFUSE : le robot est en defaut",
+                     resume_alarmes(pont.liaison.alarmes())
+                     + ["python dobot.py mise-en-route"])
+        self._verifier_posture_annoncee(pont)
+        pont.definir_ratio(vitesse)
+        pont.televerser(partie, q0, outil=partie.outil)
+
+        reste = len(getattr(pont, "_reste", []))
+        if reste:
+            tient = pont.marge
+            pont.arret_urgence()            # vide la file : rien ne partira
+            _echouer(
+                "PROGRAMME TROP LONG POUR ETRE AUTONOME",
+                ["{} commande(s) n'entrent pas dans la file du controleur"
+                 .format(reste),
+                 "elle en tient {}, et le reste serait envoye par le PC"
+                 .format(tient),
+                 "pendant l'execution -- donc PC branche, donc pas",
+                 "autonome. Rien n'a ete lance.",
+                 "",
+                 "Reduisez le nombre de cycles, ou lancez le programme",
+                 "avec executer_sur_robot(), qui alimente la file."])
+
+        pont.demarrer()
+        return True
+
     def _executer_directement(self, partie: Programme, q0, vitesse: float,
                               port: Optional[str]) -> None:
         """Simulateur ferme : le script tient lui-meme la liaison."""

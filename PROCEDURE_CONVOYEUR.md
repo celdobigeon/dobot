@@ -347,15 +347,38 @@ autonome — c'est un choix d'implantation, pas un détail de câblage.
 > | GP4 | **EIO 7** |
 > | GP5 | EIO 5 |
 >
-> Le cycle pourrait redevenir un programme d'un seul tenant, PC
-> débranché. **Pas encore fait**, et ce n'est pas qu'une ligne de
-> déclaration : il faut remplacer la scrutation menée depuis le PC par
-> une instruction d'attente dans la file.
+> **C'est fait**, et le cycle tourne PC débranché :
 >
-> Et attention à la **polarité** : l'EIO est lue en sens **inverse** de
-> l'infrarouge — pièce présente, GP4 vaut `True` et EIO 7 vaut `False`.
-> Déclarer `capteur_eio=7` sans reprendre la logique retournerait le
-> cycle, silencieusement.
+> ```bash
+> python examples/convoyeur.py --reel --autonome
+> ```
+
+### Les trois choses que le cycle autonome a coûtées
+
+Elles valent d'être connues avant de l'écrire ailleurs.
+
+**La polarité est inversée.** Pièce présente : GP4 vaut `True`, EIO 7
+vaut `False`. On attend donc `etat=False`. Garder `True` par habitude
+retourne le cycle — le robot attendrait que la pièce *parte*.
+
+**`TRIG` attend un NIVEAU, pas un front.** Une pièce déjà devant le
+capteur satisfait la condition aussitôt : au premier essai, tout le
+cycle s'est déroulé **dans le vide**, sur une pièce restée là du cycle
+précédent, et la file est allée jusqu'au bout sans rien attendre. On
+écrit donc un front avec **deux attentes** — capteur libre, puis pièce
+qui arrive.
+
+> Et la morale du détour : j'ai d'abord accusé `TRIG` de ne pas
+> bloquer, parce que ce contrôleur acquitte n'importe quelle trame.
+> `diag_attente_file.py` a montré qu'il bloquait très bien. **Mesurer
+> avant d'accuser la machine** — c'est la troisième fois de la journée
+> que le défaut était chez nous.
+
+**La file ne tient que 32 commandes**, et un cycle en demande 23. Ce
+qui déborde est gardé par le PC et envoyé pendant l'exécution : le
+programme démarre, il a l'air de bien partir, et il n'est **pas**
+autonome. `deposer_sur_robot` refuse plutôt que de le laisser croire.
+Une cellule autonome se dimensionne à la file de son automate.
 
 **Le pont USB est un CP210x** sur la machine au convoyeur. La carte reste
 muette un instant après la mise sous tension : la première connexion
