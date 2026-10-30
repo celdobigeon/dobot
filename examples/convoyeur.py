@@ -75,9 +75,9 @@ REEL = "--reel" in sys.argv
 # piece arrive hors de portee. controler() le dit, mais autant poser le
 # capteur au bon endroit.
 TAPIS = Convoyeur(
-    repere=repere_travail(x=230, y=-448, z=0, rz=90),
+    repere=repere_travail(x=210, y=-448, z=60, rz=90),
     longueur=698,          # mm, releve sur le STEP du constructeur
-    largeur=60,
+    largeur=100,          # mm, bande utile (bati 120)
     index_moteur=0,        # 0 = Stepper1, 1 = Stepper2
     capteur_s=250,         # abscisse du capteur : pile devant le robot
     camera_s=150,          # abscisse du champ de la camera, en amont

@@ -109,21 +109,29 @@ robot.definir_repere_outil(OUTIL)
 #
 # COTES RELEVEES SUR LA CELLULE le 30/10/2026 :
 #
-#   x = 150    du centre du robot au profile du convoyeur
+#   x = 210    du centre du robot au CENTRE du convoyeur
 #   y = -250   l'axe moteur est a 250 mm sur la DROITE de l'operateur,
 #              et la droite de l'operateur est le -y du robot
 #   z = 60     hauteur de la bande
 #
-# L'origine est donc POSEE SUR L'AXE MOTEUR, et non a un bout quelconque
-# de la bande : c'est le point qu'on sait montrer du doigt et mesurer au
-# reglet.
+# L'origine est donc l'intersection de L'AXE MOTEUR et de la LIGNE
+# MEDIANE de la bande. Les deux se montrent du doigt, et c'est ce qui
+# fait un bon repere : on sait y revenir au reglet.
+#
+# Mesurer jusqu'au CENTRE plutot que jusqu'au profile supprime une cote
+# intermediaire -- il avait d'abord ete releve 150 mm jusqu'au profile,
+# ce qui obligeait a y ajouter la demi-largeur, donc a savoir de quel
+# bord on etait parti. Une cote de moins est une incertitude de moins.
+#
+# Pour memoire : bati 120 mm de large, bande utile 100 mm, centre a
+# 60 mm du bord du profile.
 #
 #   premiere colonne  ( 0 ;  1 ; 0)    sens de marche, = y ^ z
 #   deuxieme colonne  (-1 ;  0 ; 0)    L'AXE MOTEUR, la reference
 #   troisieme colonne ( 0 ;  0 ; 1)    vers le haut
-#   quatrieme colonne (150 ; -250 ; 60) l'axe moteur
+#   quatrieme colonne (210 ; -250 ; 60) axe moteur x ligne mediane
 
-CONVOYEUR = np.array([[ 0, -1, 0,  150],
+CONVOYEUR = np.array([[ 0, -1, 0,  210],
                       [ 1,  0, 0, -250],
                       [ 0,  0, 1,   60],
                       [ 0,  0, 0,    1]], dtype=float)
@@ -148,29 +156,15 @@ CONVOYEUR = np.array([[ 0, -1, 0,  150],
 # capteur voit la piece. La gauche de l'operateur etant le sens de
 # marche, c'est +300 le long de x.
 #
-# ET UNE SECONDE COTE, qu'il faut mesurer. Le x du convoyeur a ete
-# releve jusqu'au PROFILE -- le bord du bati. La piece, elle, circule au
-# MILIEU de la bande, donc plus loin du robot. Cette distance se place
-# ici, le long de y, et elle compte : sans elle le modele place la prise
-# a 154 mm de l'axe, et controler() refuse -- J2 sort de sa butee.
-#
-# Le signe : l'axe y du convoyeur pointe vers l'operateur, donc
-# s'eloigner du robot, c'est aller vers les y NEGATIFS du convoyeur.
-#
-# A MESURER : du profile ou le x a ete pris, jusqu'au MILIEU de la
-# bande. Le modele CAO ne tranche pas tout seul -- la bande utile fait
-# une centaine de millimetres de large, mais le bati en fait 220 avec le
-# moteur en debord, et on ne sait pas duquel de ces bords part le releve.
-# Selon le cas la reponse vaut 50 ou 150 mm, et c'est trop pour deviner.
-#
-# Un reglet pose en travers de la bande, dix secondes.
+# Aucun decalage lateral : le repere du convoyeur est deja sur la ligne
+# mediane de la bande, et la piece y circule. La matrice se reduit donc
+# a une translation le long de x -- une seule cote, celle qu'on a
+# mesuree.
 
-PROFILE_A_LA_BANDE = 110.0     # mm, A MESURER -- valeur provisoire
-
-CAPTEUR = np.array([[1, 0, 0,  300.0],
-                    [0, 1, 0, -110.0],
-                    [0, 0, 1,      0],
-                    [0, 0, 0,      1]], dtype=float)
+CAPTEUR = np.array([[1, 0, 0, 300],
+                    [0, 1, 0,   0],
+                    [0, 0, 1,   0],
+                    [0, 0, 0,   1]], dtype=float)
 
 # ---------------------------------------------------------------------------
 # 5. LA PIECE, DANS LE REPERE DU CAPTEUR
@@ -266,11 +260,11 @@ print("  axe z de l'outil : {} -- vers le bas".format(np.round(PRISE[:3, 2], 1))
 print("")
 
 # Ce que la chaine fait gagner : chaque defaut se corrige a UN endroit.
-CAPTEUR_PLUS_LOIN = np.array([[1, 0, 0,  330.0],
-                              [0, 1, 0, -110.0],
-                              [0, 0, 1,      0],
-                              [0, 0, 0,      1]], dtype=float)
-CONVOYEUR_RECULE = np.array([[ 0, -1, 0,  180],
+CAPTEUR_PLUS_LOIN = np.array([[1, 0, 0, 330],
+                              [0, 1, 0,   0],
+                              [0, 0, 1,   0],
+                              [0, 0, 0,   1]], dtype=float)
+CONVOYEUR_RECULE = np.array([[ 0, -1, 0,  240],
                              [ 1,  0, 0, -250],
                              [ 0,  0, 1,   60],
                              [ 0,  0, 0,    1]], dtype=float)
