@@ -1019,6 +1019,36 @@ class Pilote:
             _signaler_urgence()
             raise
 
+    def preparer_sur_robot(self, port: Optional[str] = None) -> bool:
+        """
+        Declare la posture d'equerre et reprend l'origine, DANS LA
+        LIAISON qui va ensuite travailler. Le bras doit y etre mis a la
+        main avant l'appel.
+
+        Pourquoi dans la meme liaison. Sur une machine dont un capteur
+        d'angle est fautif -- le J3 de celle du labo -- le controleur
+        relit ce capteur A CHAQUE OUVERTURE de liaison et repart sur une
+        valeur fausse. Une declaration faite dans une autre liaison, par
+        `dobot.py posture equerre` par exemple, est donc perdue des que
+        celle-ci se referme.
+
+        L'assistant s'ouvre deja tout seul QUAND DES ALARMES SAUTENT,
+        c'est-a-dire quand la lecture fautive sort des butees du
+        controleur. Mais une lecture fausse qui reste PLAUSIBLE ne
+        declenche rien : le cycle part alors sur un repere faux, en
+        silence, et c'est le cas le plus couteux. Appeler ceci le rend
+        systematique au lieu de le laisser au hasard.
+        """
+        from .ui import mise_en_route_autonome
+
+        pont = _liaison_directe(self.robot, port)
+        print("  Mettez le bras EN EQUERRE -- arriere vertical, avant-bras")
+        print("  horizontal -- avant de valider la mise en route.")
+        if not mise_en_route_autonome(pont, self.robot):
+            _echouer("MISE EN ROUTE INCOMPLETE : le robot signale encore un "
+                     "defaut", ["rien n'a ete execute"])
+        return True
+
     def _verifier_posture_annoncee(self, pont) -> None:
         """
         Refuse de partir si le robot annonce une posture IMPOSSIBLE.

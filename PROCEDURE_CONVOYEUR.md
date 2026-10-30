@@ -49,10 +49,33 @@ jusqu'à sa fermeture.
 > l'erreur dans le programme, les repères, les cotes. Partout sauf dans
 > la machine.
 
-`executer_sur_robot` refuse désormais de partir si un axe annonce une
+### Le contournement, et pourquoi il doit être dans la même liaison
+
+Le contrôleur relit ce capteur **à chaque ouverture de liaison**. Une
+posture déclarée dans une autre liaison — par `dobot.py posture
+equerre`, par exemple — est donc perdue dès que celle-ci se referme.
+
+D'où la règle : **bras en équerre, et déclaration dans la liaison du
+programme**.
+
+```bash
+python examples/prise_depose_matrices.py --reel --equerre
+```
+
+L'assistant s'ouvre déjà tout seul **quand des alarmes sautent**,
+c'est-à-dire quand la lecture fautive sort des butées du contrôleur. Il
+répare alors le repère au bon endroit, et le cycle est juste — c'est
+pourquoi certains essais réussissent.
+
+Mais une lecture fausse qui reste **plausible** ne déclenche rien. Le
+cycle part sur un repère faux, en silence, et c'est le cas le plus
+coûteux : on cherche l'erreur partout ailleurs. `--equerre` rend la
+déclaration systématique au lieu de la laisser au hasard.
+
+`executer_sur_robot` refuse en outre de partir si un axe annonce une
 valeur hors de ses propres butées. Mais une erreur de 160° qui reste
-*dans* les butées passe au travers : la vérification en équerre reste
-la seule sûre.
+*dans* les butées passe au travers : la déclaration en équerre reste la
+seule sûre.
 
 ---
 

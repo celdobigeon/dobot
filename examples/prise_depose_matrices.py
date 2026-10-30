@@ -92,6 +92,10 @@ PAS_A_PAS = "--pas-a-pas" in sys.argv
 # la reapprovisionner PENDANT l'execution. C'est la seule difference
 # entre un cycle qui passe et un cycle qui derive, et ce drapeau permet
 # de la mettre a l'epreuve.
+# --equerre : declarer la posture d'equerre et reprendre l'origine DANS
+# la liaison du programme, avant d'executer. Indispensable sur une
+# machine dont un capteur d'angle est fautif -- voir la procedure.
+EQUERRE = "--equerre" in sys.argv
 CYCLES = 3
 if "--cycles" in sys.argv:
     CYCLES = int(sys.argv[sys.argv.index("--cycles") + 1])
@@ -449,6 +453,9 @@ else:
           .format(_ecart))
     print("     replier, et cela doit se voir.")
 print("")
+
+if EQUERRE:
+    robot.preparer_sur_robot()
 
 robot.executer_sur_robot(vitesse=RATIO)
 
