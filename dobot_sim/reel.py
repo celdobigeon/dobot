@@ -433,9 +433,9 @@ class PontReel:
         pendant un programme, et notamment pour un arret. A False, elle
         s'empile derriere le programme en cours.
         """
-        from .convoyeur import IMPULSIONS_PAR_MM
+        from .convoyeur import IMPULSIONS_PAR_MM, pas_signe_de
         li = self._exiger()
-        pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or IMPULSIONS_PAR_MM)
+        pas = pas_signe_de(tapis, IMPULSIONS_PAR_MM)
         index = int(getattr(tapis, "index_moteur", 0) or 0)
         v = float(vitesse_mm_s)
         li.moteur_etendu(index, bool(v), v * pas, en_file=not immediat)
@@ -737,8 +737,12 @@ class PontReel:
             # pas du tapis voyage avec l'instruction -- sans lui, on
             # retomberait sur la valeur nominale et le tapis n'avancerait
             # pas de la distance voulue.
+            # Le pas est SIGNE : il porte le cablage du moteur. Le
+            # comparer a zero -- et non le tester comme "<= 0" -- sinon
+            # un tapis cable a l'envers se fait rendre la valeur
+            # nominale, positive, et repart a contresens.
             pas = float(getattr(ins, "impulsions_par_mm", 0.0))
-            if pas <= 0:
+            if pas == 0:
                 from .convoyeur import IMPULSIONS_PAR_MM
                 pas = IMPULSIONS_PAR_MM
                 self.journal("CONVOYEUR sans pas de tapis : valeur nominale "

@@ -44,7 +44,8 @@ import numpy as np
 
 from . import homogeneous as hg
 
-__all__ = ["Convoyeur", "Piece", "IMPULSIONS_PAR_MM", "PORTS_GP"]
+__all__ = ["Convoyeur", "Piece", "IMPULSIONS_PAR_MM", "PORTS_GP",
+           "pas_signe_de"]
 
 #: Ports GP du Magician, ou se branchent les capteurs du kit convoyeur.
 #: Les valeurs viennent du SDK Dobot ; le protocole V1.1.5 nomme le type
@@ -149,6 +150,19 @@ class Convoyeur:
     def impulsions_par_seconde(self, vitesse_mm_s: float) -> float:
         """Vitesse du tapis en mm/s -> consigne du controleur, signee."""
         return float(vitesse_mm_s) * self.impulsions_par_mm * self.sens
+
+    def pas_signe(self) -> float:
+        """
+        Les impulsions par millimetre, SIGNEES par le cablage du moteur.
+
+        C'est ce nombre-la, et non `impulsions_par_mm`, qui doit voyager
+        jusqu'au controleur : le programme, la passerelle et l'execution
+        directe ne transportent qu'un pas, et un pas non signe perd le
+        cablage en route. Constate sur le robot 5 le 30/10/2026 --
+        `sens=-1` declare, bande partie dans l'autre sens, et le journal
+        annoncait fierement une consigne positive.
+        """
+        return float(self.impulsions_par_mm) * self.sens
 
     def millimetres_par_seconde(self, impulsions_s: float) -> float:
         """L'inverse : ce que vaut une consigne du controleur, en mm/s."""
@@ -365,3 +379,17 @@ class Convoyeur:
                         "" if self.capteur_eio is None
                         else " (entree EIO {})".format(self.capteur_eio),
                         self.camera_s, len(self.pieces)))
+
+
+def pas_signe_de(tapis, defaut: float = 0.0) -> float:
+    """
+    Le pas signe d'un tapis quelconque -- objet, sosie, ou rien du tout.
+
+    Les trois chemins qui commandent le moteur (le programme, la
+    passerelle, l'execution directe) recoivent un `tapis` qui n'est pas
+    toujours un `Convoyeur` : une seule facon de lire son pas evite
+    qu'un de ces chemins oublie le cablage, comme les trois l'avaient
+    fait.
+    """
+    pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or defaut)
+    return pas * int(getattr(tapis, "sens", 1) or 1)

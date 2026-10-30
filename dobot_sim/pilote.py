@@ -67,8 +67,8 @@ def _decrire_tapis(tapis) -> dict:
     donnees, et le simulateur n'a pas a reconstruire un `Convoyeur` pour
     commander un moteur.
     """
-    from .convoyeur import IMPULSIONS_PAR_MM
-    pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or IMPULSIONS_PAR_MM)
+    from .convoyeur import IMPULSIONS_PAR_MM, pas_signe_de
+    pas = pas_signe_de(tapis, IMPULSIONS_PAR_MM)
     return {"index": int(getattr(tapis, "index_moteur", 0) or 0),
             "pas": pas,
             "capteur_port": getattr(tapis, "capteur_port", None),
@@ -590,8 +590,9 @@ class Pilote:
         Le tapis du Pilote (`robot.tapis`) sert de defaut : il suffit de
         le poser une fois.
         """
+        from .convoyeur import pas_signe_de
         tapis = tapis if tapis is not None else getattr(self, "tapis", None)
-        pas = float(getattr(tapis, "impulsions_par_mm", 0.0) or 0.0)
+        pas = pas_signe_de(tapis)
         index = int(getattr(tapis, "index_moteur", 0) or 0)
         v = float(vitesse)
         self.programme.ajouter(Instruction(
