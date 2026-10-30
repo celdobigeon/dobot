@@ -81,6 +81,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dobot_sim import Pilote                                   # noqa: E402
 
 REEL = "--reel" in sys.argv
+# --viser : on va AU POINT DE PRISE et on s'y arrete, pour mesurer
+# l'ecart a la piece au reglet. Rien ne se referme, rien ne se depose.
+VISER = "--viser" in sys.argv
 
 # ---------------------------------------------------------------------------
 # 1. L'EN-TETE
@@ -94,11 +97,19 @@ robot = Pilote(nom="essai-matrices", outil="ventouse",
 # ---------------------------------------------------------------------------
 #
 # De l'axe de rotation de l'outil a sa pointe. Axe z vers le bas.
-# Ventouse droite de 79,3 mm, mesuree sur la machine.
+#
+# 89,3 mm. La ventouse etait declaree a 79,3 -- cote relevee en posant
+# la pointe sur le plan de travail -- et le robot descendait 10 mm trop
+# bas sur le tapis. Un outil plus LONG que declare fait descendre
+# d'autant : le modele croit la pointe plus haut qu'elle n'est.
+#
+# L'erreur est CONSTANTE, elle ne depend pas de la posture : c'est la
+# signature d'une longueur d'outil, et c'est ce qui permet de l'imputer
+# a l'outil plutot qu'au repere du tapis ou a la hauteur de la bande.
 
 OUTIL = np.array([[1,  0,  0,     0],
                   [0, -1,  0,     0],
-                  [0,  0, -1, -79.3],
+                  [0,  0, -1, -89.3],
                   [0,  0,  0,     1]], dtype=float)
 
 robot.definir_repere_outil(OUTIL)
@@ -110,7 +121,7 @@ robot.definir_repere_outil(OUTIL)
 # COTES RELEVEES SUR LA CELLULE le 30/10/2026 :
 #
 #   x = 210    du centre du robot au CENTRE du convoyeur
-#   y = -250   l'axe moteur est a 250 mm sur la DROITE de l'operateur,
+#   y = -400   l'axe moteur est a 400 mm sur la DROITE de l'operateur,
 #              et la droite de l'operateur est le -y du robot
 #   z = 60     hauteur de la bande
 #
@@ -129,10 +140,10 @@ robot.definir_repere_outil(OUTIL)
 #   premiere colonne  ( 0 ;  1 ; 0)    sens de marche, = y ^ z
 #   deuxieme colonne  (-1 ;  0 ; 0)    L'AXE MOTEUR, la reference
 #   troisieme colonne ( 0 ;  0 ; 1)    vers le haut
-#   quatrieme colonne (210 ; -250 ; 60) axe moteur x ligne mediane
+#   quatrieme colonne (210 ; -400 ; 60) axe moteur x ligne mediane
 
 CONVOYEUR = np.array([[ 0, -1, 0,  210],
-                      [ 1,  0, 0, -250],
+                      [ 1,  0, 0, -400],
                       [ 0,  0, 1,   60],
                       [ 0,  0, 0,    1]], dtype=float)
 
@@ -152,9 +163,23 @@ CONVOYEUR = np.array([[ 0, -1, 0,  210],
 # ne tourne pas par rapport au tapis, donc la matrice est une simple
 # translation -- et c'est ce qui la rend relisible.
 
-# Releve : 300 mm a GAUCHE de l'axe moteur, mesure a l'instant ou le
-# capteur voit la piece. La gauche de l'operateur etant le sens de
-# marche, c'est +300 le long de x.
+# 300 mm le long de la bande depuis l'axe moteur, vers les y positifs.
+#
+# CE NOMBRE A ETE CONFIRME PAR UNE CONTRADICTION. Un premier jeu de
+# cotes donnait l'axe moteur a y = -250 et le capteur a 300 mm de lui,
+# ce qui placait le capteur a y = +50. Or il se trouve a y = -100, et la
+# mesure faite par le robot le confirmait : ventouse arretee sur le
+# point calcule, l'ecart a la piece valait 145 mm, donc la piece etait a
+# y = -107,5 -- a 7,5 mm du capteur.
+#
+# Les trois cotes ne pouvaient pas etre vraies ensemble. Le releve
+# repris a donne l'axe moteur a -400, et tout concorde.
+#
+# A NOTER, parce que c'est l'interet de la chaine de reperes : corriger
+# les deux cotes de +150 et -150 donne EXACTEMENT le meme point de
+# prise. Une erreur sur la place du tapis et une erreur egale et opposee
+# sur la place du capteur se compensent. Ce sont les cotes qui etaient
+# fausses, pas la cible -- et seul un troisieme releve pouvait le dire.
 #
 # Aucun decalage lateral : le repere du convoyeur est deja sur la ligne
 # mediane de la bande, et la piece y circule. La matrice se reduit donc
@@ -223,7 +248,12 @@ HAUT = np.array([[1, 0, 0,   0],
 # ---------------------------------------------------------------------------
 
 robot.repli()
-for _ in range(3):
+if VISER:
+    # Une approche, une descente, et on s'arrete la. Lentement : on
+    # regarde ou la ventouse arrive, on ne produit pas.
+    robot.movj(PRISE @ HAUT)
+    robot.movl(PRISE, vitesse=15)
+for _ in range(0 if VISER else 3):
     # prise : ARRET AU POINT, sinon la ventouse aspire avant d'y etre
     robot.movj(PRISE @ HAUT, lissage=70)
     robot.movl(PRISE, vitesse=40)
@@ -236,7 +266,8 @@ for _ in range(3):
     robot.ventouse(False)
     robot.attendre(0.3)
     robot.movl(DEPOSE @ HAUT)
-robot.repli()
+if not VISER:
+    robot.repli()
 
 # ---------------------------------------------------------------------------
 # 6. CE QU'ON A ECRIT, ET CE QUE CA DONNE
@@ -265,7 +296,7 @@ CAPTEUR_PLUS_LOIN = np.array([[1, 0, 0, 330],
                               [0, 0, 1,   0],
                               [0, 0, 0,   1]], dtype=float)
 CONVOYEUR_RECULE = np.array([[ 0, -1, 0,  240],
-                             [ 1,  0, 0, -250],
+                             [ 1,  0, 0, -400],
                              [ 0,  0, 1,   60],
                              [ 0,  0, 0,    1]], dtype=float)
 print("Ce qu'il faut changer, et ou :")
@@ -289,9 +320,33 @@ else:
     print("tout le cycle est dans l'espace de travail")
 print(robot.resume().splitlines()[0])
 
-if REEL:
-    print("")
-    print("LE ROBOT VA BOUGER.")
-    robot.executer_sur_robot(vitesse=30)
-else:
+if not REEL:
     robot.simuler()
+    sys.exit(0)
+
+print("")
+print("LE ROBOT VA BOUGER.")
+robot.executer_sur_robot(vitesse=30)
+
+if VISER:
+    print("")
+    print("=" * 60)
+    print("  La ventouse est au point de prise CALCULE :")
+    print("    x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
+    print("")
+    print("  Mesurez l'ecart a la piece, LE LONG DU TAPIS -- c'est-a-dire")
+    print("  selon y, le sens de marche. Comptez POSITIF si la ventouse")
+    print("  est en aval de la piece, vers la sortie du tapis.")
+    print("")
+    print("  Cet ecart se reporte directement sur UNE cote : les 300 mm")
+    print("  du capteur le long de la bande. Rien d'autre a toucher.")
+    print("=" * 60)
+    try:
+        input("  Entree pour degager le bras... ")
+    except EOFError:
+        pass
+    robot.vider_programme()
+    robot.movl(PRISE @ HAUT, vitesse=20)
+    robot.repli()
+    robot.executer_sur_robot(vitesse=30)
+    print("  bras degage")
