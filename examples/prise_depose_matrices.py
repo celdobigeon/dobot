@@ -157,10 +157,15 @@ CONVOYEUR = np.array([[ 0, -1, 0,  150],
 # Le signe : l'axe y du convoyeur pointe vers l'operateur, donc
 # s'eloigner du robot, c'est aller vers les y NEGATIFS du convoyeur.
 #
-# A MESURER : du profile au milieu de la bande. Le modele CAO donne un
-# bati de 220 mm de large, d'ou 110 en premiere approche.
+# A MESURER : du profile ou le x a ete pris, jusqu'au MILIEU de la
+# bande. Le modele CAO ne tranche pas tout seul -- la bande utile fait
+# une centaine de millimetres de large, mais le bati en fait 220 avec le
+# moteur en debord, et on ne sait pas duquel de ces bords part le releve.
+# Selon le cas la reponse vaut 50 ou 150 mm, et c'est trop pour deviner.
+#
+# Un reglet pose en travers de la bande, dix secondes.
 
-PROFILE_A_LA_BANDE = 110.0     # mm, A MESURER sur votre cellule
+PROFILE_A_LA_BANDE = 110.0     # mm, A MESURER -- valeur provisoire
 
 CAPTEUR = np.array([[1, 0, 0,  300.0],
                     [0, 1, 0, -110.0],
