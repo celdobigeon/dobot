@@ -1100,7 +1100,11 @@ class Pilote:
         le robot y reste attache du debut a la fin.
 
         LA CONDITION, ET ELLE EST DURE. La file du Magician ne tient que
-        32 commandes. Ce qui n'y entre pas est garde dans le PC et envoye
+        32 commandes, et la marge de travail n'en remplit que 24. Un
+        cycle de prise-depose en demande 23 : il passe d'un cheveu, et
+        deux n'y entrent pas.
+
+        Ce qui n'y entre pas est garde dans le PC et envoye
         pendant l'execution : un programme qui depasse n'est donc PAS
         autonome, meme s'il demarre et s'il a l'air de bien partir. On
         refuse plutot que de laisser croire.

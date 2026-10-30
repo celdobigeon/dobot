@@ -374,11 +374,18 @@ qui arrive.
 > avant d'accuser la machine** — c'est la troisième fois de la journée
 > que le défaut était chez nous.
 
-**La file ne tient que 32 commandes**, et un cycle en demande 23. Ce
-qui déborde est gardé par le PC et envoyé pendant l'exécution : le
-programme démarre, il a l'air de bien partir, et il n'est **pas**
+**La file ne tient que 32 commandes, et on n'en remplit que 24** —
+la marge de travail, ramenée à la baisse si le contrôleur refuse. Un
+cycle en demande 23 : **il passe d'un cheveu, et deux ne passeront
+jamais**. Trois cycles demandés, 63 commandes, 39 de trop : refusé.
+
+Ce qui déborde est gardé par le PC et envoyé pendant l'exécution. Le
+programme démarre alors, il a l'air de bien partir, et il n'est **pas**
 autonome. `deposer_sur_robot` refuse plutôt que de le laisser croire.
 Une cellule autonome se dimensionne à la file de son automate.
+
+> Vérifié le 30/10/2026 sur le robot 5 : **trois lancements, trois
+> prises bonnes**, liaison série refermée à chaque fois.
 
 **Le pont USB est un CP210x** sur la machine au convoyeur. La carte reste
 muette un instant après la mise sous tension : la première connexion

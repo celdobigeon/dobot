@@ -21,8 +21,10 @@ lui reste attache du debut a la fin.
 AUTONOME (`--autonome`). La MEME broche se lit aussi en entree
 numerique -- GP4 tombe sur l'EIO 7 -- et sur une entree, la file SAIT
 attendre. Le cycle redevient un seul programme, televerse une fois, et
-le PC se debranche. Limite : la file ne tient que 32 commandes, soit un
-cycle. Une cellule autonome se dimensionne a la file de son automate.
+le PC se debranche. Limite : on ne remplit que 24 commandes de file
+(marge), et un cycle en demande 23 -- il passe d'un cheveu, et deux ne
+passent pas. Une cellule autonome se dimensionne a la file de son
+automate.
 
 Le tapis sur la table
 ---------------------
@@ -402,9 +404,10 @@ print("")
 # Le cycle redevient alors ce qu'il devrait etre : UN programme, televerse
 # une fois, qui attend sa piece tout seul. Le PC se debranche.
 #
-# LA LIMITE, ET ELLE EST VRAIE. La file ne tient que 32 commandes. Un
-# cycle de prise-depose en demande une vingtaine : deux cycles n'y entrent
-# pas. `deposer_sur_robot` refuse plutot que de laisser croire -- un
+# LA LIMITE, ET ELLE EST VRAIE. La file tient 32 commandes, et on n'en
+# remplit que 24 -- la marge de travail. Un cycle en demande 23 : il
+# passe d'un cheveu, deux ne passent pas (63 commandes pour trois
+# cycles, 39 de trop, refuse sur la machine le 30/10/2026). `deposer_sur_robot` refuse plutot que de laisser croire -- un
 # programme trop long demarre quand meme et a l'air de bien partir, le PC
 # le nourrissant en douce.
 #
