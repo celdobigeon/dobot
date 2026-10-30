@@ -27,6 +27,35 @@ donne un résultat qui a l'air juste.
 
 ---
 
+## 0 bis. Vérifier que le robot sait où est son bras
+
+**À faire avant tout le reste**, et c'est nouveau : le capteur d'angle
+**J3** de cette machine est fautif.
+
+Bras en équerre — arrière vertical, avant-bras horizontal — les angles
+lus doivent valoir `J2 = 0` et `J3 = 0`. Relevé le 30/10/2026 sur quatre
+connexions successives, bras immobile : `J3 = −2,5`, puis `−162,6`,
+`−157,8`, `−161,8`. **La bonne valeur sort une fois sur quatre.**
+
+Dans une même connexion la lecture ne bouge pas d'un dixième : l'angle
+est lu **une seule fois à l'ouverture de la liaison**, puis compté en
+pas. Une liaison ouverte sur une mauvaise lecture restera fausse
+jusqu'à sa fermeture.
+
+> **Ce que ça produit, et pourquoi c'est si trompeur.** Des prises
+> décalées sans régularité, des alarmes de butée sans raison, des
+> postures annoncées impossibles — et surtout des essais qui
+> **réussissent**, ceux où la lecture était bonne. On cherche alors
+> l'erreur dans le programme, les repères, les cotes. Partout sauf dans
+> la machine.
+
+`executer_sur_robot` refuse désormais de partir si un axe annonce une
+valeur hors de ses propres butées. Mais une erreur de 160° qui reste
+*dans* les butées passe au travers : la vérification en équerre reste
+la seule sûre.
+
+---
+
 ## 1. Dégager le bras
 
 Si le voyant est **rouge**, ou si un cycle a été interrompu, le bras est

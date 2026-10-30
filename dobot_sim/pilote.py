@@ -1019,6 +1019,44 @@ class Pilote:
             _signaler_urgence()
             raise
 
+    def _verifier_posture_annoncee(self, pont) -> None:
+        """
+        Refuse de partir si le robot annonce une posture IMPOSSIBLE.
+
+        Un capteur d'angle fautif se trahit ainsi : le controleur annonce
+        un axe hors de ses propres butees -- J3 a 152 degres quand la
+        butee haute est a 95. Il ne sait alors plus ou est son bras, et
+        AUCUNE cible ne peut etre atteinte, si juste soit-elle.
+
+        Releve sur la machine du labo : quatre lectures consecutives, bras
+        immobile en equerre, ont donne J3 = -2,5 puis -162,6, -157,8 et
+        -161,8. La bonne valeur sortait une fois sur quatre, et les essais
+        qui reussissaient etaient ceux-la.
+
+        Sans ce controle, le cycle part et se trompe de cible sans rien
+        signaler -- on cherche alors l'erreur dans les reperes, les cotes
+        et la file du controleur, longuement.
+        """
+        try:
+            q = pont.angles_reels()
+        except Exception:
+            return                          # pas de lecture : on n'invente pas
+        lim = self.robot.lim
+        noms = ("J1 base", "J2 bras arriere", "J3 avant-bras", "J4 outil")
+        fautifs = ["{} = {:.1f} deg, hors de [{:.0f} ; {:.0f}]".format(
+            noms[i], q[i], lim.q_min[i], lim.q_max[i])
+            for i in range(4)
+            if not (lim.q_min[i] - 1.0 <= q[i] <= lim.q_max[i] + 1.0)]
+        if not fautifs:
+            return
+        _echouer("LE ROBOT ANNONCE UNE POSTURE IMPOSSIBLE", fautifs + [
+            "Le controleur ne sait pas ou est son bras : aucune cible ne",
+            "sera atteinte. Un capteur d'angle est probablement fautif.",
+            "Remettez le bras en equerre et declarez la posture :",
+            "    python dobot.py posture equerre",
+            "puis relisez : si la valeur reste impossible, c'est le",
+            "capteur, et il faudra le contourner comme sur l'autre robot."])
+
     def _executer_directement(self, partie: Programme, q0, vitesse: float,
                               port: Optional[str]) -> None:
         """Simulateur ferme : le script tient lui-meme la liaison."""
@@ -1040,6 +1078,7 @@ class Pilote:
                     _echouer("EXECUTION REFUSEE : le robot est toujours en "
                              "defaut apres la mise en route",
                              resume_alarmes(pont.liaison.alarmes()))
+            self._verifier_posture_annoncee(pont)
             pont.definir_ratio(vitesse)
             pont.televerser(partie, q0, outil=partie.outil)
             pont.demarrer()
