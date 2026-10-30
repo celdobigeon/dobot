@@ -37,16 +37,36 @@ capteurs d'angle ne se devine pas, et il ne se transporte pas d'un robot
 | Machine | Port, pont | Firmware | Capteurs d'angle |
 |---|---|---|---|
 | robot au convoyeur | COM6, CP210x | 3.7.0 | **J3 fautif, ~160°** |
-| **robot 2** | COM9, CP210x | 3.7.0 | **J3 fautif, ~19°** |
+| robot 2 | COM9, CP210x | 3.7.0 | sains **au repos** — voir ci-dessous |
 | robot « 7 » | CH340 | — | sains |
 | robot 5 | COM4, CH340 | 3.7.0 | sains |
 
-> **Un écart de 19° est pire qu'un écart de 160°.** À 160°, la lecture
-> sort des butées du contrôleur, les alarmes sautent, et l'assistant
-> répare le repère tout seul. À 19°, elle reste **plausible** : rien ne
-> se déclenche, et le cycle part sur un repère faux en silence. Sur le
-> robot 2, un lancement sur deux réussissait — ceux où la lecture était
-> bonne. **Deux machines sur quatre**, et toutes deux sur J3.
+### Ne relevez pas les capteurs juste après avoir déplacé le bras
+
+Sur le robot 2, le 30/10/2026, quatre relevés de cinq lectures :
+
+| Bras venait d'être déplacé à la main | Étendue J3 |
+|---|---|
+| oui | 20,8° |
+| non | 0,4° |
+| oui | 19,2° |
+| non | 0,5° |
+
+La corrélation est sans exception. **Bras immobile depuis un moment, ce
+capteur se répète à un demi-degré près** ; relevé dans la foulée d'un
+déplacement, il donne d'abord l'ancienne valeur puis la nouvelle — dans
+un des essais, la bascule est arrivée à la **troisième** lecture, pas à
+la première.
+
+> **J'avais d'abord conclu à un capteur fautif**, et c'était faux : le
+> protocole du relevé était en cause, pas la machine. C'est l'utilisatrice
+> qui a vu le délai. La leçon vaut pour les deux sens — mesurer avant
+> d'accuser la machine, et se méfier de sa propre mesure quand elle
+> accuse.
+
+Attendez donc que le bras soit posé et relâché **avant** de lancer
+`diag_capteurs_angle.py`. Le temps d'établissement exact reste à
+mesurer.
 
 C'est l'**étiquette** qui identifie une machine. Ni le port, ni le pont
 USB : le CH340 est partagé par plusieurs robots, et le port change d'une

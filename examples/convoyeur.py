@@ -60,13 +60,16 @@ REEL = "--reel" in sys.argv
 # PC peut etre debranche. Voir la section 4 bis.
 AUTONOME = "--autonome" in sys.argv
 # --equerre : declarer la posture d'equerre et reprendre l'origine DANS
-# LA LIAISON qui va travailler. Indispensable sur une machine dont un
-# capteur d'angle est fautif -- le J3 du robot 2, mesure a 19 degres
-# d'ecart d'une connexion a l'autre, bras immobile.
+# LA LIAISON qui va travailler.
 #
-# 19 degres, c'est le pire des cas : l'erreur reste PLAUSIBLE, aucune
-# alarme ne saute, et le cycle part sur un repere faux en silence. Un
-# lancement sur deux reussit -- ceux ou la lecture etait bonne.
+# Sur une machine dont un capteur d'angle est fautif -- le J3 de celle du
+# convoyeur, 160 degres d'ecart d'une connexion a l'autre -- le
+# controleur repart sur une valeur fausse a chaque ouverture, et une
+# declaration faite ailleurs est perdue des que sa liaison se referme.
+#
+# L'exemple prise_depose_matrices.py avait ce drapeau depuis le debut ;
+# celui-ci ne l'avait pas, ce qui rendait le cycle convoyeur inutilisable
+# sur cette machine-la.
 EQUERRE = "--equerre" in sys.argv
 CYCLES_AUTONOMES = 1
 if "--cycles" in sys.argv:
