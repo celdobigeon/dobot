@@ -19,6 +19,7 @@ donne un résultat qui a l'air juste.
 | 3. étalonnage **après** l'origine | point appris dans un repère mort | la ventouse plonge à côté d'une distance fixe |
 | 4. étalonnage **dans les conditions du cycle** | décalage bord/centre | erreur d'une **demi-pièce**, toujours du même côté |
 | 5. une seule pièce à la fois | détection sur une pièce déjà là | le tapis ne convoie pas, la prise est erratique |
+| 6. **ne jamais pousser le bras à la main** | J1 perdu par le contrôleur | le bras garde son rayon et change d'**angle** |
 
 > Le piège commun à toutes : **rien ne proteste**. Le programme s'exécute,
 > le tapis tourne, le bras bouge. Seule la pièce non attrapée le dit, et
@@ -61,8 +62,17 @@ python etalonner_convoyeur.py COM6
 ```
 
 Trois fois : le tapis part, vous posez une pièce **bien en amont**, le
-capteur l'arrête, vous amenez la ventouse **au contact du centre** de la
-pièce, à la main.
+capteur l'arrête, et vous amenez la ventouse **au contact du centre** de
+la pièce — **au clavier**, par pas de 1 à 25 mm.
+
+> **Ne poussez jamais le bras à la main.** Le contrôleur relit deux
+> capteurs d'angle, bras arrière et avant-bras ; la rotation de base n'en
+> a pas, il la compte en pas. Moteurs relâchés, ces pas ne sont pas
+> comptés : **J1 est perdu**, silencieusement, jusqu'à la prochaine prise
+> d'origine. Mesuré ici : trois poses sur le même point fixe, même rayon
+> à 1,4 mm, même hauteur à 0,3 mm, et **49° d'écart angulaire** — soit
+> 241 mm. C'est la panne la plus coûteuse de toute la mise au point, et
+> la plus silencieuse.
 
 **À refaire après chaque prise d'origine.** Un point appris n'existe que
 dans le repère où il a été appris ; reprendre l'origine le périme.
@@ -180,9 +190,11 @@ réponse en 1,0 s ». Relancez, la seconde passe.
 
 ## 8. Ce qui reste ouvert
 
-**La dérive du repère entre deux prises d'origine** n'a pas été mesurée
-contre un point fixe. Si elle se confirme, l'étape 3 devient obligatoire à
-chaque mise sous tension — ce qu'elle est déjà par prudence.
+**La dérive du repère entre deux prises d'origine** reste à mesurer
+proprement. Celle qu'on a observée venait du guidage manuel, pas de
+l'origine elle-même : il faudra refaire la mesure en ne déplaçant le bras
+qu'au clavier, et c'est seulement alors qu'on saura si l'origine est
+répétable.
 
 **L'axe linéaire** n'est pas monté. Sa direction, `+y`, est une hypothèse
 déclarée comme telle dans le code, avec la procédure pour la mesurer.
