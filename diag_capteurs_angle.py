@@ -53,6 +53,18 @@ ESSAIS = 5
 EQUERRE = (0.0, 0.0)
 TOLERANCE = 5.0        # degres
 
+#: --tel-quel : ne rien placer a la main, ne juger que sur l'ETENDUE.
+#:
+#: L'equerre sert a verifier la JUSTESSE -- les angles valent zero, on
+#: le sait. Mais elle n'est pas necessaire pour conclure a un capteur
+#: fautif : un bras IMMOBILE qui annonce des valeurs differentes d'une
+#: connexion a l'autre a deja tout dit, quelle que soit sa posture.
+#:
+#: Cette variante demande donc seulement de NE PLUS TOUCHER AU BRAS.
+#: Elle peut rater un capteur regulierement faux -- stable mais decale
+#: --, ce que l'equerre, elle, verrait.
+TEL_QUEL = "--tel-quel" in sys.argv
+
 
 def main():
     port = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -66,14 +78,21 @@ def main():
     print(__doc__.split("Ce que l'essai")[0].strip())
     print("")
     print("=" * 64)
-    print("  Mettez le bras EN EQUERRE, a la main :")
-    print("    bras arriere VERTICAL, avant-bras HORIZONTAL")
-    print("  Dans cette posture, J2 et J3 valent ZERO.")
+    if TEL_QUEL:
+        print("  NE TOUCHEZ PLUS AU BRAS, ou qu'il soit.")
+        print("  On ne juge que sur l'ETENDUE des lectures : un bras")
+        print("  immobile doit annoncer cinq fois la meme chose.")
+    else:
+        print("  Mettez le bras EN EQUERRE, a la main :")
+        print("    bras arriere VERTICAL, avant-bras HORIZONTAL")
+        print("  Dans cette posture, J2 et J3 valent ZERO.")
+        print("")
+        print("  (--tel-quel : sans equerre, sur l'etendue seule)")
     print("=" * 64)
     try:
         input("  Puis Entree... ")
-    except EOFError:
-        pass
+    except (EOFError, KeyboardInterrupt):
+        print("")
 
     print("")
     print("  essai |   J1      J2      J3      J4")
@@ -109,7 +128,7 @@ def main():
         hors = not (lim.q_min[i] <= L[:, i].min()
                     and L[:, i].max() <= lim.q_max[i])
         ecart = ""
-        if i in (1, 2):
+        if i in (1, 2) and not TEL_QUEL:
             ecart = "   ecart a l'equerre {:+.1f} deg".format(
                 float(np.median(L[:, i]) - EQUERRE[i - 1]))
         print("  {:16s} etendue {:6.1f} deg{}{}"
@@ -117,14 +136,23 @@ def main():
                       "   HORS BUTEES" if hors else ""))
         if etendue > TOLERANCE or hors:
             fautifs.append(noms[i])
-        elif i in (1, 2) and abs(np.median(L[:, i]) - EQUERRE[i - 1]) > 10.0:
+        elif (i in (1, 2) and not TEL_QUEL
+              and abs(np.median(L[:, i]) - EQUERRE[i - 1]) > 10.0):
             fautifs.append(noms[i])
 
     print("")
     if not fautifs:
-        print("  CAPTEURS SAINS. Les lectures se repetent et correspondent a")
-        print("  la posture. Cette machine sait ou est son bras, et une")
-        print("  erreur de cycle sera a chercher ailleurs.")
+        if TEL_QUEL:
+            print("  LES LECTURES SE REPETENT. Le bras etant immobile, aucun")
+            print("  capteur ne s'est contredit d'une connexion a l'autre.")
+            print("")
+            print("  Reserve : sans l'equerre, un capteur REGULIEREMENT faux")
+            print("  -- stable mais decale -- passerait au travers. Pour")
+            print("  l'exclure, refaire l'essai bras en equerre.")
+        else:
+            print("  CAPTEURS SAINS. Les lectures se repetent et correspondent")
+            print("  a la posture. Cette machine sait ou est son bras, et une")
+            print("  erreur de cycle sera a chercher ailleurs.")
     else:
         print("  CAPTEUR(S) FAUTIF(S) : {}".format(", ".join(fautifs)))
         print("")

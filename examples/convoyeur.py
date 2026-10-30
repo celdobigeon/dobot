@@ -6,6 +6,7 @@ Le convoyeur : tapis, capteur de presence, et prise au vol.
     python examples/convoyeur.py                     simulation
     python examples/convoyeur.py --reel              sur la machine
     python examples/convoyeur.py --reel --autonome   PC debranchable
+    python examples/convoyeur.py --reel --equerre    capteur J3 fautif
 
 Le cycle, dix fois : le tapis avance, le capteur voit arriver une piece,
 le tapis s'arrete, le robot la prend et la depose a cote, le tapis
@@ -58,6 +59,15 @@ REEL = "--reel" in sys.argv
 # --autonome : le cycle part EN ENTIER dans la file du controleur, et le
 # PC peut etre debranche. Voir la section 4 bis.
 AUTONOME = "--autonome" in sys.argv
+# --equerre : declarer la posture d'equerre et reprendre l'origine DANS
+# LA LIAISON qui va travailler. Indispensable sur une machine dont un
+# capteur d'angle est fautif -- le J3 du robot 2, mesure a 19 degres
+# d'ecart d'une connexion a l'autre, bras immobile.
+#
+# 19 degres, c'est le pire des cas : l'erreur reste PLAUSIBLE, aucune
+# alarme ne saute, et le cycle part sur un repere faux en silence. Un
+# lancement sur deux reussit -- ceux ou la lecture etait bonne.
+EQUERRE = "--equerre" in sys.argv
 CYCLES_AUTONOMES = 1
 if "--cycles" in sys.argv:
     CYCLES_AUTONOMES = int(sys.argv[sys.argv.index("--cycles") + 1])
@@ -278,6 +288,16 @@ robot.definir_repere_outil(OUTIL)
 
 CYCLES = 10
 
+# Combien de temps le cycle attend une piece avant de s'arreter. C'est
+# AUSSI la facon propre d'arreter la cellule : on cesse de poser des
+# pieces, et le programme se termine seul, file videe. Un Ctrl+C, lui,
+# declenche un ARRET D'URGENCE -- la file est coupee net, les moteurs
+# stoppent brutalement, et la rotation de base, qui n'a pas de capteur
+# et se compte en pas, en perd. Constate le 30/10/2026 : apres un cycle
+# coupe ainsi, le bras n'est pas retourne au repli et tout le cycle
+# suivant est parti decale.
+ATTENTE_PIECE = 15.0        # secondes
+
 
 def prise_depose(r):
     """
@@ -422,6 +442,8 @@ if AUTONOME:
     print("CYCLE AUTONOME : le programme part en entier dans la file,")
     print("et le PC pourra etre debranche.")
     print("")
+    if EQUERRE:
+        robot.preparer_sur_robot()
     robot.vider_programme()
     robot.repli()
     for i in range(CYCLES_AUTONOMES):
@@ -457,6 +479,9 @@ if AUTONOME:
 # 4 ter. LE CYCLE MENE DEPUIS LE PC
 # ---------------------------------------------------------------------------
 
+if EQUERRE:
+    robot.preparer_sur_robot()
+
 robot.vider_programme()
 robot.repli()
 robot.executer_sur_robot(vitesse=30)
@@ -470,7 +495,8 @@ try:
         # une quelque part. Sans cela, la piece restee devant le capteur
         # -- celle qu'on vient de manquer, ou la suivante de la file --
         # rend la main aussitot et le bras plonge sur rien.
-        vue = robot.attendre_piece_sur_robot(timeout=30, front=True)
+        vue = robot.attendre_piece_sur_robot(timeout=ATTENTE_PIECE,
+                                           front=True)
         robot.convoyeur_sur_robot(0)
         # Ce que le PC a coute entre voir la piece et arreter le tapis.
         # Un tapis qui depasse fait toujours accuser le programme : le
@@ -509,8 +535,8 @@ try:
             print("  " + _verdict)
             temoins.append((_ms, _libere))
         if not vue:
-            print("cycle {} : aucune piece en 30 s -- on s'arrete la."
-                  .format(i + 1))
+            print("cycle {} : aucune piece en {:.0f} s -- on s'arrete la."
+                  .format(i + 1, ATTENTE_PIECE))
             break
         print("cycle {}/{} : piece au capteur, on la prend"
               .format(i + 1, CYCLES))

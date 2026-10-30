@@ -36,9 +36,17 @@ capteurs d'angle ne se devine pas, et il ne se transporte pas d'un robot
 
 | Machine | Port, pont | Firmware | Capteurs d'angle |
 |---|---|---|---|
-| robot au convoyeur | COM6, CP210x | 3.7.0 | **J3 fautif** |
+| robot au convoyeur | COM6, CP210x | 3.7.0 | **J3 fautif, ~160°** |
+| **robot 2** | COM9, CP210x | 3.7.0 | **J3 fautif, ~19°** |
 | robot « 7 » | CH340 | — | sains |
-| **robot 5** | COM4, CH340 | **3.7.0** | **sains** |
+| robot 5 | COM4, CH340 | 3.7.0 | sains |
+
+> **Un écart de 19° est pire qu'un écart de 160°.** À 160°, la lecture
+> sort des butées du contrôleur, les alarmes sautent, et l'assistant
+> répare le repère tout seul. À 19°, elle reste **plausible** : rien ne
+> se déclenche, et le cycle part sur un repère faux en silence. Sur le
+> robot 2, un lancement sur deux réussissait — ceux où la lecture était
+> bonne. **Deux machines sur quatre**, et toutes deux sur J3.
 
 C'est l'**étiquette** qui identifie une machine. Ni le port, ni le pont
 USB : le CH340 est partagé par plusieurs robots, et le port change d'une
