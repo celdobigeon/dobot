@@ -146,14 +146,29 @@ font de même.
 
 ```bash
 python main.py                      # 1. ouvrir la fenetre
-                                    # 2. panneau Robot reel : connecter,
-                                    #    puis mise en route, UNE FOIS
+                                    # 2. panneau Robot reel : CONNECTER,
+                                    #    puis MISE EN ROUTE -- les deux
 python examples/convoyeur.py --reel # 3. et autant de lancements qu'on veut
 ```
 
-Vérifié le 31/10/2026 sur le robot 2, dont J1 et J3 mentent à chaque
-ouverture : **tous les lancements sont bons**, là où un sur deux ratait.
-Plus de `--equerre`, plus de mise en route à refaire.
+**Les deux gestes de l'étape 2, pas un seul.** La fenêtre ouvre elle
+aussi une liaison, une fois, et cette lecture-là peut être fausse —
+auquel cas elle l'est pour toute la séance. Ce qui la rattrape, c'est la
+**prise d'origine contenue dans la mise en route** : faite dans la
+liaison de la fenêtre, elle corrige la croyance du contrôleur quoi
+qu'il ait lu à l'ouverture.
+
+> Vérifié dans les deux sens le 31/10/2026 sur le robot 2. Connexion
+> **sans** mise en route : le bras a perdu son origine dès le premier
+> cycle. Connexion **avec** : trois pièces, trois prises bonnes, et cinq
+> lancements consécutifs sans une faute auparavant.
+
+La fenêtre ne guérit donc pas le capteur — elle **réduit l'exposition**
+à une seule lecture au lieu d'une par lancement, et concentre le risque
+en un instant unique. Mais cet instant-là, contrairement aux autres, est
+**vérifiable** : l'étape 3 de l'assistant compare le modèle 3D au vrai
+bras. S'ils ne coïncident pas, déconnectez, reconnectez, recommencez —
+et ne lancez rien avant.
 
 > **Le prix à payer, et il se mesure.** La passerelle ajoute son temps
 > de transit : la détection→arrêt passe de 9 ms à **56–119 ms**, soit 3
@@ -164,6 +179,17 @@ Plus de `--equerre`, plus de mise en route à refaire.
 > **médiane** : la dispersion, elle, reste, et c'est la ventouse qui
 > l'absorbe. Avec une pince, ou des pièces plus petites, il faudrait
 > fiabiliser la chaîne plutôt que la corriger.
+>
+> Les deux chemins, sur les relevés du 31/10/2026 :
+>
+> | | retards mesurés | étendue |
+> |---|---|---|
+> | direct | 9, 9, 10, 11, 11 ms | **2 ms** |
+> | par la fenêtre | 56, 64, 66, 66, 66, 66, 67, 83, 119 ms | **63 ms** |
+>
+> Le direct n'est pas seulement six fois plus rapide : il est trente
+> fois plus régulier. C'est lui qu'il faudrait pour une pince — et donc
+> une machine dont les capteurs ne mentent pas.
 
 ### Le contournement par `--equerre`, vérifié aussi
 
