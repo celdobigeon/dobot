@@ -21,6 +21,7 @@ Ce fichier est fait pour etre modifie : c'est votre bac a sable.
 
 import numpy as np
 
+import cellule_sur_le_chemin             # noqa: F401  -- voir ce module
 from dobot_sim import (DobotMagician, ErreurCinematique, Pilote, cible,
                        decomposer_cible, repere_travail)
 from dobot_sim import homogeneous as hg
