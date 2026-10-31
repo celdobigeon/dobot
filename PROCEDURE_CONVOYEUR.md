@@ -128,7 +128,41 @@ ouvre sa propre liaison.
 > une prise d'origine le rétablit. C'est pourquoi `--equerre` fait les
 > deux, **dans la liaison qui travaille**.
 
-### Le contournement, vérifié — et peut-être simplifiable
+### Le vrai remède : UNE SEULE LIAISON, tenue par la fenêtre
+
+Le défaut se produit **à l'ouverture de la liaison** : le contrôleur
+relit ses capteurs à ce moment-là, et une fois sur deux il se trompe.
+Tout ce qui ne rouvre jamais y échappe.
+
+C'est pourquoi `test_prise.py`, lancé depuis la fenêtre du simulateur,
+marche sans faute depuis toujours — y compris après un arrêt d'urgence,
+une suspension ou un déplacement manuel. Il ne rouvre rien : la fenêtre
+tient le port série du début à la fin de la séance.
+
+**Et les exemples savent déjà passer par là.** `executer_sur_robot`
+demande d'abord au simulateur s'il est ouvert et connecté ; si oui, il
+lui confie le programme, qui part sur SA liaison. Le tapis et le capteur
+font de même.
+
+```bash
+python main.py                      # 1. ouvrir la fenetre
+                                    # 2. panneau Robot reel : connecter,
+                                    #    puis mise en route, UNE FOIS
+python examples/convoyeur.py --reel # 3. et autant de lancements qu'on veut
+```
+
+Vérifié le 31/10/2026 sur le robot 2, dont J1 et J3 mentent à chaque
+ouverture : **tous les lancements sont bons**, là où un sur deux ratait.
+Plus de `--equerre`, plus de mise en route à refaire.
+
+> **Le prix à payer, et il se mesure.** La passerelle ajoute son temps
+> de transit : la détection→arrêt passe de 9 ms à **66 ms**, soit 4 mm
+> de bande au lieu de 0,6. Ce n'est plus négligeable — mais c'est
+> reproductible à la milliseconde, donc corrigible : voir `RETARD_ARRET`
+> dans l'exemple, déclaré **en secondes** et converti avec la vitesse du
+> tapis.
+
+### Le contournement par `--equerre`, vérifié aussi
 
 ```bash
 python examples/convoyeur.py --reel --equerre
@@ -461,6 +495,15 @@ piste de la mise au point, et chacun ne répond qu'à une question.
 ---
 
 ## 7. Deux particularités de cette cellule
+
+**Le capteur se déclenche sur le CENTRE de la pièce, pas sur son bord
+avant.** On avait écrit le contraire, en raisonnant : le faisceau voit
+d'abord le bord qui arrive, donc la ventouse doit viser une demi-pièce
+en amont. Essai du 31/10/2026 : la ventouse se posait une demi-pièce
+trop en amont, exactement. Le raisonnement était propre et il était
+faux — faisceau large, ou surface réfléchissante insuffisante avant le
+milieu du cube. La cible vise donc le capteur, plus la dérive du retard,
+et rien d'autre.
 
 **Le capteur est un infrarouge sur GP4.** La file du contrôleur ne sait pas
 attendre sur un port GP : le cycle est donc **mené depuis le PC**, morceau

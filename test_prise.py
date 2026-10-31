@@ -51,7 +51,7 @@ P3 = np.array([[1, 0, 0, 100],
                   [0, 0, 0, 1]], dtype=float)
 
 HAUT = hg.translation(0, 0, -85)   # 85 mm au-dessus, exprime dans l'axe outil
-for i in range(10):
+for i in range(5):
     robot.repli()
     robot.movj(PRISE @ HAUT, lissage=70)
     robot.movl(PRISE, vitesse=50, profil="trapeze")

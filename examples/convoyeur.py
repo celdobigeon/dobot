@@ -225,17 +225,47 @@ CAPTEUR = np.array([[1, 0, 0, TAPIS.capteur_s],
 
 COTE = 25.0                                # cube de 25 mm, mesure
 
+# LE RETARD DE LA CHAINE, EN SECONDES -- et non en millimetres.
+#
+# Entre l'instant ou le capteur voit la piece et celui ou la bande
+# s'arrete, il se passe un temps, pendant lequel la piece avance. Le
+# declarer en TEMPS et le convertir avec VITESSE_TAPIS, c'est le
+# corriger tout seul si l'on change la cadence ; en millimetres, il
+# faudrait y repenser.
+#
+# Le programme MESURE ce retard a chaque cycle et l'affiche -- "le pire :
+# 67 ms" -- et c'est la mesure qui doit peupler cette ligne, pas une
+# estimation. Relevé le 31/10/2026, et il depend du CHEMIN d'execution :
+#
+#   execution directe depuis le script   9 a 11 ms   soit 0,6 mm
+#   a travers une fenetre de simulateur  66 a 67 ms  soit 4,0 mm
+#
+# Le second chemin est devenu la norme sur une machine dont un capteur
+# d'angle est fautif : la fenetre TIENT la liaison, et le controleur ne
+# relit donc jamais ses capteurs. Voir PROCEDURE_CONVOYEUR.md.
+RETARD_ARRET = 0.067        # secondes -- mesure, par la passerelle
+DERIVE = VITESSE_TAPIS * RETARD_ARRET      # mm le long de la bande
+
 # La ventouse dans le repere de la PIECE arretee au capteur.
 #
-#   -COTE/2 le long de la bande : le capteur voit le BORD AVANT de la
-#   piece, la ventouse vise son CENTRE. Une demi-piece, soit la moitie
-#   des prises ratees de cette cellule tant qu'elle est restee implicite.
+#   PAS de demi-piece le long de la bande, et c'est une correction
+#   MESUREE contre un raisonnement. On avait ecrit -COTE/2 en se disant
+#   que le capteur voit le BORD AVANT de la piece tandis que la ventouse
+#   vise son CENTRE. Essai du 31/10/2026 : la ventouse se posait une
+#   demi-piece trop en amont. Le capteur se declenche donc quand le
+#   CENTRE passe devant lui, pas le bord -- faisceau large, ou surface
+#   reflechissante insuffisante avant cela.
+#
+#   Le raisonnement etait propre et il etait faux. Le releve l'emporte.
+#
+#   +DERIVE reste : la piece ne s'arrete pas AU capteur, elle le depasse
+#   du chemin parcouru pendant le retard de la chaine.
 #
 #   +COTE en z : le dessus du cube, ou la ventouse se pose.
 #
 #   La partie rotation retourne l'outil -- z vers le BAS -- et lui donne
 #   le quart de tour qui garde J4 loin de sa butee.
-DANS_LE_CAPTEUR = np.array([[ 0, -1,  0, -COTE / 2],
+DANS_LE_CAPTEUR = np.array([[ 0, -1,  0,            DERIVE],
                             [-1,  0,  0,         0],
                             [ 0,  0, -1,      COTE],
                             [ 0,  0,  0,         1]], dtype=float)
