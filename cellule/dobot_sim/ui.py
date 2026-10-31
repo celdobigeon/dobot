@@ -2448,8 +2448,12 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             if hasattr(self.vue, "definir_objets"):
                 self.vue.definir_objets([])
             return
+        # le tapis de la FENETRE, dont la cadence vient d'etre reglee
+        # par _cellule_suivre_programme : les pieces posees sur la bande
+        # avancent avec lui
         self.manutention = Manutention(pieces).preparer(
-            self.robot, self.trajectoire, self.programme)
+            self.robot, self.trajectoire, self.programme,
+            tapis=getattr(self, "tapis", None))
 
     def _cellule_a_l_instant(self, t: float) -> None:
         """

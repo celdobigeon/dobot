@@ -197,12 +197,37 @@ TAPIS = Convoyeur(repere=CONVOYEUR, longueur=698, largeur=100,
                   depassement=0.0)
 robot.tapis = TAPIS
 
-# la piece, pour la voir bouger dans le simulateur
-robot.poser_piece(x=float(PRISE[0, 3]), y=float(PRISE[1, 3]),
-                  dims=(COTE, COTE, COTE), z_plan=60.0, magasin=True,
-                  nom="cube")
+# LA PIECE, POSEE SUR LA BANDE -- et non au capteur.
+#
+# Elle part de l'entree, AVANCE AVEC LE TAPIS, s'arrete quand il
+# s'arrete, et passe a la ventouse quand celle-ci l'aspire. C'est ce
+# qu'il faut voir : le capteur arrete QUELQUE CHOSE QUI BOUGEAIT. Une
+# piece qui apparait deja posee au capteur ne montre pas le cycle, elle
+# en montre la fin.
+#
+# magasin=True : une neuve est lachee a l'entree des que la precedente
+# est emportee -- l'operateur qui repose une piece a chaque cycle.
+robot.poser_piece_sur_tapis(s=0.0, dims=(COTE, COTE, COTE), magasin=True,
+                            nom="cube")
 
 CYCLES = 3
+
+# EN SIMULATION, ON ATTEND UN DELAI ; SUR LA MACHINE, UN CAPTEUR.
+#
+# La file du controleur ne sait pas attendre sur un port GP (voir
+# l'activite), donc le cycle reel est mene depuis le PC et scrute le
+# capteur. En simulation il n'y a pas de capteur : on remplace l'attente
+# par le temps que la piece met a parcourir la bande.
+#
+# ET LES DEUX NE DONNENT PAS LE MEME RESULTAT. Mesure sur ce programme :
+# le tapis tourne 5,25 s et non 5,00, parce que l'instruction
+# `convoyeur()` occupe elle-meme un quart de seconde pendant lequel la
+# bande avance deja. A 60 mm/s, cela fait 15 mm -- la piece simulee
+# depasse donc le capteur d'autant, et la ventouse la prend decalee.
+#
+# On pourrait retrancher ce quart de seconde. On ne le fait pas : cet
+# ecart EST la lecon. Un delai suppose que tout se passe comme prevu ;
+# un capteur constate. C'est pourquoi la cellule reelle a un capteur.
 DUREE_ARRIVEE = CAPTEUR_S / VITESSE_TAPIS
 
 robot.repli()

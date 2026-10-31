@@ -154,6 +154,109 @@ class TestManutention(unittest.TestCase):
         self.assertTrue(np.allclose(debut, fin), "elle a bouge toute seule")
 
 
+class TestPieceSurLeTapis(unittest.TestCase):
+    """
+    Le chainon : une piece POSEE SUR LA BANDE avance avec elle, puis
+    passe a la ventouse.
+
+    Sans lui, l'etudiant voit une piece apparaitre au capteur -- et non
+    le capteur arreter quelque chose qui bougeait.
+    """
+
+    def cellule(self):
+        from dobot_sim import Convoyeur, repere_travail
+
+        robot = Pilote(nom="tapis", outil="ventouse")
+        tapis = Convoyeur(repere=repere_travail(x=210, y=-400, z=60, rz=90),
+                          longueur=698, largeur=100, capteur_s=300)
+        robot.tapis = tapis
+        robot.poser_piece_sur_tapis(s=0.0, dims=(25.0, 25.0, 25.0),
+                                    magasin=True)
+
+        # la cible de prise : au droit du capteur, sur le dessus du cube
+        prise = tapis.cible(300.0, 0.0, 25.0)
+        haut = hg.translation(0, 0, -70)
+        depose = hg.composer(hg.translation(15.0, 219.0, 92.0),
+                             hg.rot_x(np.pi))
+
+        robot.repli()
+        robot.convoyeur(60.0)                     # le tapis part
+        robot.attendre(300.0 / 60.0)              # la piece arrive
+        robot.convoyeur(0.0)                      # il s'arrete
+        robot.movj(prise @ haut)
+        robot.movl(prise)
+        robot.ventouse(True)
+        robot.attendre(0.3)
+        robot.movl(prise @ haut)
+        robot.movj(depose @ haut)
+        robot.movl(depose)
+        robot.ventouse(False)
+        robot.attendre(0.3)
+        robot.repli()
+
+        traj = robot.programme.construire(robot.robot, robot.q_depart)
+        tapis.cadence = robot.programme.cadence_convoyeur()
+        manu = Manutention(robot.programme.pieces).preparer(
+            robot.robot, traj, robot.programme, tapis=tapis)
+        return robot, tapis, traj, manu
+
+    def test_elle_avance_avec_la_bande(self):
+        _, tapis, traj, manu = self.cellule()
+        debut = manu.boites(0.0)[0]["centre"]
+        milieu = manu.boites(2.5)[0]["centre"]
+        bouge = float(np.linalg.norm(np.array(milieu) - np.array(debut)))
+        self.assertGreater(bouge, 100.0,
+                           "la piece n'a pas suivi le tapis")
+
+    def test_elle_s_arrete_quand_la_bande_s_arrete(self):
+        """
+        Apres l'arret du tapis, la piece ne bouge plus -- jusqu'a ce que
+        la ventouse la prenne.
+
+        L'INSTANT DE L'ARRET SE LIT DANS LA CADENCE, il ne se devine
+        pas : le tapis ne part qu'apres le repli, et ma premiere version
+        de ce test supposait t = 5 s. C'est le test qui etait faux, pas
+        le code.
+        """
+        robot, _, traj, manu = self.cellule()
+        cadence = robot.programme.cadence_convoyeur()
+        arrets = [t for t, v in cadence if abs(v) < 1e-9 and t > 0.0]
+        self.assertTrue(arrets, "le programme n'arrete jamais le tapis")
+        t_arret = arrets[0]
+        # entre l'arret et la prise, elle est immobile
+        inst = manu._instances[0]
+        t_prise = [e[0] for e in inst["etapes"] if e[1] == "portee"][0]
+        self.assertLess(t_arret, t_prise)
+        a = manu.pose(inst, t_arret + 0.05)
+        b = manu.pose(inst, (t_arret + t_prise) / 2.0)
+        self.assertTrue(np.allclose(a, b, atol=1e-6),
+                        "elle avance encore apres l'arret de la bande")
+
+    def test_puis_elle_passe_a_la_ventouse(self):
+        robot, _, traj, manu = self.cellule()
+        inst = manu._instances[0]
+        modes = [e[1] for e in inst["etapes"]]
+        self.assertEqual(modes[:3], ["tapis", "portee", "posee"],
+                         "la piece n'a pas fait tapis -> outil -> table")
+
+    def test_le_magasin_lache_une_neuve_a_l_entree(self):
+        _, _, traj, manu = self.cellule()
+        fin = manu.boites(traj.duree)
+        self.assertEqual(len(fin), 2)
+        # la neuve est repartie de l'entree et a avance depuis
+        self.assertEqual(len(manu._instances), 2)
+        self.assertEqual(manu._instances[1]["etapes"][0][1], "tapis")
+
+    def test_sans_tapis_elle_reste_a_sa_pose(self):
+        """Repli : un programme relu sans cellule declaree."""
+        robot, _, traj, _ = self.cellule()
+        sans = Manutention(robot.programme.pieces).preparer(
+            robot.robot, traj, robot.programme, tapis=None)
+        a = sans.boites(0.0)[0]["centre"]
+        b = sans.boites(3.0)[0]["centre"]
+        self.assertTrue(np.allclose(a, b), "elle a bouge sans tapis")
+
+
 class TestLesDeuxVues(unittest.TestCase):
     """
     Les deux vues doivent offrir LA MEME INTERFACE.

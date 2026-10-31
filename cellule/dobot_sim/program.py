@@ -556,7 +556,9 @@ class Programme:
                 "pieces": [{"pose": [[float(v) for v in ligne]
                                      for ligne in p.pose],
                             "dims": list(p.dims), "nom": p.nom,
-                            "magasin": bool(p.magasin), "type": p.type}
+                            "magasin": bool(p.magasin), "type": p.type,
+                            "sur_tapis": bool(p.sur_tapis), "s": p.s,
+                            "y_tapis": p.y_tapis, "t0": p.t0}
                            for p in self.pieces],
                 "instructions": [asdict(i) for i in self.instructions]}
 

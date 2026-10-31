@@ -248,6 +248,26 @@ et le robot y reste attaché.
 > numérique, et la file, elle, sait attendre une entrée. Qu'est-ce que
 > cela changerait au programme ? Et qu'est-ce qu'on y gagnerait ?
 
+### Un délai n'est pas un capteur
+
+En simulation il n'y a pas de capteur : on remplace l'attente par le
+temps que la pièce met à parcourir la bande.
+
+```python
+DUREE_ARRIVEE = CAPTEUR_S / VITESSE_TAPIS      # 300 / 60 = 5 s
+```
+
+Lancez la lecture et regardez où la pièce s'arrête. **Elle dépasse le
+capteur** — d'une quinzaine de millimètres sur cette cellule.
+
+> **Question 12.** Mesurez ce dépassement dans le simulateur, puis
+> trouvez d'où il vient. *Indice : le tapis tourne-t-il vraiment
+> pendant 5,00 s ? Regardez la cadence que le programme produit.*
+>
+> Qu'est-ce que cela dit de la différence entre **attendre un délai** et
+> **attendre un capteur** ? Et pourquoi la cellule réelle a-t-elle un
+> capteur plutôt qu'un chronomètre ?
+
 ---
 
 ## 6. Valider hors ligne, puis descendre sur la machine
@@ -298,7 +318,7 @@ python votre_programme.py --reel
 
 1. Les trois matrices, commentées — chaque cote doit dire **d'où elle
    vient** et **par rapport à quoi** elle est mesurée.
-2. Les réponses aux onze questions.
+2. Les réponses aux douze questions.
 3. Le relevé des retards sur dix cycles, avec médiane et étendue, et
    votre conclusion sur ce qu'une constante peut ou ne peut pas
    corriger.

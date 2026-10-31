@@ -46,7 +46,8 @@ import numpy as np
 
 from . import homogeneous as hg
 
-__all__ = ["PieceLibre", "piece_posee", "Manutention"]
+__all__ = ["PieceLibre", "piece_posee", "piece_sur_tapis",
+           "Manutention"]
 
 
 @dataclass
@@ -70,6 +71,44 @@ class PieceLibre:
     magasin: bool = False
     #: sert a la couleur dans la vue 3D
     type: str = "piece"
+
+    # -- une piece POSEE SUR LE TAPIS ---------------------------------------
+    #
+    # Elle avance alors avec la bande jusqu'a ce que la ventouse
+    # l'emporte. `pose` ne sert plus que de repli, si aucun tapis n'est
+    # fourni au moment du calcul.
+    #
+    # On garde ici l'abscisse et non une reference au tapis : un
+    # programme voyage -- fenetre, fichier JSON -- et une reference ne
+    # survit pas au voyage. Le tapis est fourni par la fenetre au moment
+    # de `preparer`, et c'est le SIEN, celui dont la cadence vient du
+    # programme.
+    sur_tapis: bool = False
+    s: float = 0.0              # abscisse le long de la bande, en mm
+    y_tapis: float = 0.0        # decalage lateral par rapport a l'axe
+    t0: float = 0.0             # instant ou elle est posee
+
+
+def piece_sur_tapis(tapis, s: float = 0.0, y: float = 0.0,
+                    dims: Sequence[float] = (25.0, 25.0, 25.0),
+                    t0: float = 0.0, **kw) -> PieceLibre:
+    """
+    Une piece posee SUR LA BANDE, a l'abscisse s.
+
+    Elle avance avec le tapis, s'arrete quand il s'arrete, et devient
+    une piece portee quand la ventouse l'aspire. C'est le chainon qui
+    manquait : sans lui, l'etudiant voit une piece apparaitre au
+    capteur, et non le capteur arreter quelque chose qui bougeait.
+
+    `tapis` ne sert ici qu'a calculer sa pose de depart ; c'est la
+    fenetre qui fournira le sien au moment du calcul.
+    """
+    e = float(dims[2])
+    pose = (np.asarray(tapis.repere, dtype=float)
+            @ hg.translation(float(s), float(y), e / 2.0))
+    return PieceLibre(pose=pose, dims=tuple(float(d) for d in dims),
+                      sur_tapis=True, s=float(s), y_tapis=float(y),
+                      t0=float(t0), **kw)
 
 
 def piece_posee(x: float = 0.0, y: float = 0.0, rz: float = 0.0,
@@ -107,16 +146,25 @@ class Manutention:
         self._instances: List[dict] = []
         self._trajectoire = None
         self._robot = None
+        self._tapis = None
 
     # -- calcul -------------------------------------------------------------
 
-    def preparer(self, robot, trajectoire, programme) -> "Manutention":
+    def preparer(self, robot, trajectoire, programme,
+                 tapis=None) -> "Manutention":
         """
         Rejoue le programme et note quand chaque piece est prise, portee,
         reposee. A appeler quand le programme change, pas a chaque image.
+
+        `tapis` : le convoyeur de la fenetre, dont la cadence vient du
+        programme. Les pieces declarees SUR LA BANDE avancent avec lui
+        jusqu'a ce qu'on les emporte. Sans tapis, elles restent a leur
+        pose de depart -- c'est un repli, pas une erreur : un programme
+        peut etre relu sans que la cellule soit declaree.
         """
         self._robot = robot
         self._trajectoire = trajectoire
+        self._tapis = tapis
         self._instances = []
         if not self.pieces or trajectoire is None:
             return self
@@ -134,11 +182,20 @@ class Manutention:
                 self._poser(t, T)
         return self
 
-    @staticmethod
-    def _neuve(source: PieceLibre, t: float) -> dict:
+    def _neuve(self, source: PieceLibre, t: float) -> dict:
+        """Une piece neuve, posee sur la table ou lachee sur la bande."""
+        if source.sur_tapis and self._tapis is not None:
+            from .convoyeur import Piece
+
+            # elle part de son abscisse A CET INSTANT : une piece que le
+            # magasin recharge a t=40 s n'a pas avance avant d'exister
+            depart = (t, "tapis",
+                      Piece(s=source.s, y=source.y_tapis, t0=t,
+                            cote=float(source.dims[2])))
+        else:
+            depart = (t, "posee", np.asarray(source.pose, dtype=float))
         return {"source": source, "dims": source.dims, "type": source.type,
-                "nom": source.nom,
-                "etapes": [(t, "posee", np.asarray(source.pose, dtype=float))]}
+                "nom": source.nom, "etapes": [depart]}
 
     @staticmethod
     def _transitions(programme) -> List[Tuple[float, bool]]:
@@ -160,17 +217,18 @@ class Manutention:
     def _prendre(self, t: float, T: np.ndarray) -> None:
         """La ventouse aspire : elle emporte la piece la plus proche."""
         centre_outil = T[:3, 3]
-        candidate, meilleure = None, self.TOLERANCE
+        candidate, meilleure, pose = None, self.TOLERANCE, None
         for inst in self._instances:
-            mode, data = inst["etapes"][-1][1], inst["etapes"][-1][2]
-            if mode != "posee":
+            if inst["etapes"][-1][1] == "portee":
                 continue
-            d = float(np.linalg.norm(data[:3, 3] - centre_outil))
+            P = self.pose(inst, t)
+            if P is None:
+                continue
+            d = float(np.linalg.norm(P[:3, 3] - centre_outil))
             if d < meilleure:
-                candidate, meilleure = inst, d
+                candidate, meilleure, pose = inst, d, P
         if candidate is None:
             return
-        pose = candidate["etapes"][-1][2]
         # offset : la piece vue depuis l'outil. Fige tant qu'elle est
         # portee -- c'est ce qui la fait suivre le poignet, orientation
         # comprise.
@@ -201,6 +259,11 @@ class Manutention:
         mode, data = courant
         if mode == "posee":
             return data
+        if mode == "tapis":
+            if self._tapis is None:
+                return None
+            e = float(data.cote)
+            return self._tapis.situation(data, t) @ hg.translation(0, 0, e / 2)
         T = self._pose_outil(t)
         return None if T is None else T @ data
 
@@ -227,7 +290,9 @@ class Manutention:
         """Les pieces DECLAREES, pour voyager avec le programme."""
         return [{"pose": [[float(v) for v in ligne] for ligne in p.pose],
                  "dims": list(p.dims), "nom": p.nom,
-                 "magasin": bool(p.magasin), "type": p.type}
+                 "magasin": bool(p.magasin), "type": p.type,
+                 "sur_tapis": bool(p.sur_tapis), "s": p.s,
+                 "y_tapis": p.y_tapis, "t0": p.t0}
                 for p in self.pieces]
 
     @classmethod
@@ -238,5 +303,8 @@ class Manutention:
                 pose=np.asarray(d.get("pose", np.eye(4)), dtype=float),
                 dims=tuple(float(v) for v in d.get("dims", (125, 30, 10))),
                 nom=d.get("nom", ""), magasin=bool(d.get("magasin", False)),
-                type=d.get("type", "piece")))
+                type=d.get("type", "piece"),
+                sur_tapis=bool(d.get("sur_tapis", False)),
+                s=float(d.get("s", 0.0)), y_tapis=float(d.get("y_tapis", 0.0)),
+                t0=float(d.get("t0", 0.0))))
         return cls(pieces)

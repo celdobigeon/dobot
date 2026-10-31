@@ -630,6 +630,38 @@ class Pilote:
                         magasin=magasin, nom=nom))
         return self
 
+    def poser_piece_sur_tapis(self, s: float = 0.0, y: float = 0.0,
+                              dims=(25.0, 25.0, 25.0), t0: float = 0.0,
+                              magasin: bool = False, tapis=None,
+                              nom: str = "") -> "Pilote":
+        """
+        Pose une piece SUR LA BANDE, a l'abscisse s.
+
+            robot.tapis = TAPIS
+            robot.poser_piece_sur_tapis(s=0, dims=(25, 25, 25),
+                                        magasin=True)
+
+        Elle avance avec le tapis, s'arrete quand il s'arrete, et passe
+        a la ventouse quand celle-ci l'aspire. C'est ce chainon qui
+        manquait : sans lui, on voit une piece APPARAITRE au capteur, et
+        non le capteur arreter quelque chose qui bougeait.
+
+        `magasin=True` en lache une nouvelle a l'entree des que la
+        precedente est emportee -- l'operateur qui repose une piece.
+        """
+        from .pieces import piece_sur_tapis
+
+        tapis = tapis if tapis is not None else getattr(self, "tapis", None)
+        if tapis is None:
+            raise ValueError(
+                "poser_piece_sur_tapis : aucun tapis.\n"
+                "  Posez-le d'abord -- robot.tapis = TAPIS -- ou passez-le "
+                "en argument.")
+        self.programme.pieces.append(
+            piece_sur_tapis(tapis, s=s, y=y, dims=dims, t0=t0,
+                            magasin=magasin, nom=nom))
+        return self
+
     def attendre_piece(self, port: int, etat: bool = True,
                        timeout: float = 30.0,
                        commentaire: str = "piece au capteur") -> "Pilote":

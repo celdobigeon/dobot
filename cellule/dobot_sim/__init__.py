@@ -53,7 +53,8 @@ from .robot import (DobotMagician, Encombrement, ErreurCinematique, Geometrie,
 from .axe_lineaire import AxeLineaire
 from .cellule import Cellule, ErreurCellule, Poste
 from .convoyeur import Convoyeur, Piece
-from .pieces import Manutention, PieceLibre, piece_posee
+from .pieces import (Manutention, PieceLibre, piece_posee,
+                     piece_sur_tapis)
 from .image import ErreurImage, lire_image, programme_depuis_image
 from .svg import ErreurSVG, lire_svg, programme_depuis_svg
 from .trace import programme_depuis_dessin, programme_depuis_polylignes
@@ -76,7 +77,8 @@ __all__ = [
     "programme_depuis_image", "lire_image", "ErreurImage",
     "programme_depuis_dessin", "programme_depuis_polylignes",
     "Convoyeur", "Piece", "AxeLineaire",
-    "PieceLibre", "piece_posee", "Manutention",
+    "PieceLibre", "piece_posee", "piece_sur_tapis",
+    "Manutention",
     "Cellule", "ErreurCellule", "Poste",
     "identite", "translation", "rot_x", "rot_y", "rot_z",
     "composer", "inverse", "interpoler", "rotation_de", "position_de", "formater",
