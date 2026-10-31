@@ -372,6 +372,24 @@ garer au repli et `etat` annoncer J1 proche de zéro.
 
 ## 1. Dégager le bras
 
+> ### La main près de l'interrupteur pendant la prise d'origine
+>
+> Sur une machine dont un capteur d'angle ment, **l'origine part d'un
+> endroit que le contrôleur croit ailleurs**. Relevé sur le robot 2 :
+> une fois elle est partie en butée, une autre fois le bras est
+> **descendu trop bas en z** et il a fallu couper l'alimentation.
+>
+> Deux gestes qui l'évitent, et ils ne coûtent rien :
+>
+> - **avant la mise sous tension**, bouton de déverrouillage enfoncé,
+>   placez le bras haut et franc — avant-bras bien relevé, loin du tapis
+>   — et la base au milieu de sa course. Rien ne bouge à l'allumage ;
+> - **pendant la prise d'origine**, gardez la main près de
+>   l'interrupteur. Si le bras descend, coupez.
+>
+> Si elle plonge deux fois de suite, n'insistez pas : cherchez pourquoi.
+> Une origine qui plonge finit par coûter une ventouse.
+
 Si le voyant est **rouge**, ou si un cycle a été interrompu, le bras est
 probablement contre une butée.
 
