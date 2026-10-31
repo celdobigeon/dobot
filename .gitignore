@@ -20,35 +20,35 @@ desktop.ini
 .build-realsense/
 
 # Captures de la camera : volumineuses, propres a chaque scene
-examples/perception/captures/
+cellule/examples/perception/captures/
 
 # Poids des modeles d'apprentissage (YOLO, SAM), telecharges par verifier_installation.py
-examples/perception/modeles/
+cellule/examples/perception/modeles/
 
 # Apprentissage de la perception : images collectees, annotations, exports
 # et entrainements (examples/perception/apprentissage/)
-examples/perception/apprentissage/dataset/
-examples/perception/apprentissage/runs/
+cellule/examples/perception/apprentissage/dataset/
+cellule/examples/perception/apprentissage/runs/
 # images rendues par synthese_images.py (regenerables)
-examples/perception/apprentissage/synthetique/
+cellule/examples/perception/apprentissage/synthetique/
 # etiquettes de coins, exports YOLO-pose (points_cles/etiquettes.py) et
 # jeux RGB-H, cartes de hauteur (rgbd/exporter_rgbh.py) : regenerables
-examples/perception/apprentissage/points_cles/donnees/
-examples/perception/apprentissage/rgbd/donnees/
-examples/perception/etalonnage_camera_robot*.json
+cellule/examples/perception/apprentissage/points_cles/donnees/
+cellule/examples/perception/apprentissage/rgbd/donnees/
+cellule/examples/perception/etalonnage_camera_robot*.json
 
 # Etalonnage de la cellule : une MESURE de la machine du labo, pas du
 # code. Clone ailleurs, il enverrait le bras ou la piece ne sera pas.
 # L'exemple s'en passe : sans lui il calcule, et il le signale.
-examples/convoyeur_etalonnage.json
+cellule/examples/convoyeur_etalonnage.json
 
 # Modele CAO de la camera RealSense : 20 Mo a lui seul, soit la moitie
 # de ce que pese Modele3D une fois nettoye. Il reste sur le poste. Pour
 # l'afficher un jour : convertir_cao.py en fait un OBJ leger, et c'est
 # l'OBJ qui aurait sa place ici.
-Modele3D/Camera.step
-examples/repere_fixe.json
+cellule/Modele3D/Camera.step
+cellule/examples/repere_fixe.json
 
 # Journal du dernier essai du convoyeur : une trace de mise au point,
 # refaite a chaque lancement.
-examples/convoyeur_dernier_essai.log
+cellule/examples/convoyeur_dernier_essai.log
