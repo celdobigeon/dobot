@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 318" width="790" height="318" role="img" aria-label="Mur de kapla vrille : vue de dessus et vue isometrique">
+<title>Mur de kapla vrill&#233;</title>
+<rect width="790" height="318" fill="#fdfcf7"/>
+<text x="30" y="40" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#333">vue de dessus</text>
+<text x="235" y="40" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#333">vue isom&#233;trique</text>
+<polygon points="81.1,191.0 81.1,66.0 51.1,66.0 51.1,191.0" fill="#d8b44a" fill-opacity="0.50" stroke="#5c470d" stroke-width="1"/>
+<polygon points="55.4,194.4 176.2,162.0 168.4,133.0 47.7,165.4" fill="#c9a227" fill-opacity="0.38" stroke="#5c470d" stroke-width="1"/>
+<polygon points="157.3,165.4 36.6,133.0 28.8,162.0 149.6,194.4" fill="#b8912a" fill-opacity="0.62" stroke="#5c470d" stroke-width="1"/>
+<polygon points="131.5,187.9 43.1,99.5 21.9,120.7 110.3,209.1" fill="#a8821f" fill-opacity="0.88" stroke="#5c470d" stroke-width="1"/>
+<polygon points="52.7,171.9 115.2,63.6 89.2,48.6 26.7,156.9" fill="#e0c268" fill-opacity="0.75" stroke="#5c470d" stroke-width="1"/>
+<polygon points="36.6,124.0 157.3,91.6 149.6,62.6 28.8,95.0" fill="#c9a227" fill-opacity="0.38" stroke="#5c470d" stroke-width="1"/>
+<polygon points="74.1,204.3 182.4,141.8 167.4,115.8 59.1,178.3" fill="#edd392" fill-opacity="1.00" stroke="#5c470d" stroke-width="1"/>
+<polygon points="115.8,208.4 178.3,100.1 152.3,85.1 89.8,193.4" fill="#e0c268" fill-opacity="0.75" stroke="#5c470d" stroke-width="1"/>
+<polygon points="153.9,191.0 153.9,66.0 123.9,66.0 123.9,191.0" fill="#d8b44a" fill-opacity="0.50" stroke="#5c470d" stroke-width="1"/>
+<polygon points="37.6,141.2 145.9,78.7 130.9,52.7 22.6,115.2" fill="#edd392" fill-opacity="1.00" stroke="#5c470d" stroke-width="1"/>
+<polygon points="176.2,95.0 55.4,62.6 47.7,91.6 168.4,124.0" fill="#b8912a" fill-opacity="0.62" stroke="#5c470d" stroke-width="1"/>
+<polygon points="183.1,136.3 94.7,47.9 73.5,69.1 161.9,157.5" fill="#a8821f" fill-opacity="0.88" stroke="#5c470d" stroke-width="1"/>
+<g transform="translate(368.2 207.3)">
+<polygon points="48.0,-83.7 -98.1,0.7 -133.2,-19.5 12.9,-103.9" fill="#d8b44a" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="48.0,-83.7 -98.1,0.7 -98.1,14.2 48.0,-70.2" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-98.1,0.7 -133.2,-19.5 -133.2,-6.0 -98.1,14.2" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="22.0,-89.7 125.3,13.6 82.4,27.9 -21.0,-75.4" fill="#c9a227" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="82.4,27.9 -21.0,-75.4 -21.0,-61.9 82.4,41.4" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="125.3,13.6 82.4,27.9 82.4,41.4 125.3,27.1" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="107.2,-28.4 -71.8,-88.1 -47.0,-112.9 132.0,-53.2" fill="#b8912a" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="107.2,-28.4 -71.8,-88.1 -71.8,-74.6 107.2,-14.9" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="132.0,-53.2 107.2,-28.4 107.2,-14.9 132.0,-39.7" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="103.3,-88.0 -103.3,-88.0 -103.3,-116.6 103.3,-116.6" fill="#a8821f" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="103.3,-88.0 -103.3,-88.0 -103.3,-74.5 103.3,-74.5" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-7.5,-116.9 -61.0,-1.7 -108.9,-9.1 -55.4,-124.3" fill="#e0c268" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-7.5,-116.9 -61.0,-1.7 -61.0,11.8 -7.5,-103.4" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-61.0,-1.7 -108.9,-9.1 -108.9,4.4 -61.0,11.8" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-82.4,-54.9 21.0,48.4 -22.0,62.7 -125.3,-40.6" fill="#c9a227" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-22.0,62.7 -125.3,-40.6 -125.3,-27.1 -22.0,76.2" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="21.0,48.4 -22.0,62.7 -22.0,76.2 21.0,61.9" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="55.4,-151.3 108.9,-36.1 61.0,-28.7 7.5,-143.9" fill="#edd392" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="61.0,-28.7 7.5,-143.9 7.5,-130.4 61.0,-15.2" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="108.9,-36.1 61.0,-28.7 61.0,-15.2 108.9,-22.6" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="108.9,-98.9 55.4,16.3 7.5,8.9 61.0,-106.3" fill="#e0c268" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="108.9,-98.9 55.4,16.3 55.4,29.8 108.9,-85.4" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="55.4,16.3 7.5,8.9 7.5,22.4 55.4,29.8" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="133.2,-34.5 -12.9,49.9 -48.0,29.7 98.1,-54.7" fill="#d8b44a" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="133.2,-34.5 -12.9,49.9 -12.9,63.4 133.2,-21.0" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-12.9,49.9 -48.0,29.7 -48.0,43.2 -12.9,63.4" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-61.0,-133.3 -7.5,-18.1 -55.4,-10.7 -108.9,-125.9" fill="#edd392" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-55.4,-10.7 -108.9,-125.9 -108.9,-112.4 -55.4,2.8" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="-7.5,-18.1 -55.4,-10.7 -55.4,2.8 -7.5,-4.6" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="47.0,31.9 -132.0,-27.8 -107.2,-52.6 71.8,7.1" fill="#b8912a" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="47.0,31.9 -132.0,-27.8 -132.0,-14.3 47.0,45.4" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="71.8,7.1 47.0,31.9 47.0,45.4 71.8,20.6" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="103.3,-18.4 -103.3,-18.4 -103.3,-47.0 103.3,-47.0" fill="#a8821f" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+<polygon points="103.3,-18.4 -103.3,-18.4 -103.3,-4.9 103.3,-4.9" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
+</g>
+<text x="30" y="306" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" fill="#555">planche 125 &#215; 30 &#215; 10 mm &#183; 6 assises &#183; 75&#176; par assise &#183; d&#233;calage 36.4 mm &#183; emprise 125 &#215; 125 mm</text>
+</svg>

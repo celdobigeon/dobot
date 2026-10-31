@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+CORRIGE de l'activite du mur de kapla -- cellule/ACTIVITE_MUR_KAPLA.md
+
+    python corrige_mur_kapla.py                simulation
+    python corrige_mur_kapla.py --reel         sur la machine
+    python corrige_mur_kapla.py --angle 90     le carre classique
+
+NE PAS METTRE DANS cellule/. Ce fichier vit dans l'atelier parce que
+l'activite consiste precisement a l'ecrire. Le donner, c'est la
+supprimer.
+
+Ce que l'activite demande, et ou c'est fait ici
+-----------------------------------------------
+    1. mise en route                      -- hors du script, dobot.py
+    2. mesure et matrice de l'outil       -- section 1
+    3. reperes, en matriciel              -- section 3
+    4. cibles, approches par @            -- section 3
+    5. prises exprimees dans le repere    -- section 3
+    6. boucle                             -- section 5
+    7. decalage d'empilement              -- section 4
+    8. ORIENTATION variable d'une assise  -- section 4, le coeur
+       a l'autre
+
+UNE NOTE POUR L'ENSEIGNANT, sur la longueur d'outil
+----------------------------------------------------
+`definir_repere_outil(T)` et `regler_longueur_outil(L)` ne commandent
+PAS la meme hauteur : seule la seconde ecrit `geo.lt`, qui entre dans
+la conversion du pont vers le controleur. Ecart mesure : 27,3 mm.
+
+L'activite contourne la question par la bonne methode d'atelier : on
+mesure, on declare, ON VERIFIE PAR UNE DESCENTE, et on corrige la
+valeur si l'ecart est constant.
+"""
+
+import sys
+
+import cellule_sur_le_chemin             # noqa: F401  -- voir ce module
+import numpy as np
+
+from dobot_sim import Pilote
+from dobot_sim import homogeneous as hg
+
+REEL = "--reel" in sys.argv
+
+# ---------------------------------------------------------------------------
+# 1. L'OUTIL
+# ---------------------------------------------------------------------------
+#
+# De l'axe de rotation de l'outil a sa pointe, axe z vers le BAS.
+#
+#   colonne 0 : ( 1,  0,  0)     x inchange
+#   colonne 1 : ( 0, -1,  0)     y retourne
+#   colonne 2 : ( 0,  0, -1)     z vers le bas : direction d'approche
+#   colonne 3 : ( 0,  0, -L)     la pointe, L millimetres sous la bride
+#
+# L se MESURE (cellule/mesurer_outil.py) puis se VERIFIE par une
+# descente sur un plan de cote connue. Une erreur de longueur d'outil
+# est CONSTANTE : elle ne depend pas de la posture, et c'est ce qui
+# permet de l'imputer a l'outil plutot qu'au repere ou a l'origine.
+L_OUTIL = 79.3
+
+OUTIL = np.array([[1,  0,  0,        0],
+                  [0, -1,  0,        0],
+                  [0,  0, -1, -L_OUTIL],
+                  [0,  0,  0,        1]], dtype=float)
+
+robot = Pilote(nom="mur-kapla", outil="ventouse",
+               vitesse=100, acceleration=300, vitesse_articulaire=50)
+robot.definir_repere_outil(OUTIL)
+
+# ---------------------------------------------------------------------------
+# 2. LA PLANCHE, L'ANGLE, ET CE QUE L'ANGLE IMPOSE
+# ---------------------------------------------------------------------------
+
+LONGUEUR = 125.0        # mm, mesure
+LARGEUR = 30.0
+EPAISSEUR = 10.0
+ASSISES = 6             # hauteur du mur, en assises de deux planches
+
+#: angle dont chaque assise tourne par rapport a la precedente
+ANGLE = 75.0
+if "--angle" in sys.argv:
+    ANGLE = float(sys.argv[sys.argv.index("--angle") + 1])
+
+# L'ORIENTATION DE DEPART, ET POURQUOI ELLE N'EST PAS ZERO.
+#
+# Le mur peut etre bati dans n'importe quelle orientation : la tourner
+# en entier ne change rien a sa forme. Mais elle change tout pour le
+# POIGNET.
+#
+# Au chantier, la base est a J1 = 90 degres environ. Le poignet doit
+# donc fournir J4 = (orientation de la planche) - 90, et il ne tourne
+# que dans [-90 ; +90]. Les six assises demandent six orientations qui
+# s'etalent sur 150 degres ; il faut donc CENTRER cet etalement sur la
+# direction de la base.
+#
+#   depart =  0 deg  ->  J4 de -90 a +60   marge  0 deg : en butee
+#   depart = 15 deg  ->  J4 de -75 a +75   marge 15 deg : confortable
+#
+# Quinze degres de rotation du mur entier, et le poignet respire. Rien
+# dans la structure n'a change.
+ANGLE_DEPART = 15.0
+
+# LE DECALAGE N'EST PAS LIBRE : IL SE DEDUIT DE L'ANGLE.
+#
+# Une assise est faite de DEUX planches paralleles, ecartees de
+# +-DECALAGE de part et d'autre du centre. L'assise suivante, tournee
+# de ANGLE, repose sur elles -- a condition de les croiser DANS leur
+# longueur.
+#
+# Ou tombe ce croisement ? Une planche du dessus est une droite a la
+# distance DECALAGE du centre ; une planche du dessous aussi, tournee
+# de ANGLE. Leur intersection est a
+#
+#       croisement = DECALAGE / tan(ANGLE / 2)
+#
+# du centre, pour le croisement le plus eloigne des deux. On veut que
+# ce point reste a au moins une DEMI-LARGEUR du bout de la planche,
+# faute de quoi elle repose sur une arete :
+#
+#       croisement <= LONGUEUR/2 - LARGEUR/2
+#
+# d'ou, en prenant l'egalite -- le profil le plus large qui tienne :
+#
+#       DECALAGE = (LONGUEUR - LARGEUR)/2 * tan(ANGLE/2)
+#
+# A 90 degres, tan(45) = 1 : on retrouve exactement (L - l)/2 = 47,5,
+# c'est-a-dire LE CARRE CLASSIQUE. Le carre n'est donc pas un cas pose
+# a la main, c'est cette relation prise en 90 degres.
+DECALAGE = (LONGUEUR - LARGEUR) / 2.0 * np.tan(np.radians(ANGLE) / 2.0)
+
+# ET UNE SECONDE CONDITION, QUI BORNE L'ANGLE PAR LE BAS. Les deux
+# planches d'une meme assise ne doivent pas se chevaucher : il leur
+# faut au moins une demi-largeur chacune de part et d'autre du centre.
+#
+#       DECALAGE >= LARGEUR/2    ->   ANGLE >= 35,1 degres
+#
+# C'est la raison geometrique pour laquelle un quart de tour de 30
+# degres est impossible avec ces planches : le profil degenere avant
+# meme qu'on parle de stabilite.
+ANGLE_MINIMAL = 2.0 * np.degrees(np.arctan(
+    (LARGEUR / 2.0) / ((LONGUEUR - LARGEUR) / 2.0)))
+
+# ---------------------------------------------------------------------------
+# 3. LES DEUX REPERES, ET LA PRISE
+# ---------------------------------------------------------------------------
+#
+# Donnes PAR RAPPORT A LA BASE DU ROBOT, et ecrits en matrices.
+#
+# Un repere de travail a son axe z vers le HAUT -- c'est une table, pas
+# un outil. D'ou le contraste avec OUTIL ci-dessus, dont le z descend.
+
+# le magasin : une planche presentee toujours au meme endroit, couchee
+# le long de x. Hors de l'emprise du convoyeur (x = 150 a 270).
+MAGASIN = np.array([[1, 0, 0,   60],
+                    [0, 1, 0, -220],
+                    [0, 0, 1,    0],
+                    [0, 0, 0,    1]], dtype=float)
+
+# le chantier : le centre du mur a batir, de l'autre cote du robot
+CHANTIER = np.array([[1, 0, 0,   0],
+                     [0, 1, 0, 240],
+                     [0, 0, 1,   0],
+                     [0, 0, 0,   1]], dtype=float)
+
+# DANS LE MAGASIN : la ventouse sur le dessus de la planche, couchee a
+# plat, donc a EPAISSEUR du plan.
+#
+# Pas de rotation ici : la planche du magasin est deja le long de x.
+# C'est l'orientation des DEPOSES qui travaillera.
+DANS_LE_MAGASIN = np.array([[1,  0,  0,         0],
+                            [0, -1,  0,         0],
+                            [0,  0, -1, EPAISSEUR],
+                            [0,  0,  0,         1]], dtype=float)
+
+PRISE = MAGASIN @ DANS_LE_MAGASIN
+
+# Le degagement, exprime dans le repere de l'OUTIL. L'axe z de l'outil
+# pointant vers le bas, un degagement VERS LE HAUT s'ecrit avec un z
+# NEGATIF. On le verifie plutot que de le croire.
+# 80 mm, et pas 90 : a 90 le bras doit se redresser davantage pour
+# approcher le sommet du mur par le dessus, et `controler()` signale
+# J2 a 5 degres de sa butee. Le degagement est un reglage, pas une
+# constante -- il se choisit avec la hauteur du mur.
+HAUT = hg.translation(0, 0, -80)
+
+assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
+
+# ---------------------------------------------------------------------------
+# 4. LA DEPOSE : POSITION *ET* ORIENTATION
+# ---------------------------------------------------------------------------
+
+
+#: direction du chantier vue de la base, en degres. C'est autour
+#: d'elle qu'il faut ramener les orientations -- voir angle_outil.
+CAP_CHANTIER = np.degrees(np.arctan2(CHANTIER[1, 3], CHANTIER[0, 3]))
+
+
+def angle_outil(assise):
+    """
+    Orientation de l'assise, ramenee dans la course du poignet.
+
+    UNE PLANCHE EST SYMETRIQUE : la poser a 165 degres ou a -15 revient
+    au meme, elle occupe la meme place. On peut donc ajouter ou retirer
+    des demi-tours librement, et c'est gratuit pour la structure.
+
+    MAIS LA COURSE DU POIGNET N'EST PAS CENTREE SUR ZERO. J4 est l'ecart
+    entre l'orientation de l'outil et celle du BRAS :
+
+        J4 = orientation - J1,   avec J4 dans [-90 ; +90]
+
+    Les orientations atteignables sont donc centrees sur J1, c'est-a-dire
+    sur la direction ou pointe le bras -- ici le cap du chantier, 90
+    degres. Ramener dans ]-90 ; +90] comme on le ferait par reflexe
+    enverrait 165 degres sur -15, et le poignet a -105 : hors course,
+    pour exactement la meme planche au meme endroit.
+
+    On ramene donc autour du CAP, et non autour de zero. C'est la
+    correction qui a fait tomber quatorze reserves d'un coup.
+    """
+    a = (ANGLE_DEPART + assise * ANGLE) % 180.0
+    while a - CAP_CHANTIER > 90.0:
+        a -= 180.0
+    while a - CAP_CHANTIER < -90.0:
+        a += 180.0
+    return a
+
+
+def depose(assise, planche):
+    """
+    Cible de depose, pour l'assise et la planche donnees (des zero).
+
+    DEUX CHOSES CHANGENT D'UNE CIBLE A L'AUTRE, et c'est tout l'objet
+    de l'exercice :
+
+      LA HAUTEUR. L'assise n repose sur les n precedentes, donc
+      (n + 1) * EPAISSEUR au-dessus du plan du chantier -- la cote du
+      DESSUS de la planche, ou la ventouse se pose.
+
+      L'ORIENTATION. Chaque assise tourne de ANGLE par rapport a la
+      precedente. C'est ce qui fait tenir le mur : les planches se
+      croisent au lieu de s'empiler bout a bout, et le mur vrille.
+
+    LA MATRICE, COLONNE PAR COLONNE. Pour un angle a :
+
+        colonne 0 : ( cos a,  sin a, 0)   l'axe x de l'outil, donc la
+                                          LONGUEUR de la planche
+        colonne 1 : ( sin a, -cos a, 0)   son y, retourne
+        colonne 2 : (     0,      0, -1)  son z, vers le BAS
+        colonne 3 : l'ecart, perpendiculaire a la planche, et la hauteur
+
+    C'est Rz(a) . Rx(180) ecrit en clair. A a = 0 on retrouve la
+    matrice de la prise ; a 90 degres, le quart de tour du carre.
+    """
+    a = np.radians(angle_outil(assise))
+    c, s = np.cos(a), np.sin(a)
+
+    # l'ecart est PERPENDICULAIRE a la planche : on tourne le vecteur
+    # (0, 1) de l'angle a, ce qui donne (-sin a, cos a)
+    signe = 1.0 if planche == 0 else -1.0
+    ex = -signe * DECALAGE * s
+    ey = signe * DECALAGE * c
+    z = (assise + 1) * EPAISSEUR
+
+    dans_le_chantier = np.array([[c,  s,  0, ex],
+                                 [s, -c,  0, ey],
+                                 [0,  0, -1,  z],
+                                 [0,  0,  0,  1]], dtype=float)
+    return CHANTIER @ dans_le_chantier
+
+
+# ---------------------------------------------------------------------------
+# 5. LE CYCLE
+# ---------------------------------------------------------------------------
+
+robot.repli()
+for assise in range(ASSISES):
+    for planche in (0, 1):
+        cible = depose(assise, planche)
+
+        # prise : approche, descente, aspiration, retrait
+        robot.movj(PRISE @ HAUT, lissage=70)
+        robot.movl(PRISE, vitesse=40)
+        robot.ventouse(True)
+        robot.attendre(0.3)
+        robot.movl(PRISE @ HAUT)
+
+        # depose : meme geste, a la hauteur et dans l'orientation voulues
+        robot.movj(cible @ HAUT, lissage=70)
+        robot.movl(cible, vitesse=40)
+        robot.ventouse(False)
+        robot.attendre(0.3)
+        robot.movl(cible @ HAUT)
+robot.repli()
+
+# ---------------------------------------------------------------------------
+# 6. CONTROLE, PUIS EXECUTION
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    print("planche {:.0f} x {:.0f} x {:.0f} mm"
+          .format(LONGUEUR, LARGEUR, EPAISSEUR))
+    print("angle par assise : {:.0f} deg   (minimum geometrique {:.1f})"
+          .format(ANGLE, ANGLE_MINIMAL))
+    print("decalage deduit  : {:.1f} mm".format(DECALAGE))
+    if DECALAGE < LARGEUR / 2.0:
+        print("")
+        print("  IMPOSSIBLE : a cet angle, les deux planches d'une meme")
+        print("  assise se chevauchent. Le profil degenere avant meme")
+        print("  qu'on parle de stabilite.")
+    print("")
+    print("prise : x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
+    for assise in range(ASSISES):
+        for planche in (0, 1):
+            T = depose(assise, planche)
+            print("  assise {} planche {} : x={:6.1f}  y={:6.1f}  z={:5.1f}"
+                  "   a {:+.0f} deg"
+                  .format(assise + 1, planche + 1, T[0, 3], T[1, 3], T[2, 3],
+                          angle_outil(assise)))
+    print("")
+    print(robot.resume().splitlines()[0])
+
+    avertissements = robot.controler()
+    if avertissements:
+        print("")
+        print("reserves :")
+        for a in avertissements[:8]:
+            print("  - " + a)
+    else:
+        print("tout le cycle est dans l'espace de travail")
+
+    if REEL:
+        robot.executer_sur_robot(vitesse=30)
+    else:
+        robot.simuler()
