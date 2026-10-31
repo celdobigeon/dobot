@@ -17,6 +17,7 @@ cellule/
     fiches/  index.html   les fiches de référence
     README.md             la documentation
     PROCEDURE_*.md        les procédures de mise en route
+    ACTIVITE_*.md         les activités de TP
 ```
 
 Les commandes des procédures se lisent **depuis ce dossier** :
