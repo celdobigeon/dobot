@@ -154,5 +154,41 @@ class TestManutention(unittest.TestCase):
         self.assertTrue(np.allclose(debut, fin), "elle a bouge toute seule")
 
 
+class TestLesDeuxVues(unittest.TestCase):
+    """
+    Les deux vues doivent offrir LA MEME INTERFACE.
+
+    L'interface demande `hasattr(self.vue, "definir_objets")` avant
+    d'appeler : une vue qui ne la porte pas est ignoree SANS RIEN DIRE.
+    Les pieces ont ainsi manque a la vue 2D pendant une heure -- sur un
+    poste sans OpenGL, l'etudiant aurait vu le bras bouger et aucune
+    planche, et aurait cru sa declaration fausse.
+
+    Un `hasattr` silencieux se verifie donc ici, et non a l'ecran.
+    """
+
+    METHODES = ("definir_objets", "definir_convoyeur", "definir_rail",
+                "definir_chemin", "definir_cibles", "maj")
+
+    def test_meme_interface_de_decor(self):
+        import inspect
+
+        from dobot_sim import viewer2d
+        try:
+            from dobot_sim import viewer3d
+        except Exception:                      # pragma: no cover
+            self.skipTest("vue 3D indisponible sur ce poste")
+
+        V2, V3 = viewer2d.Vue2D, viewer3d.Vue3D
+        for nom in self.METHODES:
+            with self.subTest(methode=nom):
+                self.assertTrue(hasattr(V2, nom), "manque a la vue 2D")
+                self.assertTrue(hasattr(V3, nom), "manque a la vue 3D")
+                a2 = inspect.signature(getattr(V2, nom)).parameters
+                a3 = inspect.signature(getattr(V3, nom)).parameters
+                self.assertEqual(list(a2)[:2], list(a3)[:2],
+                                 "les signatures divergent : " + nom)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

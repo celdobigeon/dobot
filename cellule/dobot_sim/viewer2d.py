@@ -93,6 +93,8 @@ class Vue2D(QtWidgets.QWidget):
         #: courbes des peripheriques, par projection
         self._items_tapis: list = []
         self._items_rail: list = []
+        #: pieces manipulees (pieces.py), redessinees a chaque image
+        self._items_objets: list = []
         #: deplacement de la BASE, quand un rail porte le robot
         self._base = np.eye(4)
 
@@ -153,6 +155,29 @@ class Vue2D(QtWidgets.QWidget):
         self._items_tapis = []
         if tapis is not None:
             self._items_tapis = self._peindre(tapis.boites(t))
+
+    def definir_objets(self, boites: Sequence[dict],
+                       cible: Optional[int] = None) -> None:
+        """
+        Dessine les pieces manipulees, dans les deux projections.
+
+        MEME SIGNATURE QUE LA VUE 3D, et c'est ce qui compte : l'appelant
+        n'a pas a savoir devant laquelle des deux il se trouve. Sans
+        cette methode, le `hasattr` de l'interface passait son chemin
+        SANS RIEN DIRE -- sur un poste sans OpenGL, l'etudiant voyait le
+        bras bouger et aucune planche, et croyait sa declaration fausse.
+
+        `cible` est accepte pour la compatibilite de signature ; la mise
+        en evidence n'a pas d'equivalent utile ici, ou tout est deja
+        trace au trait.
+        """
+        self._effacer(self._items_objets)
+        # Manutention.boites() parle en `type` -- ce que la piece EST --
+        # la ou les peripheriques parlent en `role` -- a quoi la forme
+        # sert dans le dessin. On traduit, plutot que d'imposer son
+        # vocabulaire a l'autre.
+        formes = [dict(b, role=b.get("type", "piece")) for b in boites]
+        self._items_objets = self._peindre(formes)
 
     def definir_rail(self, axe, l: float = 0.0) -> None:
         """
