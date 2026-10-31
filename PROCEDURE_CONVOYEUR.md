@@ -156,11 +156,14 @@ ouverture : **tous les lancements sont bons**, là où un sur deux ratait.
 Plus de `--equerre`, plus de mise en route à refaire.
 
 > **Le prix à payer, et il se mesure.** La passerelle ajoute son temps
-> de transit : la détection→arrêt passe de 9 ms à **66 ms**, soit 4 mm
-> de bande au lieu de 0,6. Ce n'est plus négligeable — mais c'est
-> reproductible à la milliseconde, donc corrigible : voir `RETARD_ARRET`
-> dans l'exemple, déclaré **en secondes** et converti avec la vitesse du
-> tapis.
+> de transit : la détection→arrêt passe de 9 ms à **56–119 ms**, soit 3
+> à 7 mm de bande au lieu de 0,6.
+>
+> `RETARD_ARRET` dans l'exemple le compense, déclaré **en secondes** et
+> converti avec la vitesse du tapis. Mais il n'en corrige que la
+> **médiane** : la dispersion, elle, reste, et c'est la ventouse qui
+> l'absorbe. Avec une pince, ou des pièces plus petites, il faudrait
+> fiabiliser la chaîne plutôt que la corriger.
 
 ### Le contournement par `--equerre`, vérifié aussi
 

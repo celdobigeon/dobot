@@ -237,8 +237,15 @@ COTE = 25.0                                # cube de 25 mm, mesure
 # 67 ms" -- et c'est la mesure qui doit peupler cette ligne, pas une
 # estimation. Relevé le 31/10/2026, et il depend du CHEMIN d'execution :
 #
-#   execution directe depuis le script   9 a 11 ms   soit 0,6 mm
-#   a travers une fenetre de simulateur  66 a 67 ms  soit 4,0 mm
+#   execution directe depuis le script   9 a 11 ms    soit 0,6 mm
+#   a travers une fenetre de simulateur  56 a 119 ms  soit 3,4 a 7,1 mm
+#
+# ET IL EST DISPERSE. Sur six cycles a travers la passerelle : 56, 64,
+# 66, 66, 67, 119 ms. J'avais ecrit "reproductible a la milliseconde"
+# sur les deux premieres mesures ; la troisieme a tranche. Une constante
+# ne corrige donc PAS cette erreur, elle en corrige la MEDIANE, et il
+# reste +-2 mm que la ventouse absorbe. Avec une pince, ou des pieces
+# plus petites, il faudrait fiabiliser la chaine plutot que la corriger.
 #
 # Le second chemin est devenu la norme sur une machine dont un capteur
 # d'angle est fautif : la fenetre TIENT la liaison, et le controleur ne
