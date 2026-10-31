@@ -83,10 +83,18 @@ section{padding-top:30px;scroll-margin-top:64px}
 .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift);border-color:var(--muted)}
 .card:hover::before{opacity:1}
 .card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* En-tete de carte : l'icone A COTE du titre, et non au-dessus
+   (31/10/2026). Une grille a deux colonnes, l'icone occupant les deux
+   lignes du bloc texte -- elle reste ainsi centree sur l'ensemble,
+   qu'il y ait un sous-titre ou non. */
+.card .hd{display:grid;grid-template-columns:34px 1fr;column-gap:12px;row-gap:2px;
+  align-items:center}
+.card .hd .ic{grid-column:1;grid-row:1 / span 2;align-self:center}
+.card .hd h3,.card .hd .sub{grid-column:2;min-width:0}
 .card .ic{width:34px;height:34px;color:var(--accent)}
 .card .ic svg{display:block;width:100%;height:100%}
 .card h3{font-family:Archivo,sans-serif;font-weight:600;font-size:17px;margin:0;letter-spacing:-.01em}
-.card .sub{color:var(--muted);font-size:13.5px;margin:-6px 0 0}
+.card .sub{color:var(--muted);font-size:13.5px;margin:0}
 .card p{margin:0;font-size:14px;color:var(--muted);line-height:1.5}
 /* Etiquettes : reduites le 31/10/2026 pour qu'une carte puisse en
    porter quatre ou cinq sans que la derniere passe a la ligne toute
