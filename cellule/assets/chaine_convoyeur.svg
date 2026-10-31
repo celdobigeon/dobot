@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-348.4 -311.6 880.8 399.6" width="881" height="400" role="img" aria-label="Chaine de reperes du convoyeur, vue de dessus">
+<title>Cha&#238;ne de rep&#232;res du convoyeur</title>
+<rect x="-348.4" y="-311.6" width="880.8" height="399.6" fill="#fdfcf7"/>
+<polygon points="368.0,-248.4 -274.2,-248.4 -274.2,-138.0 368.0,-138.0" fill="#c9ced6" fill-opacity="0.55" stroke="#aab0b8" stroke-width="1.4"/>
+<polygon points="368.0,-239.2 -274.2,-239.2 -274.2,-147.2 368.0,-147.2" fill="#4a4f58" fill-opacity="0.22" stroke="#33373d" stroke-width="1.4"/>
+<line x1="368.0" y1="-130.6" x2="368.0" y2="-255.8" stroke="#333" stroke-width="4.0"/>
+<text x="368.0" y="-93.8" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="600" fill="#2a2a2a">axe moteur</text>
+<polygon points="98.4,-251.2 85.6,-251.2 85.6,-135.2 98.4,-135.2" fill="#e8482c" fill-opacity="0.30" stroke="#e8482c" stroke-width="1.4"/>
+<text x="92.0" y="-121.4" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="600" fill="#e8482c">capteur</text>
+<polygon points="99.8,-181.7 99.8,-204.7 76.8,-204.7 76.8,-181.7" fill="#e0b84a" fill-opacity="1.00" stroke="#8a6b14" stroke-width="1.4"/>
+<line x1="-0.0" y1="-0.0" x2="-0.0" y2="-42.3" stroke="#e07a1f" stroke-width="2.4"/>
+<line x1="-0.0" y1="-0.0" x2="-29.6" y2="-0.0" stroke="#8a8f98" stroke-width="2.0"/>
+<circle cx="-0.0" cy="-0.0" r="3.4" fill="#2a2a2a"/>
+<text x="-0.0" y="-42.3" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="600" fill="#e07a1f">x</text>
+<text x="-29.6" y="-0.0" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#8a8f98">y</text>
+<text x="-0.0" y="23.9" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="600" fill="#2a2a2a">BASE</text>
+<line x1="368.0" y1="-193.2" x2="325.7" y2="-193.2" stroke="#e07a1f" stroke-width="2.4"/>
+<line x1="368.0" y1="-193.2" x2="368.0" y2="-163.6" stroke="#8a8f98" stroke-width="2.0"/>
+<circle cx="368.0" cy="-193.2" r="3.4" fill="#2a2a2a"/>
+<text x="325.7" y="-193.2" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="600" fill="#e07a1f">x</text>
+<text x="368.0" y="-163.6" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#8a8f98">y</text>
+<text x="368.0" y="-117.8" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="600" fill="#2a2a2a">CONVOYEUR</text>
+<line x1="92.0" y1="-193.2" x2="49.7" y2="-193.2" stroke="#e07a1f" stroke-width="2.4"/>
+<line x1="92.0" y1="-193.2" x2="92.0" y2="-163.6" stroke="#8a8f98" stroke-width="2.0"/>
+<circle cx="92.0" cy="-193.2" r="3.4" fill="#2a2a2a"/>
+<text x="49.7" y="-193.2" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="600" fill="#e07a1f">x</text>
+<text x="92.0" y="-163.6" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#8a8f98">y</text>
+<text x="92.0" y="-169.3" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="600" fill="#2a2a2a">CAPTEUR</text>
+<line x1="0.0" y1="0.0" x2="368.0" y2="0.0" stroke="#8a8f98" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="184.0" y="-0.0" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#8a8f98">y = -400</text>
+<line x1="368.0" y1="0.0" x2="368.0" y2="-193.2" stroke="#8a8f98" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="368.0" y="-96.6" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#8a8f98">x = 210</text>
+<line x1="368.0" y1="-193.2" x2="92.0" y2="-193.2" stroke="#8a8f98" stroke-width="1.0" stroke-dasharray="4 3"/>
+<text x="230.0" y="-64.4" text-anchor="middle" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#8a8f98">capteur a 300 mm</text>
+<text x="-338" y="76" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" fill="#555">PRISE = CONVOYEUR &#215; CAPTEUR &#215; DANS_LE_CAPTEUR &#183; vue de dessus, l'op&#233;rateur en bas &#183; cotes en millim&#232;tres</text>
+</svg>
