@@ -257,6 +257,47 @@ class TestPieceSurLeTapis(unittest.TestCase):
         self.assertTrue(np.allclose(a, b), "elle a bouge sans tapis")
 
 
+class TestLeTapisVoyage(unittest.TestCase):
+    """
+    Le convoyeur doit voyager AVEC le programme.
+
+    Sans cela, un script qui declare un tapis ne le montre pas : la
+    fenetre n'a de convoyeur que celui qu'on lui coche a la main, et une
+    piece posee sur la bande reste a l'entree. Constate a l'ecran.
+    """
+
+    def tapis(self):
+        from dobot_sim import Convoyeur, repere_travail
+        return Convoyeur(repere=repere_travail(x=210, y=-400, z=60, rz=90),
+                         longueur=698, largeur=100, capteur_s=300, sens=-1)
+
+    def test_robot_tapis_ecrit_dans_le_programme(self):
+        robot = Pilote(nom="t", outil="ventouse")
+        t = self.tapis()
+        robot.tapis = t
+        self.assertIs(robot.programme.tapis, t)
+        self.assertIs(robot.tapis, t)
+
+    def test_il_survit_au_voyage(self):
+        from dobot_sim.program import Programme
+
+        robot = Pilote(nom="t", outil="ventouse")
+        robot.tapis = self.tapis()
+        relu = Programme.depuis_dict(robot.programme.vers_dict())
+        self.assertIsNotNone(relu.tapis)
+        self.assertTrue(np.allclose(relu.tapis.repere, robot.tapis.repere))
+        self.assertEqual(relu.tapis.capteur_s, 300.0)
+        # LE CABLAGE AUSSI : il ne se deduit d'aucune cote
+        self.assertEqual(relu.tapis.sens, -1)
+
+    def test_sans_tapis_le_programme_n_en_invente_pas(self):
+        from dobot_sim.program import Programme
+
+        robot = Pilote(nom="t", outil="ventouse")
+        relu = Programme.depuis_dict(robot.programme.vers_dict())
+        self.assertIsNone(relu.tapis)
+
+
 class TestLesDeuxVues(unittest.TestCase):
     """
     Les deux vues doivent offrir LA MEME INTERFACE.

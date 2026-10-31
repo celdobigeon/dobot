@@ -230,6 +230,55 @@ class Instruction:
         return txt + ("   ; " + self.commentaire if self.commentaire else "")
 
 
+def _tapis_vers_dict(tapis):
+    """
+    Les cotes d'un convoyeur, pour voyager avec le programme.
+
+    On transporte des NOMBRES et non l'objet : un programme passe par
+    un fichier JSON ou par la passerelle, et un objet n'y survit pas.
+    La fenetre reconstruit le sien a partir de la.
+    """
+    if tapis is None:
+        return None
+    import numpy as _np
+
+    R = _np.asarray(tapis.repere, dtype=float)
+    return {"x": float(R[0, 3]), "y": float(R[1, 3]), "z": float(R[2, 3]),
+            "rz": float(_np.degrees(_np.arctan2(R[1, 0], R[0, 0]))),
+            "longueur": float(tapis.longueur),
+            "largeur": float(tapis.largeur),
+            "index_moteur": int(tapis.index_moteur),
+            "sens": int(tapis.sens),
+            "impulsions_par_mm": float(tapis.impulsions_par_mm),
+            "capteur_s": float(tapis.capteur_s),
+            "camera_s": float(tapis.camera_s),
+            "capteur_port": tapis.capteur_port,
+            "capteur_eio": tapis.capteur_eio,
+            "depassement": float(tapis.depassement)}
+
+
+def _tapis_depuis_dict(data):
+    """L'inverse : des cotes au convoyeur."""
+    if not data:
+        return None
+    from .convoyeur import Convoyeur
+    from .robot import repere_travail
+
+    return Convoyeur(
+        repere=repere_travail(x=data.get("x", 0.0), y=data.get("y", 0.0),
+                              z=data.get("z", 0.0), rz=data.get("rz", 0.0)),
+        longueur=data.get("longueur", 600.0),
+        largeur=data.get("largeur", 60.0),
+        index_moteur=int(data.get("index_moteur", 0)),
+        sens=int(data.get("sens", 1)),
+        impulsions_par_mm=data.get("impulsions_par_mm"),
+        capteur_s=data.get("capteur_s", 300.0),
+        camera_s=data.get("camera_s", 200.0),
+        capteur_port=data.get("capteur_port"),
+        capteur_eio=data.get("capteur_eio"),
+        depassement=data.get("depassement", 0.0))
+
+
 class Programme:
     """Liste ordonnee d'instructions + compilation en trajectoire."""
 
@@ -256,6 +305,14 @@ class Programme:
         self.evenements: List[Evenement] = []
         #: courses du chariot : (debut, duree, position visee)
         self.courses_rail: List[Tuple[float, float, float]] = []
+        #: Le convoyeur de la cellule, s'il y en a un.
+        #:
+        #: Il voyage AVEC le programme, comme l'outil et les pieces : un
+        #: script qui declare un tapis doit le voir dans la fenetre, et
+        #: les pieces posees sur la bande doivent pouvoir avancer. Sans
+        #: cela la fenetre n'a de tapis que celui qu'on lui coche a la
+        #: main, et une piece sur la bande reste a l'entree -- constate.
+        self.tapis = None
         #: pieces posees sur la table, que le robot prend et depose.
         #: Voir dobot_sim/pieces.py : la fenetre les dessine et les fait
         #: suivre la ventouse pendant la lecture.
@@ -553,6 +610,7 @@ class Programme:
                 # emporterait sinon ses cibles sans ce qu'elles visent.
                 # Version 5 ; les fichiers anterieurs n'en ont pas, et se
                 # relisent sans.
+                "tapis": _tapis_vers_dict(self.tapis),
                 "pieces": [{"pose": [[float(v) for v in ligne]
                                      for ligne in p.pose],
                             "dims": list(p.dims), "nom": p.nom,
@@ -575,6 +633,7 @@ class Programme:
                    data.get("longueur_outil"))
         from .pieces import Manutention
         prog.pieces = Manutention.depuis_liste(data.get("pieces")).pieces
+        prog.tapis = _tapis_depuis_dict(data.get("tapis"))
         return prog
 
     def enregistrer(self, chemin: str) -> None:

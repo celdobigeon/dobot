@@ -2431,6 +2431,53 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             "cadence donnee par le programme ({} changement(s))"
             .format(len(cadence) - 1))
 
+    def _adopter_tapis_du_programme(self) -> None:
+        """
+        Le programme porte un convoyeur : on le recopie DANS LE PANNEAU.
+
+        Pourquoi dans le panneau et non dans `self.tapis` directement.
+        Parce que `_cellule_tapis_change` reconstruit le tapis a partir
+        des champs des qu'on touche l'un d'eux : un tapis pose par-
+        dessous serait ecrase au premier clic, et l'affichage mentirait
+        entre-temps -- case decochee, bande dessinee.
+
+        On remplit donc les champs, on coche, et c'est le panneau qui
+        construit. Une seule source pour une seule verite.
+        """
+        tapis = getattr(self.programme, "tapis", None)
+        if tapis is None:
+            return
+        R = np.asarray(tapis.repere, dtype=float)
+        champs = (
+            (self.sp_tapis_x, float(R[0, 3])),
+            (self.sp_tapis_y, float(R[1, 3])),
+            (self.sp_tapis_z, float(R[2, 3])),
+            (self.sp_tapis_rz, float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))),
+            (self.sp_tapis_long, float(tapis.longueur)),
+            (self.sp_tapis_larg, float(tapis.largeur)),
+            (self.sp_tapis_imp, float(tapis.impulsions_par_mm)),
+            (self.sp_tapis_capteur, float(tapis.capteur_s)),
+        )
+        for widget, valeur in champs:
+            widget.blockSignals(True)
+            widget.setValue(valeur)
+            widget.blockSignals(False)
+        self.cb_tapis_moteur.blockSignals(True)
+        self.cb_tapis_moteur.setCurrentIndex(int(tapis.index_moteur))
+        self.cb_tapis_moteur.blockSignals(False)
+        self.grp_tapis.blockSignals(True)
+        self.grp_tapis.setChecked(True)
+        self.grp_tapis.blockSignals(False)
+        self._cellule_tapis_change()
+        # le cablage du moteur ne figure pas au panneau : il n'est pas
+        # une cote de la cellule mais un fait de branchement. On le
+        # reporte depuis le programme.
+        if self.tapis is not None:
+            self.tapis.sens = int(tapis.sens)
+            self.tapis.capteur_port = tapis.capteur_port
+            self.tapis.capteur_eio = tapis.capteur_eio
+            self.tapis.depassement = float(tapis.depassement)
+
     def _preparer_pieces(self) -> None:
         """
         Calcule l'histoire des pieces du programme : prise, portee,
@@ -4602,6 +4649,10 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             self._alerter(["le programme n'a pas pu etre compile "
                            "(trace complete dans le Journal)"])
             return
+        # le programme peut porter sa cellule : on l'adopte AVANT de lui
+        # donner sa cadence, faute de quoi il n'y aurait pas de tapis a
+        # cadencer
+        self._adopter_tapis_du_programme()
         self._cellule_suivre_programme()
         # les pieces dependent de la trajectoire : leur histoire se
         # calcule ici, une fois, et se relit ensuite a chaque image

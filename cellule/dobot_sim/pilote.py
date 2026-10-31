@@ -189,8 +189,8 @@ class Pilote:
         # derniere cible cartesienne connue, pour les coordonnees omises
         self._pose = list(self.robot.pose(self.q_depart))
         #: le tapis de la cellule, s'il y en a un. Pose une fois, il sert
-        #: de defaut a toutes les commandes de convoyeur du programme.
-        self.tapis = None
+        #: de defaut a toutes les commandes de convoyeur du programme --
+        #: et il VOYAGE AVEC LUI, voir la propriete plus bas.
         #: instant (perf_counter) ou le capteur a vu la piece,
         #: pose par attendre_piece_sur_robot
         self.instant_detection = None
@@ -629,6 +629,27 @@ class Pilote:
             piece_posee(x=x, y=y, rz=rz, dims=dims, z_plan=z_plan,
                         magasin=magasin, nom=nom))
         return self
+
+    @property
+    def tapis(self):
+        """
+        Le convoyeur de la cellule. Il VIT DANS LE PROGRAMME.
+
+        `robot.tapis = TAPIS` continue de s'ecrire comme avant, mais le
+        tapis est range dans le programme plutot que dans le pilote.
+        C'est ce qui lui permet de suivre : la fenetre le dessine, les
+        pieces posees sur la bande avancent avec lui, et un fichier JSON
+        le retrouve.
+
+        Sans cela, un script qui declarait un tapis ne le montrait pas
+        -- la fenetre n'avait de convoyeur que celui qu'on lui cochait a
+        la main, et une piece posee sur la bande restait a l'entree.
+        """
+        return self.programme.tapis
+
+    @tapis.setter
+    def tapis(self, valeur) -> None:
+        self.programme.tapis = valeur
 
     def poser_piece_sur_tapis(self, s: float = 0.0, y: float = 0.0,
                               dims=(25.0, 25.0, 25.0), t0: float = 0.0,
