@@ -177,6 +177,19 @@ DANS_LE_MAGASIN = np.array([[1,  0,  0,         0],
 
 PRISE = MAGASIN @ DANS_LE_MAGASIN
 
+# LA PLANCHE DANS LE SIMULATEUR. Du decor : aucune instruction, aucune
+# trajectoire. La fenetre la dessine et la fait SUIVRE LA VENTOUSE
+# pendant la lecture -- on voit la planche quitter le magasin,
+# traverser, et se poser sur le mur.
+#
+# magasin=True : une autre reapparait des qu'on emporte celle-ci,
+# comme l'operateur qui repose une planche a chaque cycle. Sans cela le
+# magasin se vide au premier passage et les onze cycles suivants
+# brasseraient du vide.
+robot.poser_piece(x=float(MAGASIN[0, 3]), y=float(MAGASIN[1, 3]),
+                  dims=(LONGUEUR, LARGEUR, EPAISSEUR), magasin=True,
+                  nom="planche")
+
 # Le degagement, exprime dans le repere de l'OUTIL. L'axe z de l'outil
 # pointant vers le bas, un degagement VERS LE HAUT s'ecrit avec un z
 # NEGATIF. On le verifie plutot que de le croire.

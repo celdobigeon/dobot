@@ -600,6 +600,36 @@ class Pilote:
             impulsions_par_mm=pas, commentaire=commentaire))
         return self
 
+    def poser_piece(self, x: float = 0.0, y: float = 0.0, rz: float = 0.0,
+                    dims=(125.0, 30.0, 10.0), z_plan: float = 0.0,
+                    magasin: bool = False, nom: str = "") -> "Pilote":
+        """
+        Pose une piece sur la table, que le simulateur dessinera et fera
+        SUIVRE LA VENTOUSE pendant la lecture.
+
+            robot.poser_piece(x=60, y=-220, dims=(125, 30, 10),
+                              magasin=True)
+
+        `magasin=True` : une autre reapparait des qu'on emporte
+        celle-ci, comme l'operateur qui repose une planche a chaque
+        cycle. Sans cela le magasin se vide au premier passage et les
+        cycles suivants brassent du vide.
+
+        La piece REPOSE sur le plan `z_plan` : son centre est une
+        demi-epaisseur plus haut, et c'est calcule ici -- c'est le genre
+        de demi-cote qu'on oublie, et qui se paie en voyant la planche a
+        moitie enfoncee dans la table.
+
+        Elle ne change rien au programme : aucune instruction, aucune
+        trajectoire. C'est du DECOR, qui voyage avec lui.
+        """
+        from .pieces import piece_posee
+
+        self.programme.pieces.append(
+            piece_posee(x=x, y=y, rz=rz, dims=dims, z_plan=z_plan,
+                        magasin=magasin, nom=nom))
+        return self
+
     def attendre_piece(self, port: int, etat: bool = True,
                        timeout: float = 30.0,
                        commentaire: str = "piece au capteur") -> "Pilote":

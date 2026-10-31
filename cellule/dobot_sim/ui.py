@@ -2200,6 +2200,8 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         """
         self.tapis = None
         self.axe = None
+        #: histoire des pieces du programme, calculee a la compilation
+        self.manutention = None
         self._t_tapis = 0.0
         self._v_tapis = 0.0
 
@@ -2429,14 +2431,39 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
             "cadence donnee par le programme ({} changement(s))"
             .format(len(cadence) - 1))
 
+    def _preparer_pieces(self) -> None:
+        """
+        Calcule l'histoire des pieces du programme : prise, portee,
+        reposee. UNE FOIS par programme, pas a chaque image.
+
+        Le calcul demande la trajectoire -- il faut savoir ou est
+        l'outil quand la ventouse aspire -- donc il vient apres sa
+        construction.
+        """
+        from .pieces import Manutention
+
+        pieces = list(getattr(self.programme, "pieces", []) or [])
+        if not pieces or self.trajectoire is None:
+            self.manutention = None
+            if hasattr(self.vue, "definir_objets"):
+                self.vue.definir_objets([])
+            return
+        self.manutention = Manutention(pieces).preparer(
+            self.robot, self.trajectoire, self.programme)
+
     def _cellule_a_l_instant(self, t: float) -> None:
         """
-        Place tapis et chariot a l'instant t, comme on y place le bras.
+        Place tapis, chariot et pieces a l'instant t, comme on y place le
+        bras.
 
         Tout est fonction du temps -- la configuration articulaire, les
-        sorties, l'outil, et maintenant la bande et le rail. C'est ce qui
-        permet de rembobiner : rien n'est accumule, tout est recalcule.
+        sorties, l'outil, la bande, le rail, et maintenant les pieces que
+        le robot porte. C'est ce qui permet de rembobiner : rien n'est
+        accumule, tout est recalcule.
         """
+        manu = getattr(self, "manutention", None)
+        if manu is not None and hasattr(self.vue, "definir_objets"):
+            self.vue.definir_objets(manu.boites(t))
         if getattr(self, "tapis", None) is not None:
             self._t_tapis = t
             if hasattr(self.vue, "definir_convoyeur"):
@@ -4567,10 +4594,14 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         except Exception:
             self.journal(traceback.format_exc())
             self.trajectoire = None
+            self._preparer_pieces()
             self._alerter(["le programme n'a pas pu etre compile "
                            "(trace complete dans le Journal)"])
             return
         self._cellule_suivre_programme()
+        # les pieces dependent de la trajectoire : leur histoire se
+        # calcule ici, une fois, et se relit ensuite a chaque image
+        self._preparer_pieces()
         ech = self.trajectoire.echantillonner(0.02) if len(self.trajectoire) else None
         if ech is None:
             self.vue.definir_chemin(None)

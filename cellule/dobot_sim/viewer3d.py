@@ -434,7 +434,14 @@ class Vue3D(gl.GLViewWidget):
 
     #: couleurs (r, g, b, a) des objets : par type, et la cible
     COULEURS_OBJETS = {"epaisse": (0.95, 0.65, 0.15, 0.55),
-                       "fine": (0.20, 0.70, 0.95, 0.55)}
+                       "fine": (0.20, 0.70, 0.95, 0.55),
+                       # Les pieces que le robot manipule (pieces.py) :
+                       # ton de bois, et peu transparentes. Une piece vue
+                       # par la camera est une HYPOTHESE, d'ou le
+                       # translucide ; une piece qu'on pose est un objet,
+                       # et une pile de planches translucides ne se lit
+                       # pas.
+                       "piece": (0.82, 0.66, 0.26, 0.92)}
     COULEUR_CIBLE = (0.95, 0.20, 0.20, 0.80)
 
     def definir_objets(self, boites: Sequence[dict], cible: Optional[int] = None) -> None:

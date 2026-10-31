@@ -256,6 +256,10 @@ class Programme:
         self.evenements: List[Evenement] = []
         #: courses du chariot : (debut, duree, position visee)
         self.courses_rail: List[Tuple[float, float, float]] = []
+        #: pieces posees sur la table, que le robot prend et depose.
+        #: Voir dobot_sim/pieces.py : la fenetre les dessine et les fait
+        #: suivre la ventouse pendant la lecture.
+        self.pieces: List = []
         #: Etat de l'outil et des sorties AVANT la premiere instruction.
         #: Un programme se joue d'habitude depuis un etat de repos, d'ou
         #: False partout. La commande temps reel (dobot_sim.Commande), elle,
@@ -537,12 +541,23 @@ class Programme:
 
     def vers_dict(self) -> Dict:
         return {"nom": self.nom,
-                "version": 4,
+                "version": 5,
                 "outil": self.outil,
                 "longueur_outil": self.longueur_outil,
                 # matrice 4x4, telle qu'on peut la saisir ou la relire
                 "repere_objet": [[float(v) for v in ligne]
                                  for ligne in self.repere_objet],
+                # Les pieces posees sur la table voyagent avec le
+                # programme, comme l'outil et sa longueur : un programme
+                # qui change de main -- fenetre, fichier JSON --
+                # emporterait sinon ses cibles sans ce qu'elles visent.
+                # Version 5 ; les fichiers anterieurs n'en ont pas, et se
+                # relisent sans.
+                "pieces": [{"pose": [[float(v) for v in ligne]
+                                     for ligne in p.pose],
+                            "dims": list(p.dims), "nom": p.nom,
+                            "magasin": bool(p.magasin), "type": p.type}
+                           for p in self.pieces],
                 "instructions": [asdict(i) for i in self.instructions]}
 
     @classmethod
@@ -552,10 +567,13 @@ class Programme:
             champs = {k: v for k, v in d.items()
                       if k in Instruction.__dataclass_fields__}
             instrs.append(Instruction(**champs))
-        return cls(instrs, data.get("nom", "programme"),
+        prog = cls(instrs, data.get("nom", "programme"),
                    data.get("outil", "ventouse"),
                    data.get("repere_objet"),
                    data.get("longueur_outil"))
+        from .pieces import Manutention
+        prog.pieces = Manutention.depuis_liste(data.get("pieces")).pieces
+        return prog
 
     def enregistrer(self, chemin: str) -> None:
         with open(chemin, "w", encoding="utf-8") as f:

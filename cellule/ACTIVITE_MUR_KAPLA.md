@@ -287,7 +287,31 @@ DECALAGE = (LONGUEUR - LARGEUR) / 2 * np.tan(np.radians(ANGLE) / 2)
 
 ---
 
-## 6. La boucle
+## 6. Voir les planches bouger
+
+Le simulateur peut dessiner les planches et les faire **suivre la
+ventouse** : on voit la planche quitter le magasin, traverser, et se
+poser sur le mur.
+
+```python
+robot.poser_piece(x=..., y=..., dims=(125, 30, 10), magasin=True)
+```
+
+`magasin=True` : une autre réapparaît dès que le robot emporte
+celle-ci — comme vous qui reposez une planche à chaque cycle. Sans
+cela, le magasin se vide au premier passage.
+
+C'est du **décor** : aucune instruction, aucune trajectoire, rien n'est
+changé au programme. Mais une prise qui vise à côté se voit alors
+immédiatement, et c'est bien plus parlant qu'une ligne de contrôle.
+
+> Rembobinez la lecture : les planches reviennent exactement où elles
+> étaient. Rien n'est accumulé dans ce simulateur — tout est **fonction
+> du temps**, y compris ce que le robot porte.
+
+---
+
+## 7. La boucle
 
 ```python
 robot.repli()
@@ -301,7 +325,7 @@ robot.repli()
 
 ---
 
-## 7. Valider hors ligne, puis descendre sur la machine
+## 8. Valider hors ligne, puis descendre sur la machine
 
 ```bash
 python votre_programme.py          # sans --reel : le simulateur
@@ -358,7 +382,7 @@ python votre_programme.py --reel
 
 ---
 
-## 8. Pour aller plus loin
+## 9. Pour aller plus loin
 
 - **Changez l'angle** : 90°, 60°, 45°. Le décalage suit tout seul si
   vous l'avez écrit en fonction de l'angle. Quelle forme obtenez-vous à
