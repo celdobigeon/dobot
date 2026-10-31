@@ -240,9 +240,10 @@ COTE = 25.0                                # cube de 25 mm, mesure
 #   execution directe depuis le script   9 a 11 ms    soit 0,6 mm
 #   a travers une fenetre de simulateur  56 a 119 ms  soit 3,4 a 7,1 mm
 #
-# ET IL EST DISPERSE. Sur six cycles a travers la passerelle : 56, 64,
-# 66, 66, 67, 119 ms. J'avais ecrit "reproductible a la milliseconde"
-# sur les deux premieres mesures ; la troisieme a tranche. Une constante
+# ET IL EST DISPERSE. Sur douze cycles a travers la passerelle : 56, 64,
+# 65, 66, 66, 66, 66, 67, 67, 83, 101, 119 ms. J'avais ecrit
+# "reproductible a la milliseconde" sur les deux premieres mesures ; la
+# troisieme a tranche. La mediane tient a 66, et la queue va au double. Une constante
 # ne corrige donc PAS cette erreur, elle en corrige la MEDIANE, et il
 # reste +-2 mm que la ventouse absorbe. Avec une pince, ou des pieces
 # plus petites, il faudrait fiabiliser la chaine plutot que la corriger.

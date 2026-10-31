@@ -185,7 +185,7 @@ et ne lancez rien avant.
 > | | retards mesurés | étendue |
 > |---|---|---|
 > | direct | 9, 9, 10, 11, 11 ms | **2 ms** |
-> | par la fenêtre | 56, 64, 66, 66, 66, 66, 67, 83, 119 ms | **63 ms** |
+> | par la fenêtre | 56, 64, 65, 66, 66, 66, 66, 67, 67, 83, 101, 119 ms | **63 ms** |
 >
 > Le direct n'est pas seulement six fois plus rapide : il est trente
 > fois plus régulier. C'est lui qu'il faudrait pour une pince — et donc
