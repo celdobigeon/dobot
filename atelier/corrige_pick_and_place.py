@@ -6,7 +6,11 @@ CORRIGE de l'activite pick and place -- cellule/ACTIVITE_PICK_AND_PLACE.md
     python corrige_pick_and_place.py                  simulation
     python corrige_pick_and_place.py --reel           sur la machine
     python corrige_pick_and_place.py --lissage 0      sans arrondi
-    python corrige_pick_and_place.py --angle 30       rangee en biais
+    python corrige_pick_and_place.py --angle 30       depose en biais
+
+UNE planche, prise a un endroit et posee a un autre. Rien de plus :
+l'empilement et la rotation d'une assise a l'autre sont l'objet de
+l'activite suivante, le mur de kapla.
 
 NE PAS METTRE DANS cellule/. L'activite consiste a ecrire ce fichier.
 
@@ -17,8 +21,7 @@ Ce que l'activite demande, et ou c'est fait ici
     3. les deux reperes, en matriciel      -- section 2
     4. cibles, approches et retraits par @ -- sections 3 et 4
     5. prises exprimees dans le repere     -- section 3
-    6. boucle                              -- section 5
-    7. LE LISSAGE, et ce qu'il coute       -- section 5, le coeur
+    6. LE LISSAGE, et ce qu'il coute       -- section 5, le coeur
 
 LE LISSAGE, PUISQUE C'EST L'OBJET DE L'ACTIVITE
 ------------------------------------------------
@@ -39,19 +42,19 @@ Trois choses a ne pas confondre :
     zones (ABB) ou du CNT (Fanuc).
 
 Le gain se lit dans `robot.resume()`, qui affiche les secondes
-economisees. Mesure sur ce cycle-ci, quatre planches :
+economisees. Mesure sur ce cycle-ci :
 
-    lissage    0 %  ->  95,87 s     ecart au point de degagement  0,0 mm
-    lissage   40 %  ->  87,83 s                                   0,1 mm
-    lissage   70 %  ->  81,79 s                                   0,7 mm
-    lissage  100 %  ->  75,76 s                                   1,8 mm
+    lissage    0 %  ->  24,01 s     ecart au point de degagement  0,0 mm
+    lissage   40 %  ->  22,13 s                                   0,1 mm
+    lissage   70 %  ->  20,73 s                                   0,7 mm
+    lissage  100 %  ->  19,32 s                                   2,0 mm
 
 Et le point de prise, lui, est atteint a 0,00 mm dans les quatre cas :
 il n'est pas lisse. Le raccord melange deux lois quintiques, donc de
 vitesse nulle aux bords ; les deux segments sont tous deux pres du
 point pendant le recouvrement, et l'ecart geometrique reste petit. Ce
-qu'on achete avec le lissage, ici, c'est 21 % de temps de cycle pour
-1,8 mm -- et non un virage large.
+qu'on achete avec le lissage, ici, c'est 19,5 % de temps de cycle pour
+2 mm -- et non un virage large.
 """
 
 import sys
@@ -74,17 +77,15 @@ def option(nom, defaut):
 
 #: pourcentage d'arrondi des raccords de DEGAGEMENT. 0 a 100.
 LISSAGE = option("--lissage", 70.0)
-#: orientation de la rangee deposee, en degres. 0 = le long de x.
+#: orientation de la planche deposee, en degres. 0 = le long de x.
 #:
 #: 90 PAR DEFAUT, ET CE N'EST PAS UN GOUT. Le chantier est droit devant
 #: le robot, cap 90 degres ; or J4 = orientation - J1, et J4 ne va que
-#: de -90 a +90. Une rangee a 0 degre demande donc au poignet d'aller
-#: exactement en butee -- `controler()` le signale. A 90 degres les
-#: planches pointent dans l'axe du bras et le poignet reste a zero.
+#: de -90 a +90. Une depose a 0 degre demande donc au poignet d'aller
+#: exactement en butee -- `controler()` le signale. A 90 degres la
+#: planche pointe dans l'axe du bras et le poignet reste a zero.
 #: Essayez `--angle 0` pour voir la reserve apparaitre.
 ANGLE = option("--angle", 90.0)
-#: combien de planches on transporte
-PLANCHES = int(option("--planches", 4))
 
 # ---------------------------------------------------------------------------
 # 1. L'OUTIL
@@ -162,16 +163,11 @@ robot.poser_piece(x=float(MAGASIN[0, 3]), y=float(MAGASIN[1, 3]),
 # ---------------------------------------------------------------------------
 # 4. LA DEPOSE
 # ---------------------------------------------------------------------------
-#
-# Une rangee : les planches cote a cote, ecartees de PAS, toutes dans
-# la meme orientation. Le pas depasse la largeur, sinon elles se
-# toucheraient.
-PAS = LARGEUR + 12.0
 
 
-def depose(n):
+def depose():
     """
-    Cible de depose de la n-ieme planche (des zero).
+    Cible de depose : au centre du chantier, orientee de ANGLE.
 
     LA MATRICE, COLONNE PAR COLONNE -- voir
     cellule/assets/cible_angle.svg, qui montre d'ou viennent c et s :
@@ -180,18 +176,19 @@ def depose(n):
                                           LONGUEUR de la planche
         colonne 1 : ( sin a, -cos a, 0)   son y, retourne par Rx(180)
         colonne 2 : (     0,      0, -1)  son z, vers le BAS
-        colonne 3 : l'ecart, perpendiculaire a la planche
+        colonne 3 : (0, 0, EPAISSEUR)     la ventouse sur le DESSUS de
+                                          la planche posee
 
-    L'ecart se prend PERPENDICULAIREMENT a la planche, le long de
-    (-sin a, cos a) : une rangee se range en travers, pas en long.
+    C'est la SEULE difference avec la prise : une orientation. La
+    planche est prise le long de x et posee le long de a, et c'est le
+    poignet qui fait la difference.
     """
     a = np.radians(ANGLE)
     c, s = np.cos(a), np.sin(a)
-    d = (n - (PLANCHES - 1) / 2.0) * PAS           # centree sur le chantier
-    dans_le_chantier = np.array([[c,  s,  0, -s * d],
-                                 [s, -c,  0,  c * d],
+    dans_le_chantier = np.array([[c,  s,  0,         0],
+                                 [s, -c,  0,         0],
                                  [0,  0, -1, EPAISSEUR],
-                                 [0,  0,  0,      1]], dtype=float)
+                                 [0,  0,  0,         1]], dtype=float)
     return CHANTIER @ dans_le_chantier
 
 
@@ -203,23 +200,24 @@ def depose(n):
 # l'outil agit -- la prise et la depose -- restent a 0 : un point lisse
 # n'est pas atteint, et une ventouse qui aspire a cote n'emporte rien.
 
+CIBLE = depose()
+
 robot.repli()
-for n in range(PLANCHES):
-    cible = depose(n)
 
-    # prise : approche lissee, descente franche, aspiration, retrait
-    robot.movj(PRISE @ HAUT, lissage=LISSAGE)
-    robot.movl(PRISE, vitesse=40)                  # lissage 0 par defaut
-    robot.ventouse(True)
-    robot.attendre(0.3)
-    robot.movl(PRISE @ HAUT, lissage=LISSAGE)
+# prise : approche lissee, descente franche, aspiration, retrait
+robot.movj(PRISE @ HAUT, lissage=LISSAGE)
+robot.movl(PRISE, vitesse=40)                      # lissage 0 par defaut
+robot.ventouse(True)
+robot.attendre(0.3)
+robot.movl(PRISE @ HAUT, lissage=LISSAGE)
 
-    # depose : le meme geste, a l'autre bout
-    robot.movj(cible @ HAUT, lissage=LISSAGE)
-    robot.movl(cible, vitesse=40)
-    robot.ventouse(False)
-    robot.attendre(0.3)
-    robot.movl(cible @ HAUT, lissage=LISSAGE)
+# depose : le meme geste, a l'autre bout et dans l'autre orientation
+robot.movj(CIBLE @ HAUT, lissage=LISSAGE)
+robot.movl(CIBLE, vitesse=40)
+robot.ventouse(False)
+robot.attendre(0.3)
+robot.movl(CIBLE @ HAUT, lissage=LISSAGE)
+
 robot.repli()
 
 # ---------------------------------------------------------------------------
@@ -227,16 +225,15 @@ robot.repli()
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("planche {:.0f} x {:.0f} x {:.0f} mm, {} planches, pas {:.0f} mm"
-          .format(LONGUEUR, LARGEUR, EPAISSEUR, PLANCHES, PAS))
+    print("planche {:.0f} x {:.0f} x {:.0f} mm"
+          .format(LONGUEUR, LARGEUR, EPAISSEUR))
     print("lissage des degagements : {:.0f} %".format(LISSAGE))
-    print("orientation de la rangee : {:+.0f} deg".format(ANGLE))
+    print("orientation a la depose : {:+.0f} deg".format(ANGLE))
     print("")
-    print("prise : x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
-    for n in range(PLANCHES):
-        T = depose(n)
-        print("  depose {} : x={:6.1f}  y={:6.1f}  z={:5.1f}"
-              .format(n + 1, T[0, 3], T[1, 3], T[2, 3]))
+    print("prise  : x={:6.1f}  y={:6.1f}  z={:5.1f}   a   +0 deg"
+          .format(*PRISE[:3, 3]))
+    print("depose : x={:6.1f}  y={:6.1f}  z={:5.1f}   a {:+.0f} deg"
+          .format(CIBLE[0, 3], CIBLE[1, 3], CIBLE[2, 3], ANGLE))
     print("")
     print(robot.resume().splitlines()[0])
 

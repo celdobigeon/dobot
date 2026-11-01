@@ -7,12 +7,16 @@ IUT, université de Bordeaux · Dobot Magician et sa ventouse
 
 ## Le geste à réaliser
 
-Le robot prend une planche dans un **magasin**, la pose sur un
-**chantier**, et recommence. Quatre planches, rangées côte à côte.
+**Une planche**, prise dans un **magasin** et posée sur un
+**chantier**. Rien de plus.
 
 C'est le geste le plus courant de la robotique industrielle, et il
 tient en six instructions. Toute la difficulté est ailleurs : **dire au
 robot où aller, sans jamais l'y amener à la main.**
+
+La planche est posée dans une **autre orientation** que celle où elle a
+été prise — c'est la seule différence entre les deux cibles, et c'est
+déjà de quoi faire travailler les matrices.
 
 > **Cette activité est la première des deux.** Elle installe l'outil,
 > les repères, les cibles et le lissage. La suivante — [bâtir un mur
@@ -154,8 +158,8 @@ ventouse sur un plan de cote connue et comparez.
 ## 3. Déclarer les deux repères de travail
 
 Mesurez au réglet, **par rapport au centre de la base du robot**, où se
-trouvent le **magasin** (les planches à prendre) et le **chantier** (où
-les poser).
+trouvent le **magasin** (où la planche est présentée) et le
+**chantier** (où elle doit être posée).
 
 ```python
 MAGASIN = np.array([[1, 0, 0, ...],
@@ -241,18 +245,17 @@ assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 
 ![D'où viennent le cosinus et le sinus](assets/cible_angle.svg)
 
-Les planches se rangent côte à côte, toutes dans la même orientation
-`a`. Pour un angle quelconque, la cible s'écrit :
+La planche est posée tournée de `a`. La cible s'écrit :
 
 ```python
 c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
 
-dans_le_chantier = np.array([[c,  s,  0, -s * d],
-                             [s, -c,  0,  c * d],
+dans_le_chantier = np.array([[c,  s,  0,         0],
+                             [s, -c,  0,         0],
                              [0,  0, -1, EPAISSEUR],
-                             [0,  0,  0,      1]], dtype=float)
+                             [0,  0,  0,         1]], dtype=float)
 
-cible = CHANTIER @ dans_le_chantier
+CIBLE = CHANTIER @ dans_le_chantier
 ```
 
 La figure dit d'où viennent `c` et `s`, et il n'y a rien d'autre à
@@ -263,20 +266,22 @@ retenir :
 | 0 : `(c, s, 0)` | l'axe x de l'outil — donc la **longueur** de la planche. Ses composantes **sont** les projections `cos a` et `sin a` sur les axes du chantier |
 | 1 : `(s, −c, 0)` | son y, **retourné** : c'est encore le demi-tour autour de x |
 | 2 : `(0, 0, −1)` | son z, vers le bas |
-| 3 | l'écart `d`, pris **perpendiculairement** à la planche, le long de `(−sin a, cos a)` |
+| 3 : `(0, 0, EPAISSEUR)` | la ventouse sur le **dessus** de la planche posée |
 
-C'est `Rz(a) · Rx(180°)` écrit en clair. À `a = 0` on retrouve la
-matrice de la prise.
+C'est `Rz(a) · Rx(180°)` écrit en clair. **À `a = 0` on retrouve
+exactement `DANS_LE_MAGASIN`** : la prise est le cas particulier de la
+dépose où l'on ne tourne rien. Les deux cibles de votre cycle ne
+diffèrent donc que par un angle.
 
 > **Question 8.** Dans `Rz(a)` seul, la deuxième colonne vaut
 > `(−sin a, cos a)`. Ici elle vaut `(sin a, −cos a)`. D'où vient ce
 > changement de signe, et sur quelle **autre** colonne agit le même
 > retournement ? (La partie droite de la figure est l'indice.)
 
-> **Question 9.** Pourquoi l'écart entre deux planches se prend-il le
-> long de `(−sin a, cos a)` et non le long de `(cos a, sin a)` ? Faites
-> le dessin pour `a = 90°`, puis vérifiez sur les cotes imprimées par
-> votre programme.
+> **Question 9.** Posez `a = 0` et comparez `dans_le_chantier` à
+> `DANS_LE_MAGASIN` terme à terme. Puis `a = 180°` : la planche
+> occupe-t-elle la même place ? Et la matrice est-elle la même ?
+> Qu'est-ce que cela dit d'une pièce symétrique ?
 
 ### 4.4 Une orientation n'est pas toujours atteignable
 
@@ -288,7 +293,7 @@ J4 = orientation − J1
 
 Les orientations atteignables sont donc centrées sur **la direction où
 pointe le bras**, et non sur zéro. Si le chantier est droit devant le
-robot (cap 90°), une rangée à `a = 0` demande au poignet exactement
+robot (cap 90°), une dépose à `a = 0` demande au poignet exactement
 `−90°` : la butée.
 
 Lancez votre programme avec `a = 0` et regardez `robot.controler()`
@@ -304,7 +309,7 @@ protester, puis avec `a = 90` et voyez la réserve disparaître.
 ## 5. Le lissage
 
 Sans lissage, le robot **s'arrête à chaque point de passage** — y
-compris au-dessus du magasin, où il n'a rien à faire que passer.
+compris aux points de dégagement, où il n'a rien à faire que passer.
 
 ```python
 robot.movj(PRISE @ HAUT, lissage=70)      # pourcentage, de 0 a 100
@@ -350,13 +355,31 @@ print(np.min(np.linalg.norm(P - (PRISE @ HAUT)[:3, 3], axis=1)), "mm")
 à côté de la planche n'emporte rien. Dans le cycle ci-dessus, les
 dégagements sont lissés et les deux points de contact restent à zéro.
 
-Le modèle vous protège à moitié : il refuse de lisser autour d'une
-`attendre()`, parce qu'une temporisation demandée doit être tenue. Mais
-il **accepte** de lisser un point où vous commandez la ventouse — c'est
-à vous de ne pas le faire.
+Le modèle vous protège à moitié :
 
-> **Question 12.** Lissez volontairement le point de prise, lancez la
-> lecture avec la planche affichée, et décrivez ce que vous voyez.
+- il **refuse** de lisser autour d'une `attendre()`, parce qu'une
+  temporisation demandée doit être tenue ;
+- il **accepte** de lisser un point où vous commandez la ventouse. Une
+  action ne demande aucun temps, donc elle ne neutralise rien. Lisser
+  un point où l'on agit, c'est agir avant d'y être.
+
+> **Question 12.** Lissez volontairement le point de prise à 100 %, et
+> mesurez **où est la ventouse à l'instant où elle aspire** :
+>
+> ```python
+> ev = [e for e in robot.programme.evenements if e.type == "OUTIL" and e.etat]
+> T = robot.robot.mgd(traj.q(ev[0].t))
+> print(np.linalg.norm(T[:3, 3] - PRISE[:3, 3]), "mm")
+> ```
+>
+> Vous trouverez **quelques centièmes de millimètre**, et non les
+> quelques millimètres annoncés. Expliquez pourquoi, sachant que le
+> recouvrement est plafonné à 49 % du **plus court** des deux segments
+> voisins, et qu'une action dure un battement de cil.
+>
+> Puis dites dans quel cas la même faute coûterait cher : quel genre
+> d'instruction faudrait-il trouver après le point de prise pour que
+> l'écart devienne dangereux ?
 
 ### 5.4 Sur la machine réelle
 
@@ -388,8 +411,9 @@ robot.poser_piece(x=..., y=..., dims=(125, 30, 10), magasin=True)
 ```
 
 `magasin=True` : une autre réapparaît dès que le robot emporte celle-ci
-— comme vous qui reposez une planche à chaque cycle. Sans cela, le
-magasin se vide au premier passage.
+— comme vous qui reposez une planche. Un seul cycle ne le montre
+guère ; l'activité suivante en enchaîne douze, et sans cela le magasin
+s'y viderait au premier passage.
 
 C'est du **décor** : aucune instruction, aucune trajectoire, rien n'est
 changé au programme. Mais une prise qui vise à côté se voit alors
@@ -432,8 +456,9 @@ python votre_programme.py --reel
   n'étaient pas vraiment exprimées dans le repère.
 - **Posez le magasin en biais** et décrivez-le par la partie rotation de
   `MAGASIN`.
-- **Changez l'orientation de la rangée** et retrouvez, par le calcul,
-  l'intervalle d'angles que le poignet accepte.
+- **Changez l'orientation de la dépose** et retrouvez, par le calcul,
+  l'intervalle d'angles que le poignet accepte. Vérifiez-le ensuite
+  avec `controler()`.
 
 ---
 
