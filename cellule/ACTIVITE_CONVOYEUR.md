@@ -242,7 +242,10 @@ avant le milieu du cube.
 
 ```python
 PRISE = CONVOYEUR @ CAPTEUR @ DANS_LE_CAPTEUR
-HAUT = hg.translation(0, 0, -70)     # 70 mm AU-DESSUS, repere OUTIL
+HAUT = np.array([[1, 0, 0,   0],
+                 [0, 1, 0,   0],
+                 [0, 0, 1, -70],     # 70 mm AU-DESSUS, repere OUTIL
+                 [0, 0, 0,   1]], dtype=float)
 ```
 
 Le `−70` surprend : on monte, et le nombre est négatif. C'est que le `z`

@@ -178,7 +178,10 @@ DEPOSE = np.array([[0.156434,  0.987688,  0,  15.00],
                    [0,         0,        -1,  92.00],
                    [0,         0,         0,      1]], dtype=float)
 
-HAUT = hg.translation(0, 0, -70)
+HAUT = np.array([[1, 0, 0,   0.0],
+                 [0, 1, 0,   0.0],
+                 [0, 0, 1, -70.0],
+                 [0, 0, 0,   1.0]], dtype=float)
 
 assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 

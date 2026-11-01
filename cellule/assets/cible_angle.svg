@@ -50,7 +50,7 @@
 <text x="643.0" y="310.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2b6cb0" text-anchor="middle">1</text>
 <text x="382.0" y="278.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#333" text-anchor="end">Rz(a) =</text>
 <text x="40.0" y="412.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#333" text-anchor="start">2. puis Rx(180&#176;), AUTOUR DE u : l&#8217;outil approche par le dessus</text>
-<text x="40.0" y="432.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#666" text-anchor="start">multiplier &#192; DROITE, c&#8217;est tourner dans le rep&#232;re INTERM&#201;DIAIRE (u, v, w) &#8212; u reste, v et w se retournent</text>
+<text x="40.0" y="432.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#666" text-anchor="start">multiplier &#192; DROITE, c&#8217;est tourner dans le rep&#232;re INTERM&#201;DIAIRE (u, v, w) : l&#8217;axe du demi-tour reste, les deux autres se retournent</text>
 <line x1="180.0" y1="572.0" x2="270.4" y2="572.0" stroke="#b9bec6" stroke-width="1.8" stroke-linecap="round"/>
 <polygon points="276.0,572.0 268.0,574.9 268.0,569.1" fill="#b9bec6"/>
 <line x1="180.0" y1="572.0" x2="180.0" y2="481.6" stroke="#b9bec6" stroke-width="1.8" stroke-linecap="round"/>
@@ -59,18 +59,18 @@
 <text x="178.0" y="468.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="middle">y</text>
 <line x1="180.0" y1="572.0" x2="241.2" y2="524.2" stroke="#c0392b" stroke-width="2.8" stroke-linecap="round"/>
 <polygon points="246.2,520.3 241.1,528.4 237.1,523.3" fill="#c0392b"/>
-<text x="256.2" y="512.3" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="start">Xo</text>
+<text x="256.2" y="512.3" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="start">Xo = u</text>
 <line x1="180.0" y1="572.0" x2="132.2" y2="510.8" stroke="#9fd3ae" stroke-width="2.0" stroke-linecap="round" stroke-dasharray="5 4"/>
 <polygon points="128.3,505.8 136.4,510.9 131.3,514.9" fill="#9fd3ae"/>
 <text x="120.3" y="499.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#6aa87f" text-anchor="end">v</text>
-<text x="120.3" y="515.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="11" font-weight="400" fill="#8aa894" text-anchor="end">avant</text>
+<text x="120.3" y="515.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="11" font-weight="400" fill="#8aa894" text-anchor="end">du panneau 1</text>
 <line x1="180.0" y1="572.0" x2="227.8" y2="633.2" stroke="#2e9e4f" stroke-width="2.8" stroke-linecap="round"/>
 <polygon points="231.7,638.2 223.6,633.1 228.7,629.1" fill="#2e9e4f"/>
-<text x="241.7" y="654.2" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="start">Yo</text>
+<text x="241.7" y="654.2" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="start">Yo = &#8722;v</text>
 <circle cx="180.0" cy="572.0" r="9" fill="#2b6cb0" fill-opacity="0.08" stroke="#2b6cb0" stroke-width="2"/>
 <line x1="175.0" y1="567.0" x2="185.0" y2="577.0" stroke="#2b6cb0" stroke-width="2"/>
 <line x1="175.0" y1="577.0" x2="185.0" y2="567.0" stroke="#2b6cb0" stroke-width="2"/>
-<text x="166.0" y="577.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0" text-anchor="end">Zo</text>
+<text x="166.0" y="577.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0" text-anchor="end">Zo = &#8722;w</text>
 <path d="M 220.0 572.0 A 40.0 40.0 0 0 0 211.5 547.4" fill="none" stroke="#333" stroke-width="1.5"/>
 <text x="231.1" y="559.4" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#333" text-anchor="middle" font-style="italic">a</text>
 <text x="471.0" y="510.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="middle">Xo</text>

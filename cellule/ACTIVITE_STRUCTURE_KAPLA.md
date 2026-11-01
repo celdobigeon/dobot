@@ -45,7 +45,7 @@ poser](ACTIVITE_PICK_AND_PLACE.md). On y reprend tel quel :
 | mise en route | `python dobot.py mise-en-route`, puis la ligne `defauts effaces` |
 | matrice de l'outil | `OUTIL`, mesurée puis vérifiée par une descente |
 | la cible comme situation | une matrice 4×4 : position **et** orientation |
-| les dégagements | `CIBLE @ HAUT`, avec `HAUT = translation(0, 0, −80)` |
+| les dégagements | `CIBLE @ HAUT`, la 4×4 d'une translation de −80 en z |
 | le lissage | lissé sur les dégagements, jamais sur un point de contact |
 
 ```python
@@ -56,7 +56,10 @@ OUTIL = np.array([[1,  0,  0,        0],
                   [0,  0,  0,        1]], dtype=float)
 robot.definir_repere_outil(OUTIL)
 
-HAUT = hg.translation(0, 0, -80)
+HAUT = np.array([[1, 0, 0,   0],
+                 [0, 1, 0,   0],
+                 [0, 0, 1, -80],     # 80 mm AU-DESSUS
+                 [0, 0, 0,   1]], dtype=float)
 ```
 
 **Ce qui change, et c'est le cœur de la séance :** la dernière fois,
@@ -173,20 +176,29 @@ pièces de 8 mm ne doivent demander qu'une ligne à changer.
 
 ![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
-L'assise *n* est tournée de `n × 75°`. Comme à l'activité précédente,
-la cible **se compose** — dans l'ordre même de la figure :
+L'assise *n* est tournée de `n × 75°`. La cible s'écrit en 4×4, comme
+toujours :
 
 ```python
-dans_la_structure = (hg.translation(ex, ey, z)   # ou elle se pose
-                     @ hg.rot_z(np.radians(a))   # 1. Rz(a)
-                     @ hg.rot_x(np.pi))          # 2. Rx(180 deg)
+c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
+
+dans_la_structure = np.array([[c,  s,  0, ex],
+                              [s, -c,  0, ey],
+                              [0,  0, -1,  z],
+                              [0,  0,  0,  1]], dtype=float)
 
 cible = STRUCTURE @ dans_la_structure
 ```
 
-Quatre matrices qui s'enchaînent, et chacune dit une chose : *le
-repère de la structure*, *la place de la pièce dedans*, *son
-orientation*, *l'outil qui approche par le dessus*.
+**D'où viennent ces seize nombres ?** Du même produit qu'à l'activité
+précédente — on va à sa place, on tourne de `a`, on retourne l'outil :
+
+```python
+assert np.allclose(dans_la_structure,
+                   hg.translation(ex, ey, z)
+                   @ hg.rot_z(np.radians(a))
+                   @ hg.rot_x(np.pi))
+```
 
 > **Le produit de deux matrices homogènes** demande quelques précautions
 > — l'ordre, les repères successifs, la lecture colonne par colonne. La
@@ -200,8 +212,7 @@ autour de `u`, et non autour du `x` de la base. `u` est l'axe du
 demi-tour et ne bouge pas ; `v` et `w` se retournent. D'où `(sin a,
 −cos a, 0)` et `(0, 0, −1)`.
 
-Le produit redonne la matrice que vous aviez écrite à la main la fois
-dernière :
+Et elle se lit colonne par colonne, comme toutes les autres :
 
 | Colonne | Ce qu'elle dit |
 |---|---|

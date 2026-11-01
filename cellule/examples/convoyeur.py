@@ -291,7 +291,11 @@ DEPOSE = np.array([[0.156434,  0.987688,  0,  15.00],
                    [0,         0,        -1,  92.00],
                    [0,         0,         0,      1]], dtype=float)
 
-HAUT = hg.translation(0, 0, -70)           # degagement, repere de l'OUTIL
+# degagement, exprime dans le repere de l'OUTIL
+HAUT = np.array([[1, 0, 0,   0.0],
+                 [0, 1, 0,   0.0],
+                 [0, 0, 1, -70.0],
+                 [0, 0, 0,   1.0]], dtype=float)
 
 print("PRISE = TAPIS.repere @ CAPTEUR @ DANS_LE_CAPTEUR")
 print("  position x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))

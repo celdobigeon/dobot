@@ -38,6 +38,18 @@ Toutes les cibles seront des **matrices homogènes 4×4**, construites à
 partir de cotes mesurées au réglet. Aucun point ne sera appris en
 amenant le bras à la main.
 
+> **La règle d'écriture, pour toutes les activités.** Une cible, un
+> repère, une transformation **se déclarent sous forme de matrice 4×4
+> écrite en clair**, dernière ligne `0 0 0 1` comprise. C'est la forme
+> qu'il faut savoir lire : une colonne par axe, la position en
+> quatrième colonne.
+>
+> Un produit comme `translation(...) @ rot_x(...)` ne remplace pas la
+> matrice — il la **justifie**, et on le met en assertion pour
+> vérifier qu'on ne s'est pas trompé de signe. La seule exception est
+> la **composition de repères**, `PRISE = MAGASIN @ DANS_LE_MAGASIN`,
+> où chaque facteur est déjà une 4×4 écrite en clair.
+
 > **Pourquoi ne pas apprendre les points à la main ?** Parce qu'un
 > point appris ne dit pas *d'où il vient*. Une cote mesurée au réglet
 > se discute, se vérifie, se corrige. Un point appris, non : il faut
@@ -189,50 +201,64 @@ toujours descendre dessus, donc il reste **une** rotation — le
 demi-tour autour de `x` :
 
 ```python
-DEPOSE_1 = hg.translation(..., ..., EPAISSEUR) @ hg.rot_x(np.pi)
+DEPOSE_1 = np.array([[1,  0,  0,       ...],
+                     [0, -1,  0,       ...],
+                     [0,  0, -1, EPAISSEUR],
+                     [0,  0,  0,         1]], dtype=float)
 ```
 
-Deux lignes de lecture : *on va là*, *on retourne l'outil pour qu'il
-approche par le dessus*. La partie rotation est **exactement celle de
-la prise** — vérifiez-le :
+La partie rotation est **exactement celle de la prise** — on ne tourne
+rien, on pose seulement ailleurs :
 
 ```python
 assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3])
 ```
 
-> **Question 6.** Écrivez à la main la matrice que donne
-> `translation(x, y, z) @ rot_x(π)`, puis comparez à ce qu'affiche
-> Python. Combien de ses seize nombres dépendent de l'endroit où vous
-> posez la pièce ?
+**D'où viennent ces seize nombres ?** D'un demi-tour autour de `x`,
+appliqué à cet endroit. Le produit ne remplace pas la matrice : il la
+**justifie**, et il se vérifie.
+
+```python
+assert np.allclose(DEPOSE_1,
+                   hg.translation(..., ..., EPAISSEUR) @ hg.rot_x(np.pi))
+```
+
+> **Question 6.** Écrivez la matrice à la main *avant* de lancer
+> Python, à partir du produit ci-dessus. Combien de ses seize nombres
+> dépendent de l'endroit où vous posez la pièce ? Combien de
+> l'orientation ?
 
 ### 3.3 Cas 2 : la poser tournée
 
 ![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
-Maintenant on la tourne de `a`. Il faut donc **deux** rotations, et
-l'ordre compte :
-
-```python
-DEPOSE_2 = (hg.translation(..., ..., EPAISSEUR)   # ou elle se pose
-            @ hg.rot_z(np.radians(a))             # 1. Rz(a)
-            @ hg.rot_x(np.pi))                    # 2. Rx(180 deg)
-```
-
-Trois lignes, trois gestes : *on va là*, *on tourne de `a`*, *on
-retourne l'outil pour qu'il approche par le dessus*. **À `a = 0` on
-retombe sur le cas 1** — le cas 1 est celui où l'on ne tourne rien.
-
-Écrire les seize nombres à la main donne exactement la même matrice —
-vérifiez-le plutôt que de le croire :
+Maintenant on la tourne de `a`. La cible s'écrit toujours en 4×4 —
+seules les deux premières colonnes changent :
 
 ```python
 c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
 
-assert np.allclose(DEPOSE_2, [[c,  s,  0,       ...],
-                              [s, -c,  0,       ...],
-                              [0,  0, -1, EPAISSEUR],
-                              [0,  0,  0,         1]])
+DEPOSE_2 = np.array([[c,  s,  0,       ...],
+                     [s, -c,  0,       ...],
+                     [0,  0, -1, EPAISSEUR],
+                     [0,  0,  0,         1]], dtype=float)
 ```
+
+**À `a = 0` on retombe sur le cas 1** — le cas 1 est celui où l'on ne
+tourne rien.
+
+**D'où viennent ces nombres ?** De **deux** rotations cette fois, et
+l'ordre compte :
+
+```python
+assert np.allclose(DEPOSE_2,
+                   hg.translation(..., ..., EPAISSEUR)   # ou elle se pose
+                   @ hg.rot_z(np.radians(a))             # 1. Rz(a)
+                   @ hg.rot_x(np.pi))                    # 2. Rx(180 deg)
+```
+
+Trois facteurs, trois gestes : *on va là*, *on tourne de `a`*, *on
+retourne l'outil pour qu'il approche par le dessus*.
 
 > Le produit de deux matrices homogènes demande quelques précautions.
 > Si l'ordre, les repères successifs ou la lecture colonne par colonne
@@ -334,7 +360,10 @@ Ces deux points-là ne se mesurent pas : ils se **composent** à partir de
 la cible, **dans le repère de l'outil** :
 
 ```python
-HAUT = hg.translation(0, 0, -80)     # 80 mm AU-DESSUS
+HAUT = np.array([[1, 0, 0,   0],
+                 [0, 1, 0,   0],
+                 [0, 0, 1, -80],     # 80 mm AU-DESSUS
+                 [0, 0, 0,   1]], dtype=float)
 
 robot.movj(PRISE @ HAUT)             # approche
 robot.movl(PRISE)                    # descente

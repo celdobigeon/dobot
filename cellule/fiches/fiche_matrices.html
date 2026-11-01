@@ -318,6 +318,7 @@ table.compacte td{vertical-align:top;}
 </header>
 
 <nav class="sommaire">
+  <a href="#ecrire">00 Comment on les &eacute;crit</a>
   <a href="#reperer">01 Rep&eacute;rer un solide</a>
   <a href="#passage">02 La matrice de passage</a>
   <a href="#homogene">03 La transformation homog&egrave;ne</a>
@@ -327,6 +328,40 @@ table.compacte td{vertical-align:top;}
   <a href="#verifier">07 V&eacute;rifier une matrice</a>
   <a href="#pieges">08 Les cinq pi&egrave;ges</a>
 </nav>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="ecrire">
+<h2><span class="num">00</span> Comment on les &eacute;crit</h2>
+
+<p class="intro">La r&egrave;gle vaut pour tout ce qui se fait sous le Dobot&nbsp;:
+une <strong>cible</strong>, un <strong>rep&egrave;re</strong>, une
+<strong>transformation</strong> se d&eacute;clarent sous forme de matrice
+<strong>4&times;4 &eacute;crite en clair</strong>, derni&egrave;re ligne comprise.</p>
+
+<pre class="api"><code>DEPOSE = np.array([[1,  0,  0,       140.0],
+                   [0, -1,  0,       200.0],
+                   [0,  0, -1,   EPAISSEUR],
+                   [0,  0,  0,         1.0]], dtype=float)</code></pre>
+
+<div class="note attention">
+<p><strong>Et non</strong> <code class="k">hg.translation(...)&nbsp;@&nbsp;hg.rot_x(...)</code>
+comme d&eacute;claration. Un produit de fonctions cache les seize nombres au moment
+pr&eacute;cis o&ugrave; il faut les voir&nbsp;: une colonne par axe, la position en quatri&egrave;me
+colonne, et le <code class="k">0&nbsp;0&nbsp;0&nbsp;1</code> qu'on oublie.</p>
+</div>
+
+<p><strong>Le produit reste</strong>, mais comme <em>justification</em>&nbsp;: il dit
+d'o&ugrave; viennent les nombres, et il se v&eacute;rifie.</p>
+
+<pre class="api"><code><span class="c"># un demi-tour autour de x, a cet endroit</span>
+assert np.allclose(DEPOSE,
+                   hg.translation(140.0, 200.0, EPAISSEUR) @ hg.rot_x(np.pi))</code></pre>
+
+<p class="legende-mat">Une seule exception&nbsp;: la <strong>composition de
+rep&egrave;res</strong> &mdash; <code class="k">PRISE&nbsp;=&nbsp;MAGASIN&nbsp;@&nbsp;DANS_LE_MAGASIN</code>
+&mdash; o&ugrave; chaque facteur est d&eacute;j&agrave; une 4&times;4 &eacute;crite en clair, et o&ugrave; le produit
+est pr&eacute;cis&eacute;ment ce qu'on cherche &agrave; montrer.</p>
+</section>
 
 <!-- ------------------------------------------------------------------ -->
 <section id="reperer">

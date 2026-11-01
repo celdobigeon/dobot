@@ -144,7 +144,7 @@ def panneau(cx, cy, r, retourne, noms, projections):
         out.append(fleche(cx, cy, vi[0], vi[1], "#9fd3ae", 2.0, "5 4"))
         out.append(texte(vi[0] - 8, vi[1] - 6, "v", 13, "#6aa87f", "700",
                          "end"))
-        out.append(texte(vi[0] - 8, vi[1] + 10, "avant", 11, "#8aa894",
+        out.append(texte(vi[0] - 8, vi[1] + 10, "du panneau 1", 11, "#8aa894",
                          "400", "end"))
     v = (cx - signe * r * s, cy - signe * r * c)
     out.append(fleche(cx, cy, v[0], v[1], VERT, 2.8))
@@ -205,9 +205,10 @@ def main():
                        "700"))
     corps.append(texte(40, 432, "multiplier &#192; DROITE, c&#8217;est "
                        "tourner dans le rep&#232;re INTERM&#201;DIAIRE "
-                       "(u, v, w) &#8212; u reste, v et w se retournent",
-                       12, "#666"))
-    corps += panneau(180, 572, 84, True, ("Xo", "Yo", "Zo"), False)
+                       "(u, v, w) : l&#8217;axe du demi-tour reste, les deux "
+                       "autres se retournent", 12, "#666"))
+    corps += panneau(180, 572, 84, True,
+                     ("Xo = u", "Yo = &#8722;v", "Zo = &#8722;w"), False)
     corps += matrice_4x4(
         428, 524, "cible =",
         [["cos a", "sin a", "0"],

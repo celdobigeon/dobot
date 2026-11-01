@@ -222,7 +222,10 @@ robot.poser_piece(x=float(MAGASIN[0, 3]), y=float(MAGASIN[1, 3]),
 # approcher le sommet de la structure par le dessus, et `controler()` signale
 # J2 a 5 degres de sa butee. Le degagement est un reglage, pas une
 # constante -- il se choisit avec la hauteur de la structure.
-HAUT = hg.translation(0, 0, -80)
+HAUT = np.array([[1, 0, 0,   0.0],
+                 [0, 1, 0,   0.0],
+                 [0, 0, 1, -80.0],
+                 [0, 0, 0,   1.0]], dtype=float)
 
 assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 
@@ -302,16 +305,19 @@ def depose(assise, piece):
     ey = signe * DECALAGE * c
     z = (assise + 1) * EPAISSEUR
 
-    # LA CIBLE SE COMPOSE : on va a sa place, on tourne de a autour de
-    # la verticale, puis on retourne l'outil pour qu'il approche par le
-    # dessus. Les seize nombres s'en deduisent -- l'assertion le dit.
-    dans_la_structure = (hg.translation(ex, ey, z)
-                         @ hg.rot_z(a)
-                         @ hg.rot_x(np.pi))
-    assert np.allclose(dans_la_structure, [[c,  s,  0, ex],
-                                           [s, -c,  0, ey],
-                                           [0,  0, -1,  z],
-                                           [0,  0,  0,  1]])
+    dans_la_structure = np.array([[c,  s,  0, ex],
+                                  [s, -c,  0, ey],
+                                  [0,  0, -1,  z],
+                                  [0,  0,  0,  1]], dtype=float)
+
+    # D'OU VIENNENT CES SEIZE NOMBRES : on va a sa place, on tourne de a
+    # autour de la verticale, puis on retourne l'outil pour qu'il
+    # approche par le dessus. Rx(180) est ecrit A DROITE, donc il tourne
+    # dans le repere que Rz vient de produire -- autour de u, et non
+    # autour du x de la base. C'est de la que vient le signe.
+    assert np.allclose(dans_la_structure,
+                       hg.translation(ex, ey, z) @ hg.rot_z(a)
+                       @ hg.rot_x(np.pi))
     return STRUCTURE @ dans_la_structure
 
 

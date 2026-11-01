@@ -181,12 +181,16 @@ PRISE = np.array([[1,  0,  0,        60.0],
 # CAS 1 -- on repose la piece COMME ON L'A PRISE. Une seule rotation :
 # le demi-tour qui fait descendre l'outil. Pas de Rz, puisqu'on ne
 # tourne rien. La matrice est celle de la prise, a la position pres.
-DEPOSE_1 = hg.translation(140.0, 200.0, EPAISSEUR) @ hg.rot_x(np.pi)
+DEPOSE_1 = np.array([[1,  0,  0,       140.0],
+                     [0, -1,  0,       200.0],
+                     [0,  0, -1,   EPAISSEUR],
+                     [0,  0,  0,         1.0]], dtype=float)
 
-assert np.allclose(DEPOSE_1, [[1,  0,  0,       140.0],
-                              [0, -1,  0,       200.0],
-                              [0,  0, -1,   EPAISSEUR],
-                              [0,  0,  0,         1.0]])
+# D'OU VIENNENT CES SEIZE NOMBRES : un demi-tour autour de x, a cet
+# endroit. On DECLARE la matrice -- c'est elle qu'il faut savoir lire --
+# et on prouve par le produit qu'on ne s'est pas trompe de signe.
+assert np.allclose(DEPOSE_1,
+                   hg.translation(140.0, 200.0, EPAISSEUR) @ hg.rot_x(np.pi))
 assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3]),     "cas 1 : meme orientation qu'a la prise, c'est tout l'enonce"
 
 # CAS 2 -- on la repose TOURNEE. Deux rotations, dans l'ordre de la
@@ -194,15 +198,16 @@ assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3]),     "cas 1 : meme orientati
 # retourne l'outil. Le second produit est ecrit A DROITE, donc il
 # tourne dans le repere que Rz vient de produire -- autour de u, et
 # non autour du x de la base. C'est de la que vient le signe.
-DEPOSE_2 = (hg.translation(0.0, 240.0, EPAISSEUR)
-            @ hg.rot_z(np.radians(ANGLE))
-            @ hg.rot_x(np.pi))
-
 _c, _s = np.cos(np.radians(ANGLE)), np.sin(np.radians(ANGLE))
-assert np.allclose(DEPOSE_2, [[_c,  _s,  0,         0.0],
-                              [_s, -_c,  0,       240.0],
-                              [0,    0, -1,   EPAISSEUR],
-                              [0,    0,  0,         1.0]])
+
+DEPOSE_2 = np.array([[_c,  _s,  0,         0.0],
+                     [_s, -_c,  0,       240.0],
+                     [0,    0, -1,   EPAISSEUR],
+                     [0,    0,  0,         1.0]], dtype=float)
+
+# et le produit qui la justifie, dans l'ordre de la figure
+assert np.allclose(DEPOSE_2, hg.translation(0.0, 240.0, EPAISSEUR)
+                   @ hg.rot_z(np.radians(ANGLE)) @ hg.rot_x(np.pi))
 
 # POURQUOI LES DEUX NE SONT PAS AU MEME ENDROIT. J4 = orientation - J1,
 # et J4 ne va que de -90 a +90. Le cas 1 garde l'orientation 0, il lui
@@ -226,7 +231,11 @@ robot.poser_piece(x=float(PRISE[0, 3]), y=float(PRISE[1, 3]),
 # pointant vers le bas, MONTER s'ecrit avec un z NEGATIF -- on le
 # verifie plutot que de le croire.
 
-HAUT = hg.translation(0, 0, -80)
+HAUT = np.array([[1, 0, 0,   0.0],
+                 [0, 1, 0,   0.0],
+                 [0, 0, 1, -80.0],
+                 [0, 0, 0,   1.0]], dtype=float)
+
 assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 
 # ---------------------------------------------------------------------------
