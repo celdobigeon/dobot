@@ -117,17 +117,22 @@ class Convoyeur:
     # qu'au dessin -- elles placent le barillet sur son support, en
     # travers de la bande.
     #
-    # Valeurs relevees sur le maillage du tapis du labo : son equerre
-    # tient entre y = 26 et 66, et monte de z = 14 a 31. Le capteur se
-    # visse dedans, vise le centre de la bande, et sa fenetre tombe a
-    # mi-hauteur d'un cube de 25.
-    #: ecart du corps du capteur a l'axe de la bande, en mm
-    capteur_y: float = 46.0
-    #: hauteur du corps du capteur au-dessus de la bande, en mm
-    capteur_z: float = 16.0
+    # Valeurs relevees sur le maillage du tapis du labo, dans l'ALESAGE
+    # du bras qui porte le capteur : le bras est une plaque verticale de
+    # y = 25,4 a 29,0, et son trou fait 9 mm, centre 23,3 mm au-dessus
+    # de la bande. Le barillet s'y glisse, couche en travers, et vise
+    # l'axe du tapis -- un cube de 25 lui coupe le faisceau.
+    #
+    # Le bras, lui, SUIT `capteur_s` : la vue le fait coulisser le long
+    # de la bande, comme dans sa rainure. Support et capteur ne peuvent
+    # donc pas se separer.
+    #: ecart du barillet a l'axe de la bande, en mm (le plan du bras)
+    capteur_y: float = 27.2
+    #: hauteur du barillet au-dessus de la bande, en mm (l'alesage)
+    capteur_z: float = 23.3
     #: diametre et longueur du barillet, en mm
-    capteur_diametre: float = 14.0
-    capteur_longueur: float = 34.0
+    capteur_diametre: float = 9.0
+    capteur_longueur: float = 40.0
 
     #: abscisse du champ de la camera, et son diametre apparent
     camera_s: float = 300.0

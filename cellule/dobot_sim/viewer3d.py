@@ -575,13 +575,26 @@ class Vue3D(gl.GLViewWidget):
         # le reste : le capteur, sa fenetre, le champ de la camera et les
         # pieces n'existent dans aucune CAO -- ce sont des grandeurs de
         # la cellule, pas de la mecanique.
-        maillage = self._maillage_tapis(tapis)
-        if maillage is None:
+        corps, support, x_support = self._maillage_tapis(tapis)
+        if corps is None:
             self._items_tapis = self._peindre(tapis.boites(t))
             return
 
-        self._items_tapis = [maillage]
-        maillage.setTransform(_qmat(np.asarray(tapis.repere, dtype=float)))
+        R = np.asarray(tapis.repere, dtype=float)
+        self._items_tapis = [corps]
+        corps.setTransform(_qmat(R))
+
+        # LE BRAS DU CAPTEUR SUIT LE CAPTEUR. Le constructeur l'a dessine
+        # a une abscisse qui est la sienne ; sur la cellule il coulisse
+        # dans sa rainure, et c'est `capteur_s` qui dit ou. On le glisse
+        # donc le long de la bande, au lieu de laisser le barillet
+        # flotter a cote de son support.
+        if support is not None:
+            self._items_tapis.append(support)
+            s = getattr(tapis, "capteur_s", None)
+            dx = 0.0 if s is None else float(s) - x_support
+            support.setTransform(_qmat(R @ hg.translation(dx, 0.0, 0.0)))
+
         garde = {"bande", "bati"}
         self._items_tapis += self._peindre(
             [b for b in tapis.boites(t) if b.get("role") not in garde])
@@ -590,30 +603,56 @@ class Vue3D(gl.GLViewWidget):
         """
         Le maillage OBJ du tapis, charge une fois et garde.
 
-        Rend None si le tapis n'en declare pas, ou si le fichier manque :
-        on retombe alors sur les boites, et la scene reste lisible. Un
-        modele 3D absent ne doit pas faire disparaitre le convoyeur.
+        Rend `(corps, support, x_support)` : le tapis, le BRAS DU
+        CAPTEUR detache, et l'abscisse ou le constructeur l'a dessine.
+        Le bras est rendu a part pour pouvoir le glisser la ou le
+        capteur est declare.
+
+        `(None, None, 0.0)` si le tapis ne declare pas de maillage ou si
+        le fichier manque : on retombe alors sur les boites, et la scene
+        reste lisible. Un modele 3D absent ne doit pas faire disparaitre
+        le convoyeur.
         """
+        vide = (None, None, 0.0)
         chemin = getattr(tapis, "maillage", None)
         if not chemin:
-            return None
+            return vide
         cache = getattr(self, "_cache_tapis", {})
         if chemin not in cache:
-            try:
-                from .meshes import charger_obj
-                V, F = charger_obj(chemin)
-                md = gl.MeshData(vertexes=V.astype(np.float32),
-                                 faces=F.astype(np.uint32))
-                cache[chemin] = gl.GLMeshItem(
-                    meshdata=md, smooth=True, color=(0.62, 0.64, 0.68, 1.0),
-                    shader=NUANCEUR, glOptions="opaque")
-            except Exception:
-                cache[chemin] = None
+            cache[chemin] = self._charger_tapis(chemin)
             self._cache_tapis = cache
-        item = cache[chemin]
-        if item is not None and item not in self.items:
-            self.addItem(item)
-        return item
+        corps, support, x_support = cache[chemin]
+        for item in (corps, support):
+            if item is not None and item not in self.items:
+                self.addItem(item)
+        return corps, support, x_support
+
+    def _charger_tapis(self, chemin):
+        """Lit l'OBJ et en detache le bras du capteur. Voir _maillage_tapis."""
+        from .meshes import charger_obj, composante_du_plus_haut
+
+        def peindre(V, F):
+            md = gl.MeshData(vertexes=V.astype(np.float32),
+                             faces=F.astype(np.uint32))
+            return gl.GLMeshItem(meshdata=md, smooth=True,
+                                 color=(0.62, 0.64, 0.68, 1.0),
+                                 shader=NUANCEUR, glOptions="opaque")
+
+        try:
+            V, F = charger_obj(chemin)
+        except Exception:
+            return (None, None, 0.0)
+        try:
+            haut = composante_du_plus_haut(V, F)
+            if not haut.any() or haut.all():
+                raise ValueError("rien a detacher")
+            sommets = V[np.unique(F[haut])]
+            x_support = float(sommets[:, 0].min() + sommets[:, 0].max()) / 2.0
+            return (peindre(V, F[~haut]), peindre(V, F[haut]), x_support)
+        except Exception:
+            # le decoupage a echoue : on dessine le tapis d'un bloc,
+            # plutot que pas de tapis du tout
+            return (peindre(V, F), None, 0.0)
 
     def definir_rail(self, axe, l: float = 0.0) -> None:
         """

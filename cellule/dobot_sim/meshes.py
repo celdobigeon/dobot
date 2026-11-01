@@ -202,6 +202,49 @@ def charger_obj(chemin: str, utiliser_cache: bool = True
 # Configuration
 # ---------------------------------------------------------------------------
 
+def composante_du_plus_haut(V: np.ndarray, F: np.ndarray) -> np.ndarray:
+    """
+    Les faces du CORPS AUQUEL APPARTIENT LE POINT LE PLUS HAUT.
+
+    Sert a detacher d'un maillage d'un seul tenant la piece qui domine
+    la scene -- sur le convoyeur, le bras qui porte le capteur. Rend un
+    masque booleen sur `F`.
+
+    POURQUOI « LE PLUS HAUT » ET NON UNE BOITE DE SELECTION. Parce
+    qu'une boite se deregle des qu'on change de modele, et sans rien
+    dire : elle rendrait des faces arbitraires. Le point culminant,
+    lui, designe toujours quelque chose, et sur un tapis c'est le bras
+    du capteur -- rien d'autre ne depasse la bande.
+
+    Le decoupage suit les ARETES PARTAGEES : une piece boulonnee mais
+    maillee a part reste une composante distincte, ce qui est
+    exactement ce qu'on veut.
+    """
+    V = np.asarray(V, dtype=float)
+    F = np.asarray(F, dtype=np.int64)
+    if not len(F):
+        return np.zeros(0, dtype=bool)
+
+    parent = np.arange(len(V), dtype=np.int64)
+
+    def trouver(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return int(a)
+
+    for f in F:
+        ra, rb, rc = trouver(f[0]), trouver(f[1]), trouver(f[2])
+        if ra != rb:
+            parent[ra] = rb
+            rb = trouver(rb)
+        if rb != rc:
+            parent[rb] = rc
+
+    racine = trouver(int(np.argmax(V[:, 2])))
+    return np.array([trouver(int(f[0])) == racine for f in F], dtype=bool)
+
+
 def chemin_config_defaut() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "model_config.json")

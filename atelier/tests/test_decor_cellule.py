@@ -100,6 +100,41 @@ class TestDecorConvoyeur(unittest.TestCase):
         self.assertGreater(c[1], 100 / 2 - 10,
                            "le barillet doit border la bande, pas la couvrir")
 
+    def test_le_bras_du_capteur_se_detache_du_maillage(self):
+        """
+        La vue glisse le bras du capteur jusqu'a `capteur_s`. Encore
+        faut-il savoir lequel des 13 734 triangles le compose.
+
+        On verifie ici que la selection par le POINT LE PLUS HAUT
+        isole bien un bras -- mince, haut, sur le bord -- et non un
+        morceau de bati. Une selection trop large passerait inapercue
+        a l'ecran : le tapis se couperait en deux au premier
+        glissement.
+        """
+        import numpy as np
+        from dobot_sim.meshes import charger_obj, composante_du_plus_haut
+
+        obj = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "cellule", "Modele3D",
+            "convoyeur.obj")
+        if not os.path.isfile(obj):
+            self.skipTest("le maillage du tapis n'est pas la")
+
+        V, F = charger_obj(obj)
+        haut = composante_du_plus_haut(V, F)
+        self.assertTrue(haut.any(), "aucune face detachee")
+        self.assertLess(haut.sum(), len(F) / 20.0,
+                        "la selection a emporte la moitie du tapis")
+
+        S = V[np.unique(F[haut])]
+        self.assertLess(S[:, 1].max() - S[:, 1].min(), 10.0,
+                        "un bras de capteur est une PLAQUE, pas un bloc")
+        self.assertGreater(S[:, 2].max(), 25.0,
+                           "il doit depasser franchement la bande")
+        self.assertAlmostEqual(float(S[:, 0].min() + S[:, 0].max()) / 2.0,
+                               353.15, places=1,
+                               msg="l'abscisse ou le constructeur l'a dessine")
+
     def test_sans_capteur_ni_camera_rien_n_est_dessine(self):
         formes = Convoyeur(capteur_s=None, camera_s=None).boites()
         self.assertNotIn("capteur", _roles(formes))
