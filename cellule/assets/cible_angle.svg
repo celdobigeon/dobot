@@ -5,12 +5,13 @@
 <text x="40.0" y="42.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="600" fill="#333" text-anchor="start">la cible, en deux temps</text>
 <text x="40.0" y="64.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#666" text-anchor="start">cible = Rz(a) &#183; Rx(180&#176;) &#183; les colonnes sont les axes tourn&#233;s, les lignes le rep&#232;re fixe</text>
 <text x="40.0" y="110.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#333" text-anchor="start">1. Rz(a) : la rotation autour de la verticale</text>
+<text x="40.0" y="130.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#666" text-anchor="start">le rep&#232;re FIXE est celui de la BASE du robot (Xb, Yb, Zb) ; Rz(a) en produit le rep&#232;re tourn&#233; (u, v, w)</text>
 <line x1="180.0" y1="272.0" x2="270.4" y2="272.0" stroke="#b9bec6" stroke-width="1.8" stroke-linecap="round"/>
 <polygon points="276.0,272.0 268.0,274.9 268.0,269.1" fill="#b9bec6"/>
 <line x1="180.0" y1="272.0" x2="180.0" y2="181.6" stroke="#b9bec6" stroke-width="1.8" stroke-linecap="round"/>
 <polygon points="180.0,176.0 182.9,184.0 177.1,184.0" fill="#b9bec6"/>
-<text x="284.0" y="277.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="start">x</text>
-<text x="178.0" y="168.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="middle">y</text>
+<text x="284.0" y="277.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="start">Xb</text>
+<text x="178.0" y="168.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="middle">Yb</text>
 <line x1="180.0" y1="272.0" x2="241.2" y2="224.2" stroke="#c0392b" stroke-width="2.8" stroke-linecap="round"/>
 <polygon points="246.2,220.3 241.1,228.4 237.1,223.3" fill="#c0392b"/>
 <text x="256.2" y="212.3" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="start">u</text>
@@ -19,7 +20,7 @@
 <text x="118.3" y="197.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="end">v</text>
 <circle cx="180.0" cy="272.0" r="9" fill="#2b6cb0" fill-opacity="0.08" stroke="#2b6cb0" stroke-width="2"/>
 <circle cx="180.0" cy="272.0" r="2.8" fill="#2b6cb0"/>
-<text x="166.0" y="277.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0" text-anchor="end">w</text>
+<text x="166.0" y="277.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0" text-anchor="end">Zb = w</text>
 <path d="M 220.0 272.0 A 40.0 40.0 0 0 0 211.5 247.4" fill="none" stroke="#333" stroke-width="1.5"/>
 <text x="231.1" y="259.4" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#333" text-anchor="middle" font-style="italic">a</text>
 <line x1="246.2" y1="220.3" x2="246.2" y2="272.0" stroke="#c8792a" stroke-width="1.4" stroke-dasharray="5 4"/>
@@ -31,9 +32,9 @@
 <text x="471.0" y="210.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="middle">u</text>
 <text x="557.0" y="210.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="middle">v</text>
 <text x="643.0" y="210.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2b6cb0" text-anchor="middle">w</text>
-<text x="410.0" y="246.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="end">x</text>
-<text x="410.0" y="278.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="end">y</text>
-<text x="410.0" y="310.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2b6cb0" text-anchor="end">z</text>
+<text x="410.0" y="246.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="end">Xb</text>
+<text x="410.0" y="278.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="end">Yb</text>
+<text x="410.0" y="310.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2b6cb0" text-anchor="end">Zb</text>
 <rect x="428.0" y="224.0" width="86.0" height="96.0" rx="6" fill="#c0392b" fill-opacity="0.09"/>
 <rect x="514.0" y="224.0" width="86.0" height="96.0" rx="6" fill="#2e9e4f" fill-opacity="0.09"/>
 <rect x="600.0" y="224.0" width="86.0" height="96.0" rx="6" fill="#2b6cb0" fill-opacity="0.09"/>
@@ -55,8 +56,8 @@
 <polygon points="276.0,572.0 268.0,574.9 268.0,569.1" fill="#b9bec6"/>
 <line x1="180.0" y1="572.0" x2="180.0" y2="481.6" stroke="#b9bec6" stroke-width="1.8" stroke-linecap="round"/>
 <polygon points="180.0,476.0 182.9,484.0 177.1,484.0" fill="#b9bec6"/>
-<text x="284.0" y="577.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="start">x</text>
-<text x="178.0" y="468.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="middle">y</text>
+<text x="284.0" y="577.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="start">Xb</text>
+<text x="178.0" y="468.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#8d939c" text-anchor="middle">Yb</text>
 <line x1="180.0" y1="572.0" x2="241.2" y2="524.2" stroke="#c0392b" stroke-width="2.8" stroke-linecap="round"/>
 <polygon points="246.2,520.3 241.1,528.4 237.1,523.3" fill="#c0392b"/>
 <text x="256.2" y="512.3" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="start">Xo = u</text>

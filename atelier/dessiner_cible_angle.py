@@ -125,8 +125,9 @@ def panneau(cx, cy, r, retourne, noms, projections):
     # ligne de texte, c'est le lecteur qui trebuche.
     out.append(fleche(cx, cy, cx + r + 12, cy, PALE, 1.8, tete=8))
     out.append(fleche(cx, cy, cx, cy - r - 12, PALE, 1.8, tete=8))
-    out.append(texte(cx + r + 20, cy + 5, "x", 13, "#8d939c", "700"))
-    out.append(texte(cx - 2, cy - r - 20, "y", 13, "#8d939c", "700", "middle"))
+    out.append(texte(cx + r + 20, cy + 5, "Xb", 13, "#8d939c", "700"))
+    out.append(texte(cx - 2, cy - r - 20, "Yb", 13, "#8d939c", "700",
+                     "middle"))
 
     # le repere TOURNE
     u = (cx + r * c, cy - r * s)
@@ -190,14 +191,17 @@ def main():
     # -- 1. la rotation du cours ------------------------------------------
     corps.append(texte(40, 110, "1. Rz(a) : la rotation autour de la "
                        "verticale", 14, ENCRE, "700"))
-    corps += panneau(180, 272, 84, False, ("u", "v", "w"), True)
+    corps.append(texte(40, 130, "le rep&#232;re FIXE est celui de la BASE du "
+                       "robot (Xb, Yb, Zb) ; Rz(a) en produit le rep&#232;re "
+                       "tourn&#233; (u, v, w)", 12, "#666"))
+    corps += panneau(180, 272, 84, False, ("u", "v", "Zb = w"), True)
     corps += matrice_4x4(
         428, 224, "Rz(a) =",
         [["cos a", "&#8722;sin a", "0"],
          ["sin a", "cos a", "0"],
          ["0", "0", "1"]],
         largeur_colonne=86, hauteur_ligne=32,
-        titres=["u", "v", "w"], cotes=["x", "y", "z"])
+        titres=["u", "v", "w"], cotes=["Xb", "Yb", "Zb"])
 
     # -- 2. le demi-tour, et la cible --------------------------------------
     corps.append(texte(40, 412, "2. puis Rx(180&#176;), AUTOUR DE u : "
