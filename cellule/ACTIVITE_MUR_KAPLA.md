@@ -15,6 +15,20 @@ assises, douze planches.
 
 Vue de dessus, c'est une rosace. De côté, c'est un mur qui vrille.
 
+![Le mur terminé dans le simulateur](assets/mur_kapla_simulateur.png)
+
+Le même mur dans le simulateur, à la fin du cycle. À **droite**, les
+six assises posées. À **gauche**, le magasin, où la ventouse revient
+chercher chaque planche — toujours au même endroit, toujours dans la
+même orientation. Le petit trièdre posé dessus est celui de la **cible
+de prise** : son `z`, en bleu, **descend** vers la planche, là où celui
+de la base, au centre, monte.
+
+> Le mur n'est pas au milieu de l'image par hasard : il est **droit
+> devant le robot**, et le magasin **sur le côté**. Cette disposition
+> n'est pas un détail d'esthétique — la section 6 montrera qu'elle
+> décide de ce que le poignet peut faire.
+
 > **Le robot prend toutes les planches au même endroit, dans la même
 > orientation.** C'est donc lui qui les tourne, une par une, et c'est
 > tout l'objet de l'activité : une cible n'est pas un point, c'est une
