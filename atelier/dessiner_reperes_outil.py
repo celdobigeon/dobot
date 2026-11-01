@@ -113,43 +113,55 @@ def panneau_outil(longueur_outil=92.0):
 
 
 def main():
-    larg, haut = 820.0, 470.0
+    larg, haut = 960.0, 380.0
     corps = []
 
-    corps.append('<g transform="translate(180 195)">')
+    # LES DEUX SCHEMAS A GAUCHE, LA MATRICE A DROITE. Empilee sous les
+    # dessins, elle etouffait l'image ; a cote, chacun respire et l'oeil
+    # fait l'aller-retour entre l'axe et sa colonne.
+    corps.append('<g transform="translate(150 240)">')
     corps += panneau_base()
     corps.append("</g>")
-    corps.append(texte(180, 42, "rep&#232;re de la BASE", 16, ENCRE, "600",
+    corps.append(texte(150, 44, "rep&#232;re de la BASE", 15, ENCRE, "600",
                        "middle"))
-    corps.append(texte(180, 63, "z vers le haut", 13, "#666", "400", "middle"))
+    corps.append(texte(150, 64, "z vers le haut", 12, "#666", "400", "middle"))
 
-    corps.append('<g transform="translate(610 150)">')
+    corps.append('<g transform="translate(398 212)">')
     corps += panneau_outil()
     corps.append("</g>")
-    corps.append(texte(610, 42, "rep&#232;re de l'OUTIL", 16, ENCRE, "600",
+    corps.append(texte(398, 44, "rep&#232;re de l'OUTIL", 15, ENCRE, "600",
                        "middle"))
-    corps.append(texte(610, 63, "z vers le bas, y retourn&#233;", 13, "#666",
+    corps.append(texte(398, 64, "z vers le bas, y retourn&#233;", 12, "#666",
                        "400", "middle"))
 
     # ce qui passe de l'un a l'autre
-    corps.append('<path d="M 300 150 q 100 -36 200 0" fill="none" '
+    corps.append('<path d="M 246 164 q 52 -26 112 0" fill="none" '
                  'stroke="#7a6a2a" stroke-width="2.2" '
                  'marker-end="url(#pointe)"/>')
-    corps.append(texte(400, 112, "Rx(180&#176;)", 16, "#7a6a2a", "700",
+    corps.append(texte(302, 130, "Rx(180&#176;)", 15, "#7a6a2a", "700",
                        "middle"))
-    corps.append(texte(400, 132, "puis translation de &#8722;L selon z",
-                       12, "#7a6a2a", "400", "middle"))
+    corps.append(texte(302, 148, "puis translation de &#8722;L selon z",
+                       11, "#7a6a2a", "400", "middle"))
 
-    # LA MATRICE ENTIERE, et non quatre etiquettes : la ligne du bas
-    # -- 0 0 0 1 -- est justement celle qu'on oublie d'ecrire.
+    # LA MATRICE ENTIERE, lignes et colonnes NOMMEES. Les colonnes sont
+    # les axes de l'outil vus depuis la base ; les lignes, les
+    # composantes de la base. Croiser Yb et Yo donne -1, et c'est tout
+    # ce qu'il y a a retenir du demi-tour.
     corps += matrice_4x4(
-        252, 268, "OUTIL =",
+        620, 168, "OUTIL =",
         [["1", "0", "0", "0"],
          ["0", "&#8722;1", "0", "0"],
          ["0", "0", "&#8722;1", "&#8722;L"],
          ["0", "0", "0", "1"]],
         ["x : inchang&#233;", "y : retourn&#233;", "z : vers le bas",
-         "la pointe"])
+         "la pointe"],
+        largeur_colonne=78, hauteur_ligne=32,
+        titres=["Xo", "Yo", "Zo", "Oo"],
+        cotes=["Xb", "Yb", "Zb", ""])
+    corps.append(texte(776, 108, "les axes de l&#8217;OUTIL, en colonnes",
+                       12, "#666", "400", "middle"))
+    corps.append(texte(776, 332, "lus dans la base, en lignes : Xb Yb Zb",
+                       12, "#666", "400", "middle"))
 
     svg = ('<?xml version="1.0" encoding="UTF-8"?>\n'
            '<svg xmlns="http://www.w3.org/2000/svg" '

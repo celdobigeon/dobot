@@ -174,7 +174,7 @@ pièces de 8 mm ne doivent demander qu'une ligne à changer.
 
 ### 2.2 L'orientation
 
-![D'où viennent le cosinus et le sinus](assets/cible_angle.svg)
+![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
 L'assise *n* est tournée de `n × 75°`. Pour un angle `a` :
 
@@ -286,7 +286,7 @@ suivants brassent du vide.
 
 ---
 
-## 6. Valider hors ligne, puis descendre sur la machine
+## 6. Valider hors ligne, puis transférer sur la machine
 
 ```bash
 python votre_programme.py          # sans --reel : le simulateur
@@ -336,9 +336,7 @@ la direction où pointe le bras, **et non sur zéro**. Ramener dans
 > relancez `controler()`, et expliquez la réserve qui apparaît sur J2.
 > Qu'est-ce que cela dit d'un dégagement « généreux » ?
 
-**Ne descendez sur le robot qu'une fois les réserves levées.** Un cycle
-validé hors ligne reste une hypothèse ; un cycle qui proteste hors ligne
-est une certitude.
+**Ne transférez sur le robot qu'une fois la simulation validée.**
 
 ```bash
 python votre_programme.py --reel

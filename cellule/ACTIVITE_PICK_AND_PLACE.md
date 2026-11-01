@@ -186,7 +186,7 @@ fait `EPAISSEUR`, la ventouse se pose **dessus** : `z = EPAISSEUR`.
 
 ### 3.2 La dépose, et l'angle
 
-![D'où viennent le cosinus et le sinus](assets/cible_angle.svg)
+![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
 La pièce est posée sur la structure, tournée de `a` :
 
@@ -199,8 +199,10 @@ DEPOSE = np.array([[c,  s,  0,       ...],
                    [0,  0,  0,         1]], dtype=float)
 ```
 
-La figure dit d'où viennent `c` et `s`, et il n'y a rien d'autre à
-retenir :
+La figure la construit en deux temps : `Rz(a)`, la rotation du cours,
+puis `Rx(180°)`, le demi-tour qui fait approcher l'outil par le dessus.
+Les colonnes y portent le nom des axes de l'outil, les lignes celui du
+repère de base. Il n'y a rien d'autre à retenir :
 
 | Colonne | Ce qu'elle dit |
 |---|---|
@@ -217,7 +219,7 @@ par une position et un angle.
 > **Question 6.** Dans `Rz(a)` seul, la deuxième colonne vaut
 > `(−sin a, cos a)`. Ici elle vaut `(sin a, −cos a)`. D'où vient ce
 > changement de signe, et sur quelle **autre** colonne agit le même
-> retournement ? (La partie droite de la figure est l'indice.)
+> retournement ? (Comparez les deux matrices de la figure.)
 
 > **Question 7.** Posez `a = 180°`. La pièce occupe-t-elle la même
 > place qu'à `a = 0` ? Et la matrice est-elle la même ? Qu'est-ce que
@@ -395,7 +397,7 @@ immédiatement.
 
 ---
 
-## 7. Valider hors ligne, puis descendre sur la machine
+## 7. Valider hors ligne, puis transférer sur la machine
 
 ```bash
 python votre_programme.py          # sans --reel : le simulateur
@@ -410,9 +412,7 @@ for a in robot.controler():
 Le modèle vous dit, **machine éteinte**, ce que la machine découvrirait
 à vos dépens.
 
-**Ne descendez sur le robot qu'une fois les réserves levées.** Un cycle
-validé hors ligne reste une hypothèse ; un cycle qui proteste hors ligne
-est une certitude.
+**Ne transférez sur le robot qu'une fois la simulation validée.**
 
 ```bash
 python votre_programme.py --reel
@@ -425,7 +425,10 @@ python votre_programme.py --reel
 Votre programme marche. Il a pourtant un défaut, et il faut le voir
 maintenant, pendant qu'il ne coûte encore rien.
 
-**L'atelier déplace le magasin de deux centimètres.** Faites-le.
+**Le magasin a été déplacé de deux centimètres.** Cela arrive : on
+libère la table, on change de poste, et les pièces ne sont plus tout à
+fait au même endroit. Mesurez sa nouvelle position et corrigez votre
+programme pour que le cycle fonctionne de nouveau.
 
 > **Question 14.** Combien de nombres avez-vous dû reprendre, et dans
 > combien de matrices ? Jusqu'ici, c'est supportable.

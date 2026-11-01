@@ -270,7 +270,7 @@ capteur** — d'une quinzaine de millimètres sur cette cellule.
 
 ---
 
-## 6. Valider hors ligne, puis descendre sur la machine
+## 6. Valider hors ligne, puis transférer sur la machine
 
 ```bash
 python votre_programme.py          # sans --reel : le simulateur
@@ -293,7 +293,7 @@ se voit immédiatement. `magasin=True` en fait réapparaître une dès que
 le robot emporte la précédente — comme vous qui reposez une pièce à
 chaque cycle.
 
-**Ne descendez sur le robot qu'une fois les réserves levées.**
+**Ne transférez sur le robot qu'une fois la simulation validée.**
 
 ```bash
 python votre_programme.py --reel
