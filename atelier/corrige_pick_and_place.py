@@ -8,9 +8,15 @@ CORRIGE de l'activite pick and place -- cellule/ACTIVITE_PICK_AND_PLACE.md
     python corrige_pick_and_place.py --lissage 0      sans arrondi
     python corrige_pick_and_place.py --angle 30       depose en biais
 
-UNE piece, prise a un endroit et posee a un autre. Rien de plus :
-l'empilement et la rotation d'une assise a l'autre sont l'objet de
-l'activite suivante, le structure de kapla.
+UNE piece, prise toujours au meme endroit et posee DEUX FOIS :
+
+  cas 1   comme on l'a prise -- une seule rotation, le demi-tour qui
+          fait descendre l'outil ;
+  cas 2   tournee -- deux rotations, et c'est la que le produit
+          matriciel se gagne.
+
+Rien de plus : l'empilement et la rotation d'une assise a l'autre sont
+l'objet de l'activite suivante, la structure de kapla.
 
 NE PAS METTRE DANS cellule/. L'activite consiste a ecrire ce fichier.
 
@@ -36,9 +42,10 @@ Ce que l'activite demande, et ou c'est fait ici
 -----------------------------------------------
     1. mise en route                       -- hors du script, dobot.py
     2. mesure et matrice de l'outil        -- section 1
-    3. les deux cibles, depuis la base     -- section 2
-    4. approches et retraits par @         -- section 3
-    5. LE LISSAGE, et ce qu'il coute       -- section 4, le coeur
+    3. les cibles, depuis la base          -- section 2
+    4. DEUX ORIENTATIONS DE DEPOSE         -- section 2, cas 1 et 2
+    5. approches et retraits par @         -- section 3
+    6. LE LISSAGE, et ce qu'il coute       -- section 4, le coeur
 
 LE LISSAGE, PUISQUE C'EST L'OBJET DE L'ACTIVITE
 ------------------------------------------------
@@ -59,18 +66,18 @@ Trois choses a ne pas confondre :
     zones (ABB) ou du CNT (Fanuc).
 
 Le gain se lit dans `robot.resume()`, qui affiche les secondes
-economisees. Mesure sur ce cycle-ci :
+economisees. Mesure sur ce cycle-ci, les deux deposes comprises :
 
-    lissage    0 %  ->  24,01 s     ecart au point de degagement  0,0 mm
-    lissage   40 %  ->  22,13 s                                   0,1 mm
-    lissage   70 %  ->  20,73 s                                   0,7 mm
-    lissage  100 %  ->  19,32 s                                   2,0 mm
+    lissage    0 %  ->  45,34 s     ecart au point de degagement  0,0 mm
+    lissage   40 %  ->  41,41 s                                   0,1 mm
+    lissage   70 %  ->  38,46 s                                   0,7 mm
+    lissage  100 %  ->  35,51 s                                   2,0 mm
 
 Et le point de prise, lui, est atteint a 0,00 mm dans les quatre cas :
 il n'est pas lisse. Le raccord melange deux lois quintiques, donc de
 vitesse nulle aux bords ; les deux segments sont tous deux pres du
 point pendant le recouvrement, et l'ecart geometrique reste petit. Ce
-qu'on achete avec le lissage, ici, c'est 19,5 % de temps de cycle pour
+qu'on achete avec le lissage, ici, c'est 21,7 % de temps de cycle pour
 2 mm -- et non un virage large.
 """
 
@@ -168,24 +175,41 @@ PRISE = np.array([[1,  0,  0,        60.0],
 #
 # A ANGLE = 0 cette matrice redevient celle de la prise, au point pres :
 # la prise est le cas particulier ou l'on ne tourne rien.
-# ELLE SE COMPOSE, elle ne se recopie pas. Deux rotations elementaires,
-# dans cet ordre, et la lecture du programme suit celle de la figure :
+# ELLES SE COMPOSENT, elles ne se recopient pas. Et il y en a DEUX,
+# qui ne different que par le nombre de rotations.
 #
-#   Rz(a)      on tourne la piece autour de la verticale
-#   Rx(180)    l'outil approche PAR LE DESSUS -- y et z se retournent
-#
-# Ecrire les seize nombres a la main donne le meme resultat, et
-# l'assertion ci-dessous le prouve ; mais la composition DIT ce qu'on
-# fait, la liste de nombres non.
-DEPOSE = (hg.translation(0.0, 240.0, EPAISSEUR)
-          @ hg.rot_z(np.radians(ANGLE))
-          @ hg.rot_x(np.pi))
+# CAS 1 -- on repose la piece COMME ON L'A PRISE. Une seule rotation :
+# le demi-tour qui fait descendre l'outil. Pas de Rz, puisqu'on ne
+# tourne rien. La matrice est celle de la prise, a la position pres.
+DEPOSE_1 = hg.translation(140.0, 200.0, EPAISSEUR) @ hg.rot_x(np.pi)
+
+assert np.allclose(DEPOSE_1, [[1,  0,  0,       140.0],
+                              [0, -1,  0,       200.0],
+                              [0,  0, -1,   EPAISSEUR],
+                              [0,  0,  0,         1.0]])
+assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3]),     "cas 1 : meme orientation qu'a la prise, c'est tout l'enonce"
+
+# CAS 2 -- on la repose TOURNEE. Deux rotations, dans l'ordre de la
+# figure : Rz(a) tourne la piece autour de la verticale, puis Rx(180)
+# retourne l'outil. Le second produit est ecrit A DROITE, donc il
+# tourne dans le repere que Rz vient de produire -- autour de u, et
+# non autour du x de la base. C'est de la que vient le signe.
+DEPOSE_2 = (hg.translation(0.0, 240.0, EPAISSEUR)
+            @ hg.rot_z(np.radians(ANGLE))
+            @ hg.rot_x(np.pi))
 
 _c, _s = np.cos(np.radians(ANGLE)), np.sin(np.radians(ANGLE))
-assert np.allclose(DEPOSE, [[_c,  _s,  0,         0.0],
-                            [_s, -_c,  0,       240.0],
-                            [0,    0, -1,   EPAISSEUR],
-                            [0,    0,  0,         1.0]])
+assert np.allclose(DEPOSE_2, [[_c,  _s,  0,         0.0],
+                              [_s, -_c,  0,       240.0],
+                              [0,    0, -1,   EPAISSEUR],
+                              [0,    0,  0,         1.0]])
+
+# POURQUOI LES DEUX NE SONT PAS AU MEME ENDROIT. J4 = orientation - J1,
+# et J4 ne va que de -90 a +90. Le cas 1 garde l'orientation 0, il lui
+# faut donc un endroit vu sous un cap modere : (140, 200) est a 55
+# degres, J4 = -55. Droit devant le robot, cap 90, le meme cas 1
+# demanderait exactement -90 : la butee. `controler()` le dirait.
+DEPOSES = [("comme a la prise", DEPOSE_1), ("tournee", DEPOSE_2)]
 
 # la piece du simulateur : du decor, aucune instruction. magasin=True
 # en fait reapparaitre une des qu'on emporte celle-ci.
@@ -214,21 +238,20 @@ assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 # n'est pas atteint, et une ventouse qui aspire a cote n'emporte rien.
 
 robot.repli()
+for _nom, cible in DEPOSES:
+    # prise : approche lissee, descente franche, aspiration, retrait
+    robot.movj(PRISE @ HAUT, lissage=LISSAGE)
+    robot.movl(PRISE, vitesse=40)                  # lissage 0 par defaut
+    robot.ventouse(True)
+    robot.attendre(0.3)
+    robot.movl(PRISE @ HAUT, lissage=LISSAGE)
 
-# prise : approche lissee, descente franche, aspiration, retrait
-robot.movj(PRISE @ HAUT, lissage=LISSAGE)
-robot.movl(PRISE, vitesse=40)                      # lissage 0 par defaut
-robot.ventouse(True)
-robot.attendre(0.3)
-robot.movl(PRISE @ HAUT, lissage=LISSAGE)
-
-# depose : le meme geste, a l'autre bout et dans l'autre orientation
-robot.movj(DEPOSE @ HAUT, lissage=LISSAGE)
-robot.movl(DEPOSE, vitesse=40)
-robot.ventouse(False)
-robot.attendre(0.3)
-robot.movl(DEPOSE @ HAUT, lissage=LISSAGE)
-
+    # depose : le meme geste, ailleurs et -- cas 2 -- autrement oriente
+    robot.movj(cible @ HAUT, lissage=LISSAGE)
+    robot.movl(cible, vitesse=40)
+    robot.ventouse(False)
+    robot.attendre(0.3)
+    robot.movl(cible @ HAUT, lissage=LISSAGE)
 robot.repli()
 
 # ---------------------------------------------------------------------------
@@ -241,10 +264,13 @@ if __name__ == "__main__":
     print("lissage des degagements : {:.0f} %".format(LISSAGE))
     print("orientation a la depose : {:+.0f} deg".format(ANGLE))
     print("")
-    print("prise  : x={:6.1f}  y={:6.1f}  z={:5.1f}   a   +0 deg"
+    print("prise    : x={:6.1f}  y={:6.1f}  z={:5.1f}   a   +0 deg"
           .format(*PRISE[:3, 3]))
-    print("depose : x={:6.1f}  y={:6.1f}  z={:5.1f}   a {:+.0f} deg"
-          .format(DEPOSE[0, 3], DEPOSE[1, 3], DEPOSE[2, 3], ANGLE))
+    for nom, (_, T) in zip(("depose 1", "depose 2"), DEPOSES):
+        a_deg = np.degrees(np.arctan2(T[1, 0], T[0, 0]))
+        print("{} : x={:6.1f}  y={:6.1f}  z={:5.1f}   a {:+3.0f} deg   ({})"
+              .format(nom, T[0, 3], T[1, 3], T[2, 3], a_deg,
+                      DEPOSES[0][0] if nom.endswith("1") else DEPOSES[1][0]))
     print("")
     print(robot.resume().splitlines()[0])
 

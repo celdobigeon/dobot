@@ -188,6 +188,11 @@ Quatre matrices qui s'enchaînent, et chacune dit une chose : *le
 repère de la structure*, *la place de la pièce dedans*, *son
 orientation*, *l'outil qui approche par le dessus*.
 
+> **Le produit de deux matrices homogènes** demande quelques précautions
+> — l'ordre, les repères successifs, la lecture colonne par colonne. La
+> [fiche sur les matrices homogènes](fiches/fiche_matrices.html) les
+> reprend depuis le cours.
+
 **Rappel de l'activité précédente, parce que c'est là que tout se
 joue :** `Rx(180°)` est écrit **à droite**, donc il tourne dans le
 repère **intermédiaire** `(u, v, w)` que `Rz(a)` vient de produire —

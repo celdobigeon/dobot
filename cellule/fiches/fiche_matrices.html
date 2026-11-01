@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matrices homog&egrave;nes &mdash; rappel</title>
+<style>
+
+:root{
+  --fond:#f6f7f9; --carte:#ffffff; --encre:#191d24; --encre2:#4d5666;
+  --muet:#7b8496; --trait:#dde1e8; --trait2:#eceff4;
+  --accent:#3d6fd8; --accent-doux:#eaf0fd;
+  --axe-x:#c33f3f; --axe-y:#3a9448; --axe-z:#3d6fd8; --axe-r:#7c96d8;
+  --ok:#4c8f60; --alerte:#b3781f; --faute:#c0392b;
+  --ombre:0 1px 2px rgba(20,28,45,.06), 0 6px 18px rgba(20,28,45,.05);
+  --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+    --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+    --accent:#7aa2f7; --accent-doux:#1b2330;
+    --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+    --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+    --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --fond:#12151a; --carte:#181c23; --encre:#e7eaf0; --encre2:#b9c1cf;
+  --muet:#8993a5; --trait:#2a303a; --trait2:#21262e;
+  --accent:#7aa2f7; --accent-doux:#1b2330;
+  --axe-x:#e06a6a; --axe-y:#66c077; --axe-z:#7aa2f7; --axe-r:#9db4ea;
+  --ok:#6fbc86; --alerte:#d7a44a; --faute:#e0705f;
+  --ombre:0 1px 2px rgba(0,0,0,.35), 0 6px 18px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth; scroll-padding-top:74px;}
+body{
+  margin:0; background:var(--fond); color:var(--encre);
+  font-family:var(--serif); font-size:16.5px; line-height:1.62;
+  padding-inline:16px; padding-block:0;
+}
+.page{max-width:920px; margin:0 auto;}
+
+/* ---- en-tete ---- */
+header.une{padding-block:44px 26px; border-bottom:3px double var(--trait);}
+.surtitre{
+  font-family:var(--mono); font-size:11.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 12px;
+}
+h1{
+  font-family:var(--sans); font-weight:650; letter-spacing:-.02em;
+  font-size:clamp(28px,5.2vw,42px); line-height:1.12; margin:0 0 10px;
+  text-wrap:balance;
+}
+.chapeau{margin:0; color:var(--encre2); font-size:17.5px; max-width:62ch;}
+.jeu-fiches{
+  margin-top:20px; font-family:var(--sans); font-size:13.5px;
+  display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+}
+.jeu-fiches a{
+  color:var(--accent); text-decoration:none;
+  border:1px solid var(--trait); border-radius:3px; padding:4px 10px;
+  background:var(--carte);
+}
+.jeu-fiches a:hover{border-color:var(--accent);}
+.jeu-fiches .ici{color:var(--muet); border-style:dashed; background:none;}
+
+/* ---- sommaire ---- */
+nav.sommaire{
+  position:sticky; top:0; z-index:5; background:var(--fond);
+  border-bottom:1px solid var(--trait); margin-bottom:8px;
+  padding-block:10px; font-family:var(--sans); font-size:13px;
+}
+nav.sommaire ol{
+  list-style:none; display:flex; flex-wrap:wrap; gap:6px 18px;
+  margin:0; padding:0; counter-reset:s;
+}
+nav.sommaire a{color:var(--encre2); text-decoration:none; white-space:nowrap;}
+nav.sommaire a::before{
+  counter-increment:s; content:counter(s,decimal-leading-zero) " ";
+  font-family:var(--mono); font-size:10.5px; color:var(--muet);
+}
+nav.sommaire a:hover{color:var(--accent);}
+
+/* ---- sections ---- */
+section{padding-block:34px 6px; border-top:1px solid var(--trait2);}
+section:first-of-type{border-top:none;}
+h2{
+  font-family:var(--sans); font-weight:640; letter-spacing:-.015em;
+  font-size:24px; line-height:1.2; margin:0 0 4px; text-wrap:balance;
+}
+h2 .num{
+  font-family:var(--mono); font-size:12px; font-weight:400;
+  color:var(--accent); letter-spacing:.1em; display:block; margin-bottom:6px;
+}
+h3{
+  font-family:var(--sans); font-weight:620; font-size:16.5px;
+  margin:26px 0 6px; letter-spacing:-.005em;
+}
+p{margin:.7em 0; max-width:68ch;}
+.intro{color:var(--encre2); max-width:66ch;}
+ul,ol.liste{max-width:66ch; padding-left:1.2em;}
+li{margin:.3em 0;}
+a{color:var(--accent);}
+
+/* ---- jetons ---- */
+.ui{
+  font-family:var(--sans); font-size:.9em; font-weight:600;
+  background:var(--accent-doux); color:var(--accent);
+  border-radius:3px; padding:1px 6px; white-space:nowrap;
+}
+kbd{
+  font-family:var(--mono); font-size:.82em; background:var(--carte);
+  border:1px solid var(--trait); border-bottom-width:2px; border-radius:4px;
+  padding:1px 6px; color:var(--encre2); white-space:nowrap;
+}
+code{font-family:var(--mono); font-size:.87em; color:var(--encre2);
+  background:var(--trait2); border-radius:3px; padding:1px 5px;}
+pre{
+  font-family:var(--mono); font-size:13px; line-height:1.55;
+  background:var(--carte); border:1px solid var(--trait); border-left:3px solid var(--accent);
+  border-radius:4px; padding:14px 16px; overflow-x:auto; margin:14px 0;
+  color:var(--encre);
+}
+pre code{background:none; padding:0; font-size:inherit; color:inherit;}
+pre .c{color:var(--muet); font-style:italic;}
+pre .k{color:var(--accent); font-weight:600;}
+pre .n{color:var(--axe-y);}
+
+/* ---- tableaux ---- */
+.cadre{overflow-x:auto; margin:16px 0;}
+table{border-collapse:collapse; width:100%; min-width:520px;
+  font-family:var(--sans); font-size:14px;}
+caption{
+  text-align:left; font-family:var(--mono); font-size:11px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muet);
+  padding-bottom:8px;
+}
+th{
+  text-align:left; font-weight:620; font-size:11.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muet);
+  border-bottom:1px solid var(--trait); padding:6px 12px 6px 0;
+}
+td{border-bottom:1px solid var(--trait2); padding:9px 12px 9px 0;
+  vertical-align:top; color:var(--encre2);}
+td:first-child{color:var(--encre); font-weight:560; white-space:nowrap;}
+td.libre:first-child{white-space:normal;}
+tr:last-child td{border-bottom:none;}
+td .mono,th .mono{font-family:var(--mono); font-size:12.5px;}
+td.num{font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---- encarts ---- */
+.note{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  box-shadow:var(--ombre); padding:14px 18px; margin:18px 0; max-width:70ch;
+}
+.note p{margin:.4em 0;}
+.note .etiquette{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; display:block; margin-bottom:5px;
+}
+.note.attention{border-left:3px solid var(--alerte);}
+.note.attention .etiquette{color:var(--alerte);}
+.note.piege{border-left:3px solid var(--faute);}
+.note.piege .etiquette{color:var(--faute);}
+.note.astuce{border-left:3px solid var(--ok);}
+.note.astuce .etiquette{color:var(--ok);}
+
+/* ---- axes colores ---- */
+.ax{font-family:var(--mono); font-weight:700;}
+.ax-x{color:var(--axe-x);} .ax-y{color:var(--axe-y);}
+.ax-z{color:var(--axe-z);} .ax-r{color:var(--axe-r);}
+
+footer{
+  margin-top:40px; padding-block:22px 48px; border-top:3px double var(--trait);
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+}
+
+@media (max-width:560px){
+  body{font-size:16px;}
+  nav.sommaire{position:static;}
+}
+@media print{
+  :root{--fond:#fff; --carte:#fff;}
+  body{font-size:11pt;} nav.sommaire{display:none;}
+  section{break-inside:auto; page-break-inside:auto;}
+  h2,h3{break-after:avoid;} .note,pre,.cadre{break-inside:avoid;}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+
+/* ---- entrees de reference ---- */
+.api{margin:28px 0 10px;}
+.api .sig{
+  background:var(--trait2); border-left:3px solid var(--accent);
+  border-radius:0 4px 4px 0; margin-bottom:10px; color:var(--encre2);
+  font-family:var(--mono); font-size:13.5px; line-height:1.65;
+  /* la signature s'ecrit en entier : elle passe a la ligne au lieu de
+     defiler, avec un retrait pour que la suite se distingue du nom */
+  padding:10px 16px 10px 34px; text-indent:-18px;
+  white-space:normal; overflow-wrap:break-word;
+}
+.api .sig b{color:var(--encre); font-weight:700;}
+.api .sig i{color:var(--accent); font-style:italic;}
+.api .sig u{color:var(--muet); text-decoration:none;}
+.api .corps{padding-left:16px; border-left:1px solid var(--trait2);}
+.api .corps > p:first-child{margin-top:0;}
+.api .corps p{max-width:66ch;}
+dl.params{
+  display:grid; grid-template-columns:max-content 1fr; gap:7px 18px;
+  margin:12px 0; font-family:var(--sans); font-size:14px; max-width:70ch;
+}
+dl.params dt{
+  font-family:var(--mono); font-size:12.5px; font-weight:600;
+  color:var(--encre); white-space:nowrap; padding-top:1px;
+}
+dl.params dd{margin:0; color:var(--encre2);}
+.ty{
+  font-family:var(--sans); font-size:10px; font-weight:400; color:var(--muet);
+  border:1px solid var(--trait); border-radius:2px; padding:0 4px; margin-left:5px;
+  white-space:nowrap;
+}
+.rend{font-family:var(--sans); font-size:14px; color:var(--encre2);
+  margin:10px 0; max-width:70ch;}
+.rend > b{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--accent); font-weight:400;
+  margin-right:10px;
+}
+.rend.leve > b{color:var(--faute);}
+.api pre{margin:12px 0 0;}
+
+/* ---- listes compactes de fonctions ---- */
+table.compacte td:first-child{
+  font-family:var(--mono); font-size:12.5px; white-space:normal;
+  color:var(--encre); font-weight:600; width:42%;
+}
+table.compacte td{vertical-align:top;}
+
+/* ---- rappel de lecture ---- */
+.legende{
+  background:var(--carte); border:1px solid var(--trait); border-radius:5px;
+  padding:6px 18px 18px; margin:18px 0; box-shadow:var(--ombre);
+}
+@media (max-width:620px){
+  dl.params{grid-template-columns:1fr; gap:2px 0;}
+  dl.params dd{margin:0 0 8px;}
+  table.compacte td:first-child{width:auto;}
+}
+/* ---- matrices homogenes ---- */
+.matrice{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  margin:16px 0; font-family:var(--mono); font-size:13px;
+}
+.matrice .etiq{font-style:italic; color:var(--encre2); font-size:14px;}
+.matrice .grille{
+  display:grid; grid-template-columns:repeat(4, minmax(0, auto));
+  gap:5px 20px; padding:10px 16px; position:relative;
+  font-variant-numeric:tabular-nums;
+}
+.matrice .grille::before,.matrice .grille::after{
+  content:""; position:absolute; top:0; bottom:0; width:8px;
+  border:2px solid var(--muet);
+}
+.matrice .grille::before{left:0; border-right:none;}
+.matrice .grille::after{right:0; border-left:none;}
+.matrice .grille span{text-align:right; white-space:nowrap; color:var(--encre2);}
+.matrice .grille span.pos{color:var(--accent); font-weight:700;}
+.matrice .grille span.bas{color:var(--muet);}
+.legende-mat{
+  font-family:var(--sans); font-size:13px; color:var(--muet);
+  margin:-4px 0 18px; max-width:64ch;
+}
+@media (max-width:520px){
+  .matrice{font-size:11.5px; gap:8px;}
+  .matrice .grille{gap:4px 10px; padding:8px 12px;}
+}
+/* ---- renvois vers les exemples de la fiche 2 ---- */
+.voir{
+  font-family:var(--sans); font-size:12.5px; margin:12px 0 0;
+  color:var(--muet); display:flex; flex-wrap:wrap; gap:4px 14px;
+  align-items:baseline;
+}
+.voir .mot{
+  font-family:var(--mono); font-size:10px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muet);
+}
+.voir a{
+  color:var(--accent); text-decoration:none;
+  border-bottom:1px solid transparent;
+}
+.voir a::before{content:"\2192"; margin-right:5px; color:var(--muet);}
+.voir a:hover{border-bottom-color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="une">
+  <p class="surtitre">Rappel &nbsp;/&nbsp; Simulateur Dobot Magician</p>
+  <h1>Matrices homog&egrave;nes</h1>
+  <p class="chapeau">Le strict n&eacute;cessaire pour &eacute;crire une cible&nbsp;: rep&eacute;rer un
+  solide, passer d'une base &agrave; l'autre, composer deux transformations, et
+  reconna&icirc;tre dans <code class="k">A&nbsp;@&nbsp;B</code> du programme la
+  <strong>T</strong><sub>01</sub>&nbsp;&middot;&nbsp;<strong>T</strong><sub>12</sub> du
+  cours. Les notations sont celles du cours de mod&egrave;le g&eacute;om&eacute;trique.</p>
+  <p class="jeu-fiches">
+    <a href="fiche_index.html">&larr; Index &mdash; programmation sous VS-Code</a>
+    <a href="fiche_interface.html">Fiche 1 &mdash; l'interface</a>
+    <a href="fiche_programmation.html">Fiche 2 &mdash; exemples</a>
+    <a href="fiche_api.html">Fiche 3 &mdash; r&eacute;f&eacute;rence</a>
+    <a href="fiche_commande.html">Fiche 4 &mdash; temps r&eacute;el</a>
+    <span class="ici">Rappel &mdash; matrices</span>
+  </p>
+</header>
+
+<nav class="sommaire">
+  <a href="#reperer">01 Rep&eacute;rer un solide</a>
+  <a href="#passage">02 La matrice de passage</a>
+  <a href="#homogene">03 La transformation homog&egrave;ne</a>
+  <a href="#rotations">04 Les trois rotations</a>
+  <a href="#composer">05 Composer, et de quel c&ocirc;t&eacute;</a>
+  <a href="#programme">06 Du cours au programme</a>
+  <a href="#verifier">07 V&eacute;rifier une matrice</a>
+  <a href="#pieges">08 Les cinq pi&egrave;ges</a>
+</nav>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="reperer">
+<h2><span class="num">01</span> Rep&eacute;rer un solide</h2>
+
+<p class="intro">Un solide ne se situe pas par un point&nbsp;: il faut aussi
+dire <strong>comment il est tourn&eacute;</strong>. On lui attache donc une base
+<strong>B</strong><sub>1</sub>&nbsp;&mdash; trois vecteurs orthonorm&eacute;s et une
+origine O<sub>1</sub>&nbsp;&mdash; et on la situe par rapport &agrave; une base fixe
+<strong>B</strong><sub>0</sub>.</p>
+
+<p>Un m&ecirc;me point P a donc <strong>deux</strong> jeux de coordonn&eacute;es. L'exposant
+&agrave; gauche dit dans quelle base on le lit&nbsp;:</p>
+
+<div class="cadre"><table class="compacte">
+<tr><td><code class="k"><sup>0</sup>P</code></td>
+    <td>les coordonn&eacute;es de P dans la base fixe B<sub>0</sub></td></tr>
+<tr><td><code class="k"><sup>1</sup>P</code></td>
+    <td>les coordonn&eacute;es du <em>m&ecirc;me</em> point dans B<sub>1</sub></td></tr>
+</table></div>
+
+<div class="note attention">
+<p><strong>Le point n'a pas bougé.</strong> Changer de base ne d&eacute;place rien&nbsp;:
+cela change la fa&ccedil;on de nommer le m&ecirc;me endroit. C'est la premi&egrave;re chose &agrave;
+se redire quand un r&eacute;sultat para&icirc;t absurde.</p>
+</div>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="passage">
+<h2><span class="num">02</span> La matrice de passage</h2>
+
+<p class="intro">Pour exprimer dans B<sub>0</sub> ce qu'on conna&icirc;t dans
+B<sub>1</sub>, il faut savoir o&ugrave; pointent les axes de B<sub>1</sub>, vus de
+B<sub>0</sub>. On les range en colonnes&nbsp;: c'est la matrice de passage
+<code class="k">R<sub>01</sub></code>.</p>
+
+<div class="matrice">
+  <span class="etiq">R<sub>01</sub>&nbsp;=</span>
+  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
+    <span>u<sub>x</sub></span><span>v<sub>x</sub></span><span>w<sub>x</sub></span>
+    <span>u<sub>y</sub></span><span>v<sub>y</sub></span><span>w<sub>y</sub></span>
+    <span>u<sub>z</sub></span><span>v<sub>z</sub></span><span>w<sub>z</sub></span>
+  </div>
+</div>
+<p class="legende-mat"><strong>Colonne 1</strong>&nbsp;: le vecteur <em>u</em>
+de B<sub>1</sub>, lu dans B<sub>0</sub>. <strong>Colonne 2</strong>&nbsp;:
+<em>v</em>. <strong>Colonne 3</strong>&nbsp;: <em>w</em>. Rien d'autre.</p>
+
+<p>D'o&ugrave; la r&egrave;gle de lecture qui sert tous les jours&nbsp;:</p>
+
+<div class="note">
+<p><strong>Une colonne est un axe ; une ligne est une composante.</strong>
+La colonne&nbsp;<em>j</em> dit o&ugrave; pointe le <em>j</em>-i&egrave;me axe du rep&egrave;re
+d&eacute;crit. La ligne&nbsp;<em>i</em> dit ce que chacun de ces axes vaut selon le
+<em>i</em>-i&egrave;me axe du rep&egrave;re de r&eacute;f&eacute;rence.</p>
+</div>
+
+<p>Entre bases orthonorm&eacute;es, l'op&eacute;rateur est <strong>orthogonal</strong>&nbsp;: son
+inverse est sa transpos&eacute;e.</p>
+
+<div class="matrice">
+  <span class="etiq">R<sub>10</sub>&nbsp;=</span>
+  <span>R<sub>01</sub><sup>&minus;1</sup>&nbsp;=&nbsp;R<sub>01</sub><sup>T</sup></span>
+</div>
+<p class="legende-mat">C'est gratuit, et c'est une v&eacute;rification&nbsp;:
+<code class="k">R&nbsp;@&nbsp;R.T</code> doit rendre l'identit&eacute;.</p>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="homogene">
+<h2><span class="num">03</span> La transformation homog&egrave;ne</h2>
+
+<p class="intro">La rotation ne suffit pas&nbsp;: les deux origines ne sont pas
+au m&ecirc;me endroit. On range donc <strong>rotation et position</strong> dans une
+seule matrice 4&times;4, <code class="k">T<sub>01</sub></code>, dite
+&laquo;&nbsp;de passage de B<sub>0</sub> &agrave; B<sub>1</sub>&nbsp;&raquo;.</p>
+
+<div class="matrice">
+  <span class="etiq">T<sub>01</sub>&nbsp;=</span>
+  <div class="grille">
+    <span>r&#8321;&#8321;</span><span>r&#8321;&#8322;</span><span>r&#8321;&#8323;</span><span class="pos">p<sub>x</sub></span>
+    <span>r&#8322;&#8321;</span><span>r&#8322;&#8322;</span><span>r&#8322;&#8323;</span><span class="pos">p<sub>y</sub></span>
+    <span>r&#8323;&#8321;</span><span>r&#8323;&#8322;</span><span>r&#8323;&#8323;</span><span class="pos">p<sub>z</sub></span>
+    <span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span>
+  </div>
+</div>
+<p class="legende-mat">Le bloc 3&times;3 est la <strong>rotation</strong>&nbsp;;
+la quatri&egrave;me colonne est la <strong>position</strong> de O<sub>1</sub> dans
+B<sub>0</sub>, en millim&egrave;tres. La derni&egrave;re ligne vaut
+<strong>toujours</strong> (0,&nbsp;0,&nbsp;0,&nbsp;1)&nbsp;&mdash; c'est elle qu'on
+oublie d'&eacute;crire.</p>
+
+<p>Le changement de rep&egrave;re s'&eacute;crit alors en une ligne, le point &eacute;tant
+compl&eacute;t&eacute; par un 1&nbsp;:</p>
+
+<div class="matrice">
+  <span class="etiq"><sup>0</sup>P&nbsp;=</span>
+  <span>T<sub>01</sub>&nbsp;&middot;&nbsp;<sup>1</sup>P</span>
+</div>
+
+<div class="note">
+<p><strong>Pourquoi le 1 en bas.</strong> Sans lui, une matrice ne saurait
+qu'orienter. La quatri&egrave;me coordonn&eacute;e transforme la translation en
+multiplication&nbsp;: c'est ce qui permet de <em>composer</em> des d&eacute;placements
+au lieu de les additionner &agrave; part.</p>
+</div>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="rotations">
+<h2><span class="num">04</span> Les trois rotations</h2>
+
+<p class="intro">Les colonnes portent les axes du rep&egrave;re tourn&eacute;
+(<em>u</em>,&nbsp;<em>v</em>,&nbsp;<em>w</em>), les lignes celles du rep&egrave;re fixe
+(<em>x</em>,&nbsp;<em>y</em>,&nbsp;<em>z</em>). On retrouve &agrave; chaque fois le m&ecirc;me
+motif, d&eacute;cal&eacute; d'un cran.</p>
+
+<div class="matrice">
+  <span class="etiq">R<sub>x</sub>(&alpha;)&nbsp;=</span>
+  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
+    <span>1</span><span>0</span><span>0</span>
+    <span>0</span><span>cos&nbsp;&alpha;</span><span>&minus;sin&nbsp;&alpha;</span>
+    <span>0</span><span>sin&nbsp;&alpha;</span><span>cos&nbsp;&alpha;</span>
+  </div>
+</div>
+
+<div class="matrice">
+  <span class="etiq">R<sub>y</sub>(&phi;)&nbsp;=</span>
+  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
+    <span>cos&nbsp;&phi;</span><span>0</span><span>sin&nbsp;&phi;</span>
+    <span>0</span><span>1</span><span>0</span>
+    <span>&minus;sin&nbsp;&phi;</span><span>0</span><span>cos&nbsp;&phi;</span>
+  </div>
+</div>
+
+<div class="matrice">
+  <span class="etiq">R<sub>z</sub>(&theta;)&nbsp;=</span>
+  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
+    <span>cos&nbsp;&theta;</span><span>&minus;sin&nbsp;&theta;</span><span>0</span>
+    <span>sin&nbsp;&theta;</span><span>cos&nbsp;&theta;</span><span>0</span>
+    <span>0</span><span>0</span><span>1</span>
+  </div>
+</div>
+<p class="legende-mat">L'axe de la rotation garde sa colonne et sa ligne
+intactes&nbsp;: une colonne (1,&nbsp;0,&nbsp;0) pour R<sub>x</sub>, (0,&nbsp;1,&nbsp;0)
+pour R<sub>y</sub>, (0,&nbsp;0,&nbsp;1) pour R<sub>z</sub>. C'est le moyen le plus
+rapide de v&eacute;rifier qu'on n'a pas confondu deux d'entre elles.</p>
+
+<p>Dans le simulateur, elles sont d&eacute;j&agrave; &eacute;crites, en <strong>4&times;4</strong> et en
+<strong>radians</strong>&nbsp;:</p>
+
+<pre class="api"><code>from dobot_sim import homogeneous as hg
+
+hg.rot_x(np.pi)                 <span class="c"># un demi-tour autour de x</span>
+hg.rot_z(np.radians(38))        <span class="c"># 38 degres autour de z</span>
+hg.translation(140, 200, 10)    <span class="c"># en millimetres</span>
+hg.identite()</code></pre>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="composer">
+<h2><span class="num">05</span> Composer, et de quel c&ocirc;t&eacute;</h2>
+
+<p class="intro">Deux changements de rep&egrave;re encha&icirc;n&eacute;s se multiplient, et les
+indices se recollent&nbsp;:</p>
+
+<div class="matrice">
+  <span class="etiq">T<sub>02</sub>&nbsp;=</span>
+  <span>T<sub>01</sub>&nbsp;&middot;&nbsp;T<sub>12</sub></span>
+</div>
+<p class="legende-mat">Le <strong>1</strong> de droite et celui de gauche
+s'annulent&nbsp;: de 0 &agrave; 1, puis de 1 &agrave; 2, donc de 0 &agrave; 2. Si vos indices ne se
+recollent pas, le produit est dans le mauvais sens.</p>
+
+<div class="note attention">
+<p><strong>LA R&Egrave;GLE QUI D&Eacute;CIDE DE TOUT.</strong> Une matrice &eacute;crite
+<strong>&agrave; droite</strong> agit dans le rep&egrave;re que les pr&eacute;c&eacute;dentes viennent de
+construire&nbsp;; &eacute;crite <strong>&agrave; gauche</strong>, elle agit dans le rep&egrave;re de
+d&eacute;part.</p>
+</div>
+
+<p>Un exemple qui revient dans toutes les activit&eacute;s&nbsp;: on tourne une pi&egrave;ce de
+<em>a</em> autour de la verticale, puis on retourne l'outil pour qu'il descende
+dessus.</p>
+
+<pre class="api"><code>cible = hg.rot_z(a) @ hg.rot_x(np.pi)</code></pre>
+
+<p>Le <code class="k">R<sub>x</sub>(180&deg;)</code> est &agrave; droite&nbsp;: il tourne donc
+autour du <strong>u</strong> du rep&egrave;re interm&eacute;diaire, et non autour du
+<em>x</em> fixe. L'axe du demi-tour ne bouge pas, les deux autres se
+retournent&nbsp;:</p>
+
+<div class="cadre"><table class="compacte">
+<tr><th></th><th>apr&egrave;s R<sub>z</sub>(a)</th><th>puis R<sub>x</sub>(180&deg;) autour de u</th></tr>
+<tr><td>colonne 1</td><td><code class="k">u&nbsp;=&nbsp;(cos&nbsp;a,&nbsp;sin&nbsp;a,&nbsp;0)</code></td><td>inchang&eacute;e</td></tr>
+<tr><td>colonne 2</td><td><code class="k">v&nbsp;=&nbsp;(&minus;sin&nbsp;a,&nbsp;cos&nbsp;a,&nbsp;0)</code></td><td><code class="k">&minus;v&nbsp;=&nbsp;(sin&nbsp;a,&nbsp;&minus;cos&nbsp;a,&nbsp;0)</code></td></tr>
+<tr><td>colonne 3</td><td><code class="k">w&nbsp;=&nbsp;(0,&nbsp;0,&nbsp;1)</code></td><td><code class="k">&minus;w&nbsp;=&nbsp;(0,&nbsp;0,&nbsp;&minus;1)</code></td></tr>
+</table></div>
+
+<div class="note piege">
+<p><strong>&Agrave; essayer une fois, pour ne plus h&eacute;siter.</strong> Les deux ordres ne
+donnent pas la m&ecirc;me matrice&nbsp;&mdash; le second tourne autour du <em>x</em> fixe.</p>
+<pre class="api"><code>print(hg.rot_z(a) @ hg.rot_x(np.pi))   <span class="c"># autour de u</span>
+print(hg.rot_x(np.pi) @ hg.rot_z(a))   <span class="c"># autour du x fixe</span></code></pre>
+</div>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="programme">
+<h2><span class="num">06</span> Du cours au programme</h2>
+
+<p class="intro">Le programme ne num&eacute;rote pas ses rep&egrave;res&nbsp;: il les nomme.
+C'est la seule diff&eacute;rence.</p>
+
+<div class="cadre"><table class="compacte">
+<tr><th>Le cours &eacute;crit</th><th>Le programme &eacute;crit</th><th>Et cela veut dire</th></tr>
+<tr><td><code class="k">T<sub>01</sub></code></td>
+    <td><code class="k">MAGASIN</code></td>
+    <td>o&ugrave; est le magasin, vu de la base du robot</td></tr>
+<tr><td><code class="k">T<sub>12</sub></code></td>
+    <td><code class="k">DANS_LE_MAGASIN</code></td>
+    <td>o&ugrave; est la pi&egrave;ce, vue du magasin</td></tr>
+<tr><td><code class="k">T<sub>02</sub>&nbsp;=&nbsp;T<sub>01</sub>&middot;T<sub>12</sub></code></td>
+    <td><code class="k">PRISE&nbsp;=&nbsp;MAGASIN&nbsp;@&nbsp;DANS_LE_MAGASIN</code></td>
+    <td>o&ugrave; est la pi&egrave;ce, vue de la base</td></tr>
+</table></div>
+
+<p>Le <code class="k">@</code> de Python <strong>est</strong> le produit matriciel.
+Il se lit de gauche &agrave; droite comme une phrase&nbsp;: <em>le magasin, puis la
+pi&egrave;ce dans le magasin</em>.</p>
+
+<p>Deux emplois reviennent sans cesse&nbsp;:</p>
+
+<div class="cadre"><table class="compacte">
+<tr><td><code class="k">REPERE&nbsp;@&nbsp;DEDANS</code></td>
+    <td><strong>situer</strong>&nbsp;: une cible exprim&eacute;e dans un rep&egrave;re de travail</td></tr>
+<tr><td><code class="k">CIBLE&nbsp;@&nbsp;HAUT</code></td>
+    <td><strong>d&eacute;caler</strong>&nbsp;: un d&eacute;gagement exprim&eacute; dans le rep&egrave;re de
+    l'<em>outil</em>, puisque la matrice est &agrave; droite</td></tr>
+</table></div>
+
+<div class="note attention">
+<p><strong>Le z de l'outil pointe vers le BAS</strong>&nbsp;: c'est sa direction
+d'approche. Un d&eacute;gagement <em>vers le haut</em> s'&eacute;crit donc avec un z
+<strong>n&eacute;gatif</strong>.</p>
+<pre class="api"><code>HAUT = hg.translation(0, 0, -80)
+assert (CIBLE @ HAUT)[2, 3] &gt; CIBLE[2, 3], "le degagement descend !"</code></pre>
+</div>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="verifier">
+<h2><span class="num">07</span> V&eacute;rifier une matrice</h2>
+
+<p class="intro">Quatre contr&ocirc;les, trente secondes, et ils attrapent la quasi-
+totalit&eacute; des fautes d'&eacute;criture.</p>
+
+<pre class="api"><code>R = T[:3, :3]
+
+np.allclose(np.linalg.norm(R, axis=0), 1)     <span class="c"># colonnes unitaires</span>
+np.allclose(R.T @ R, np.eye(3))               <span class="c"># et orthogonales</span>
+np.isclose(np.linalg.det(R), +1)              <span class="c"># direct, pas un miroir</span>
+np.allclose(T[3], [0, 0, 0, 1])               <span class="c"># la ligne oubliee</span></code></pre>
+
+<div class="note">
+<p>Un d&eacute;terminant de <strong>&minus;1</strong> n'est pas une rotation mais une
+<strong>sym&eacute;trie</strong>&nbsp;: vous avez retourn&eacute; un nombre impair d'axes. Le
+demi-tour de l'outil en retourne <em>deux</em>&nbsp;&mdash; y et z&nbsp;&mdash; et
+reste donc &agrave; +1.</p>
+</div>
+
+<p>Et l'inverse d'une transformation homog&egrave;ne, quand on a besoin de lire dans
+l'autre sens&nbsp;:</p>
+
+<pre class="api"><code>hg.inverse(T)        <span class="c"># et non np.linalg.inv : plus sur, et plus rapide</span></code></pre>
+</section>
+
+<!-- ------------------------------------------------------------------ -->
+<section id="pieges">
+<h2><span class="num">08</span> Les cinq pi&egrave;ges</h2>
+
+<div class="cadre"><table class="compacte">
+<tr><td><strong>L'ordre</strong></td>
+    <td><code class="k">A&nbsp;@&nbsp;B</code> et <code class="k">B&nbsp;@&nbsp;A</code> diff&egrave;rent.
+    V&eacute;rifiez que vos indices se recollent.</td></tr>
+<tr><td><strong>Le c&ocirc;t&eacute;</strong></td>
+    <td>&Agrave; droite&nbsp;: dans le rep&egrave;re qu'on vient de construire. &Agrave; gauche&nbsp;:
+    dans celui de d&eacute;part.</td></tr>
+<tr><td><strong>Degr&eacute;s ou radians</strong></td>
+    <td><code class="k">hg.rot_z</code> prend des <strong>radians</strong>. Une cote
+    d'atelier est en degr&eacute;s&nbsp;: <code class="k">np.radians(...)</code>.</td></tr>
+<tr><td><strong>La derni&egrave;re ligne</strong></td>
+    <td>Une 4&times;4 sans sa ligne (0,&nbsp;0,&nbsp;0,&nbsp;1) n'est pas homog&egrave;ne, et
+    le produit donnera n'importe quoi.</td></tr>
+<tr><td><strong>Le sens du z</strong></td>
+    <td>Rep&egrave;re de table&nbsp;: z vers le haut. Rep&egrave;re d'outil&nbsp;: z vers le bas.
+    Ce ne sont pas les m&ecirc;mes objets.</td></tr>
+</table></div>
+
+<p class="legende-mat">Pour s'en servir&nbsp;:
+<a href="../ACTIVITE_PICK_AND_PLACE.md">activit&eacute; &laquo;&nbsp;prendre et poser&nbsp;&raquo;</a>,
+<a href="../ACTIVITE_STRUCTURE_KAPLA.md">structure de kapla</a>,
+<a href="../ACTIVITE_CONVOYEUR.md">convoyeur</a>.</p>
+</section>
+
+</div>
+</body>
+</html>

@@ -20,6 +20,11 @@ matrices :
 PRISE = CONVOYEUR @ CAPTEUR @ DANS_LE_CAPTEUR
 ```
 
+> **Le produit de deux matrices homogènes** demande quelques précautions
+> — l'ordre, les repères successifs, la lecture colonne par colonne. La
+> [fiche sur les matrices homogènes](fiches/fiche_matrices.html) les
+> reprend depuis le cours.
+
 | Matrice | Ce qu'elle situe | Mesurée par rapport à |
 |---|---|---|
 | `CONVOYEUR` | le tapis | la **base du robot** |

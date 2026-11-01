@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Dessine le structure de kapla de l'activite, en vue isometrique.
+Dessine la structure de kapla de l'activite, en vue isometrique.
 
     python dessiner_structure_kapla.py
 

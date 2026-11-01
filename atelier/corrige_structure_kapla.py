@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CORRIGE de l'activite du structure de kapla -- cellule/ACTIVITE_STRUCTURE_KAPLA.md
+CORRIGE de l'activite de la structure de kapla -- cellule/ACTIVITE_STRUCTURE_KAPLA.md
 
     python corrige_structure_kapla.py                simulation
     python corrige_structure_kapla.py --reel         sur la machine

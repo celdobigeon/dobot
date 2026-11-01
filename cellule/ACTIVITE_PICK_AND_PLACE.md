@@ -7,16 +7,17 @@ IUT, université de Bordeaux · Dobot Magician et sa ventouse
 
 ## Le geste à réaliser
 
-**Une pièce**, prise au **magasin** et posée sur la **structure**.
-Rien de plus.
+**Une pièce**, prise au **magasin** et posée sur la **structure** —
+et posée **deux fois**, de deux façons :
+
+| | La pièce est posée… | Ce que la cible demande |
+|---|---|---|
+| **cas 1** | **comme on l'a prise** | une seule rotation : le demi-tour qui fait descendre l'outil |
+| **cas 2** | **tournée** d'un angle `a` | deux rotations, et c'est là que le produit matriciel se gagne |
 
 C'est le geste le plus courant de la robotique industrielle, et il
 tient en six instructions. Toute la difficulté est ailleurs : **dire au
 robot où aller, sans jamais l'y amener à la main.**
-
-La pièce est posée dans une **autre orientation** que celle où elle a
-été prise — c'est la seule différence entre les deux cibles, et c'est
-déjà de quoi faire travailler les matrices.
 
 > **Dans cette activité, toutes les cibles sont écrites par rapport à
 > la base du robot.** C'est la façon la plus directe, et c'est celle
@@ -184,22 +185,46 @@ fait `EPAISSEUR`, la ventouse se pose **dessus** : `z = EPAISSEUR`.
 > matrice ne dit laquelle des deux vous corrigez** — notez-le, la
 > dernière partie y revient.
 
-### 3.2 La dépose, et l'angle
+### 3.2 Cas 1 : la poser comme on l'a prise
+
+Commencez par le plus simple : la pièce est reposée **dans la même
+orientation** qu'au magasin, ailleurs sur la table. L'outil doit
+toujours descendre dessus, donc il reste **une** rotation — le
+demi-tour autour de `x` :
+
+```python
+DEPOSE_1 = hg.translation(..., ..., EPAISSEUR) @ hg.rot_x(np.pi)
+```
+
+Deux lignes de lecture : *on va là*, *on retourne l'outil pour qu'il
+approche par le dessus*. La partie rotation est **exactement celle de
+la prise** — vérifiez-le :
+
+```python
+assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3])
+```
+
+> **Question 6.** Écrivez à la main la matrice que donne
+> `translation(x, y, z) @ rot_x(π)`, puis comparez à ce qu'affiche
+> Python. Combien de ses seize nombres dépendent de l'endroit où vous
+> posez la pièce ?
+
+### 3.3 Cas 2 : la poser tournée
 
 ![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
-La pièce est posée sur la structure, tournée de `a`. **Composez la
-cible plutôt que de la recopier** — c'est exactement ce que montre la
-figure, dans le même ordre :
+Maintenant on la tourne de `a`. Il faut donc **deux** rotations, et
+l'ordre compte :
 
 ```python
-DEPOSE = (hg.translation(..., ..., EPAISSEUR)   # ou elle se pose
-          @ hg.rot_z(np.radians(a))             # 1. Rz(a)
-          @ hg.rot_x(np.pi))                    # 2. Rx(180 deg)
+DEPOSE_2 = (hg.translation(..., ..., EPAISSEUR)   # ou elle se pose
+            @ hg.rot_z(np.radians(a))             # 1. Rz(a)
+            @ hg.rot_x(np.pi))                    # 2. Rx(180 deg)
 ```
 
 Trois lignes, trois gestes : *on va là*, *on tourne de `a`*, *on
-retourne l'outil pour qu'il approche par le dessus*.
+retourne l'outil pour qu'il approche par le dessus*. **À `a = 0` on
+retombe sur le cas 1** — le cas 1 est celui où l'on ne tourne rien.
 
 Écrire les seize nombres à la main donne exactement la même matrice —
 vérifiez-le plutôt que de le croire :
@@ -207,11 +232,16 @@ vérifiez-le plutôt que de le croire :
 ```python
 c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
 
-assert np.allclose(DEPOSE, [[c,  s,  0,       ...],
-                            [s, -c,  0,       ...],
-                            [0,  0, -1, EPAISSEUR],
-                            [0,  0,  0,         1]])
+assert np.allclose(DEPOSE_2, [[c,  s,  0,       ...],
+                              [s, -c,  0,       ...],
+                              [0,  0, -1, EPAISSEUR],
+                              [0,  0,  0,         1]])
 ```
+
+> Le produit de deux matrices homogènes demande quelques précautions.
+> Si l'ordre, les repères successifs ou la lecture colonne par colonne
+> ne sont pas clairs, la [fiche sur les matrices
+> homogènes](fiches/fiche_matrices.html) les reprend depuis le cours.
 
 Mais la composition **dit ce qu'on fait**, là où la liste de nombres
 demande d'être devinée. C'est elle qu'il faut écrire, et c'est pour
@@ -267,16 +297,16 @@ redevient celle de la prise** : la prise est le cas particulier de la
 dépose où l'on ne tourne rien. Vos deux cibles ne diffèrent donc que
 par une position et un angle.
 
-> **Question 6.** Dans `Rz(a)` seul, la deuxième colonne vaut
+> **Question 7.** Dans `Rz(a)` seul, la deuxième colonne vaut
 > `(−sin a, cos a)`. Ici elle vaut `(sin a, −cos a)`. D'où vient ce
 > changement de signe, et sur quelle **autre** colonne agit le même
 > retournement ? (Comparez les deux matrices de la figure.)
 
-> **Question 7.** Posez `a = 180°`. La pièce occupe-t-elle la même
+> **Question 8.** Posez `a = 180°`. La pièce occupe-t-elle la même
 > place qu'à `a = 0` ? Et la matrice est-elle la même ? Qu'est-ce que
 > cela dit d'une pièce symétrique ?
 
-### 3.3 Une orientation n'est pas toujours atteignable
+### 3.4 Une orientation n'est pas toujours atteignable
 
 Le poignet ne tourne que dans `[−90° ; +90°]`, et surtout :
 
@@ -292,7 +322,7 @@ robot (cap 90°), une dépose à `a = 0` demande au poignet exactement
 Lancez votre programme avec `a = 0` et regardez `robot.controler()`
 protester, puis avec `a = 90` et voyez la réserve disparaître.
 
-> **Question 8.** Expliquez, avec la relation ci-dessus, pourquoi
+> **Question 9.** Expliquez, avec la relation ci-dessus, pourquoi
 > `a = 90°` ne coûte rien au poignet alors que `a = 0` le met en butée.
 > Une pièce étant symétrique, poser à `a` ou à `a + 180°` revient au
 > même : cela vous sauve-t-il ici ? Pourquoi ?
@@ -324,11 +354,11 @@ de l'outil pointe vers le bas. Vérifiez-le plutôt que de le croire :
 assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 ```
 
-> **Question 9.** `PRISE @ HAUT` et `HAUT @ PRISE` ne donnent pas la
+> **Question 10.** `PRISE @ HAUT` et `HAUT @ PRISE` ne donnent pas la
 > même chose. Laquelle déplace l'outil **dans son propre repère** ?
 > Essayez l'autre sens, regardez où part la cible, expliquez.
 
-> **Question 10.** Le dégagement est le **seul** endroit de ce programme
+> **Question 11.** Le dégagement est le **seul** endroit de ce programme
 > où vous composez deux matrices. Qu'est-ce qui le distingue des cotes
 > que vous avez relevées au réglet ? Pourquoi n'avez-vous **pas** eu à
 > le mesurer ?
@@ -374,7 +404,7 @@ P = np.asarray(traj.echantillonner(0.005)["P"])
 print(np.min(np.linalg.norm(P - (PRISE @ HAUT)[:3, 3], axis=1)), "mm")
 ```
 
-> **Question 11.** Relevez cet écart pour les quatre valeurs de lissage.
+> **Question 12.** Relevez cet écart pour les quatre valeurs de lissage.
 > Faites la même mesure sur le **point de prise**. Que trouvez-vous, et
 > pourquoi ?
 
@@ -392,7 +422,7 @@ Le modèle vous protège à moitié :
   action ne demande aucun temps, donc elle ne neutralise rien. Lisser
   un point où l'on agit, c'est agir avant d'y être.
 
-> **Question 12.** Lissez volontairement le point de prise à 100 %, et
+> **Question 13.** Lissez volontairement le point de prise à 100 %, et
 > mesurez **où est la ventouse à l'instant où elle aspire** :
 >
 > ```python
@@ -424,7 +454,7 @@ Le simulateur vous montre donc ce que vous **gagneriez** avec un
 contrôleur qui a des zones (ABB `zonedata`) ou du CNT (Fanuc). C'est
 une mesure utile : elle chiffre ce que coûte un arrêt inutile.
 
-> **Question 13.** Sur votre relevé du 5.1, quelle fraction du temps de
+> **Question 14.** Sur votre relevé du 5.1, quelle fraction du temps de
 > cycle est perdue en arrêts ? Sur une journée de production à
 > 3 000 cycles, cela fait combien ?
 
@@ -481,7 +511,7 @@ libère la table, on change de poste, et les pièces ne sont plus tout à
 fait au même endroit. Mesurez sa nouvelle position et corrigez votre
 programme pour que le cycle fonctionne de nouveau.
 
-> **Question 14.** Combien de nombres avez-vous dû reprendre, et dans
+> **Question 15.** Combien de nombres avez-vous dû reprendre, et dans
 > combien de matrices ? Jusqu'ici, c'est supportable.
 >
 > Maintenant, **sans l'écrire**, répondez à ceci : l'activité suivante
@@ -490,7 +520,7 @@ programme pour que le cycle fonctionne de nouveau.
 > bouge de deux centimètres, combien de nombres faudrait-il reprendre
 > en écrivant les cibles comme ici ?
 
-> **Question 15.** Reprenez la question 5. Dans `PRISE`, la cote `z`
+> **Question 16.** Reprenez la question 5. Dans `PRISE`, la cote `z`
 > vaut `EPAISSEUR` parce que le plan du magasin est à zéro. Si le plan
 > était à 60 mm, vous écririez `60 + EPAISSEUR` — **un seul nombre pour
 > deux faits indépendants** : où est le magasin, et quelle est
@@ -508,8 +538,8 @@ programme pour que le cycle fonctionne de nouveau.
 
 1. Le programme, commenté — chaque cote mesurée doit dire **d'où elle
    vient** et **par rapport à quoi**.
-2. Les réponses aux quinze questions.
-3. Le tableau du 5.1 et celui de la question 11, avec votre conclusion
+2. Les réponses aux seize questions.
+3. Le tableau du 5.1 et celui de la question 12, avec votre conclusion
    sur ce que le lissage achète et ce qu'il coûte.
-4. Votre proposition de la question 15, même imparfaite. On la comparera
+4. Votre proposition de la question 16, même imparfaite. On la comparera
    à la solution au début de la séance suivante.
