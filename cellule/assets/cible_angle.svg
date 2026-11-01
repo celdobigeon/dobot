@@ -1,56 +1,88 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 560" width="880" height="560" role="img" aria-label="Le cosinus et le sinus d une cible orientee">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 710" width="880" height="710" role="img" aria-label="Le cosinus et le sinus d une cible orientee">
 <title>Le cosinus et le sinus d&#8217;une cible orient&#233;e</title>
-<rect width="880" height="560" fill="#fdfcf7"/>
+<rect width="880" height="710" fill="#fdfcf7"/>
 <text x="40.0" y="42.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="16" font-weight="600" fill="#333" text-anchor="start">d&#8217;o&#249; viennent le cosinus et le sinus</text>
-<text x="40.0" y="64.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="400" fill="#666" text-anchor="start">vue de dessus &#183; le cercle est de rayon 1, donc les projections SONT cos a et sin a</text>
-<line x1="210.0" y1="300.0" x2="439.0" y2="300.0" stroke="#c0392b" stroke-width="2.2" stroke-linecap="round"/>
-<polygon points="446.0,300.0 436.0,303.6 436.0,296.4" fill="#c0392b"/>
-<line x1="250.0" y1="340.0" x2="250.0" y2="111.0" stroke="#2e9e4f" stroke-width="2.2" stroke-linecap="round"/>
-<polygon points="250.0,104.0 253.6,114.0 246.4,114.0" fill="#2e9e4f"/>
-<text x="454.0" y="305.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#c0392b" text-anchor="start">x</text>
-<text x="246.0" y="96.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#2e9e4f" text-anchor="middle">y</text>
-<circle cx="250.0" cy="300.0" r="140.0" fill="none" stroke="#8a8a8a" stroke-width="1" stroke-dasharray="3 4"/>
-<polygon points="145.2,347.8 321.7,209.9 354.8,252.2 178.3,390.1" fill="#d8b44a" fill-opacity="0.55" stroke="#5c470d" stroke-width="1.2"/>
-<line x1="250.0" y1="300.0" x2="354.8" y2="218.1" stroke="#c0392b" stroke-width="3.2" stroke-linecap="round"/>
-<polygon points="360.3,213.8 354.7,222.8 350.2,217.1" fill="#c0392b"/>
-<text x="370.3" y="203.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#c0392b" text-anchor="start">colonne 0</text>
-<text x="370.3" y="219.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="400" fill="#c0392b" text-anchor="start">(cos a , sin a)</text>
-<line x1="360.3" y1="213.8" x2="360.3" y2="300.0" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3"/>
-<line x1="360.3" y1="213.8" x2="250.0" y2="213.8" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3"/>
-<line x1="250.0" y1="316.0" x2="360.3" y2="316.0" stroke="#c0392b" stroke-width="4"/>
-<text x="305.2" y="334.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#c0392b" text-anchor="middle">cos a</text>
-<line x1="234.0" y1="300.0" x2="234.0" y2="213.8" stroke="#2e9e4f" stroke-width="4"/>
-<text x="226.0" y="260.9" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2e9e4f" text-anchor="end">sin a</text>
-<path d="M 296.0 300.0 A 46.0 46.0 0 0 0 286.2 271.7" fill="none" stroke="#333" stroke-width="1.6"/>
-<text x="306.7" y="285.5" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#333" text-anchor="middle" font-style="italic">a</text>
-<text x="640.0" y="110.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#333" text-anchor="middle">la colonne 1 est retourn&#233;e</text>
-<line x1="610.0" y1="250.0" x2="753.0" y2="250.0" stroke="#bbb" stroke-width="1.6" stroke-linecap="round"/>
-<polygon points="760.0,250.0 750.0,253.6 750.0,246.4" fill="#bbb"/>
-<line x1="640.0" y1="280.0" x2="640.0" y2="137.0" stroke="#bbb" stroke-width="1.6" stroke-linecap="round"/>
-<polygon points="640.0,130.0 643.6,140.0 636.4,140.0" fill="#bbb"/>
-<line x1="640.0" y1="250.0" x2="591.4" y2="187.7" stroke="#2e9e4f" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="5 4"/>
-<polygon points="587.1,182.2 596.0,187.9 590.4,192.3" fill="#2e9e4f"/>
-<text x="579.1" y="170.2" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#2e9e4f" text-anchor="end">(&#8722;sin a , cos a)</text>
-<text x="579.1" y="186.2" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#777" text-anchor="end">Rz(a) seul</text>
-<line x1="640.0" y1="250.0" x2="688.6" y2="312.3" stroke="#2e9e4f" stroke-width="3.0" stroke-linecap="round"/>
-<polygon points="692.9,317.8 684.0,312.1 689.6,307.7" fill="#2e9e4f"/>
-<text x="700.9" y="321.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#2e9e4f" text-anchor="start">(sin a , &#8722;cos a)</text>
-<text x="700.9" y="337.8" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#777" text-anchor="start">apr&#232;s Rx(180&#176;)</text>
-<line x1="640.0" y1="250.0" x2="702.3" y2="201.4" stroke="#c0392b" stroke-width="2.2" stroke-linecap="round"/>
-<polygon points="707.8,197.1 702.1,206.0 697.7,200.4" fill="#c0392b"/>
-<text x="715.8" y="191.1" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#c0392b" text-anchor="start">colonne 0</text>
-<text x="40.0" y="486.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#333" text-anchor="start">cible(a) =</text>
-<rect x="150" y="478" width="164" height="30" rx="5" fill="#c0392b" fill-opacity="0.10" stroke="#c0392b" stroke-width="1"/>
-<text x="232.0" y="500.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="middle">(c , s , 0)</text>
-<text x="232.0" y="524.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">la longueur de la pi&#232;ce</text>
-<rect x="328" y="478" width="164" height="30" rx="5" fill="#2e9e4f" fill-opacity="0.10" stroke="#2e9e4f" stroke-width="1"/>
-<text x="410.0" y="500.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="middle">(s , &#8722;c , 0)</text>
-<text x="410.0" y="524.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">sa largeur, retourn&#233;e</text>
-<rect x="506" y="478" width="164" height="30" rx="5" fill="#2b6cb0" fill-opacity="0.10" stroke="#2b6cb0" stroke-width="1"/>
-<text x="588.0" y="500.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2b6cb0" text-anchor="middle">(0 , 0 , &#8722;1)</text>
-<text x="588.0" y="524.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">l&#8217;approche, vers le bas</text>
-<rect x="684" y="478" width="164" height="30" rx="5" fill="#333" fill-opacity="0.10" stroke="#333" stroke-width="1"/>
-<text x="766.0" y="500.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#333" text-anchor="middle">(x , y , z)</text>
-<text x="766.0" y="524.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">o&#249; elle se pose</text>
+<text x="40.0" y="64.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="400" fill="#666" text-anchor="start">le cercle est de rayon 1 : les projections SONT cos a et sin a</text>
+<text x="240.0" y="112.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="600" fill="#333" text-anchor="middle">vu de dessus</text>
+<line x1="200.0" y1="288.0" x2="421.0" y2="288.0" stroke="#c0392b" stroke-width="2.2" stroke-linecap="round"/>
+<polygon points="428.0,288.0 418.0,291.6 418.0,284.4" fill="#c0392b"/>
+<line x1="240.0" y1="328.0" x2="240.0" y2="107.0" stroke="#2e9e4f" stroke-width="2.2" stroke-linecap="round"/>
+<polygon points="240.0,100.0 243.6,110.0 236.4,110.0" fill="#2e9e4f"/>
+<text x="436.0" y="293.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#c0392b" text-anchor="start">x</text>
+<text x="236.0" y="92.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#2e9e4f" text-anchor="middle">y</text>
+<circle cx="240.0" cy="288.0" r="132.0" fill="none" stroke="#8a8a8a" stroke-width="1" stroke-dasharray="3 4"/>
+<polygon points="141.2,333.0 307.6,203.0 338.8,243.0 172.4,373.0" fill="#d8b44a" fill-opacity="0.55" stroke="#5c470d" stroke-width="1.2"/>
+<line x1="240.0" y1="288.0" x2="338.5" y2="211.0" stroke="#c0392b" stroke-width="3.2" stroke-linecap="round"/>
+<polygon points="344.0,206.7 338.4,215.7 333.9,210.1" fill="#c0392b"/>
+<text x="354.0" y="196.7" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#c0392b" text-anchor="start">colonne 0</text>
+<text x="354.0" y="212.7" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="400" fill="#c0392b" text-anchor="start">(cos a , sin a)</text>
+<line x1="344.0" y1="206.7" x2="344.0" y2="288.0" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line x1="344.0" y1="206.7" x2="240.0" y2="206.7" stroke="#8a8a8a" stroke-width="1.2" stroke-dasharray="4 3"/>
+<line x1="240.0" y1="304.0" x2="344.0" y2="304.0" stroke="#c0392b" stroke-width="4"/>
+<text x="292.0" y="322.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#c0392b" text-anchor="middle">cos a</text>
+<line x1="224.0" y1="288.0" x2="224.0" y2="206.7" stroke="#2e9e4f" stroke-width="4"/>
+<text x="216.0" y="251.4" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2e9e4f" text-anchor="end">sin a</text>
+<path d="M 286.0 288.0 A 46.0 46.0 0 0 0 276.2 259.7" fill="none" stroke="#333" stroke-width="1.6"/>
+<text x="296.7" y="273.5" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#333" text-anchor="middle" font-style="italic">a</text>
+<text x="664.0" y="112.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="600" fill="#333" text-anchor="middle">la colonne 1 est retourn&#233;e</text>
+<line x1="634.0" y1="198.0" x2="765.0" y2="198.0" stroke="#bbb" stroke-width="1.6" stroke-linecap="round"/>
+<polygon points="772.0,198.0 762.0,201.6 762.0,194.4" fill="#bbb"/>
+<line x1="664.0" y1="228.0" x2="664.0" y2="97.0" stroke="#bbb" stroke-width="1.6" stroke-linecap="round"/>
+<polygon points="664.0,90.0 667.6,100.0 660.4,100.0" fill="#bbb"/>
+<line x1="664.0" y1="198.0" x2="622.8" y2="145.2" stroke="#2e9e4f" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="5 4"/>
+<polygon points="618.4,139.7 627.4,145.4 621.8,149.8" fill="#2e9e4f"/>
+<text x="610.4" y="127.7" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#2e9e4f" text-anchor="end">(&#8722;sin a , cos a)</text>
+<text x="610.4" y="143.7" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#777" text-anchor="end">Rz(a) seul</text>
+<line x1="664.0" y1="198.0" x2="705.2" y2="250.8" stroke="#2e9e4f" stroke-width="3.0" stroke-linecap="round"/>
+<polygon points="709.6,256.3 700.6,250.6 706.2,246.2" fill="#2e9e4f"/>
+<text x="717.6" y="260.3" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#2e9e4f" text-anchor="start">(sin a , &#8722;cos a)</text>
+<text x="717.6" y="276.3" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#777" text-anchor="start">apr&#232;s Rx(180&#176;)</text>
+<line x1="664.0" y1="198.0" x2="716.8" y2="156.8" stroke="#c0392b" stroke-width="2.2" stroke-linecap="round"/>
+<polygon points="722.3,152.4 716.6,161.4 712.2,155.8" fill="#c0392b"/>
+<text x="730.3" y="146.4" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="700" fill="#c0392b" text-anchor="start">colonne 0</text>
+<text x="664.0" y="330.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="600" fill="#333" text-anchor="middle">vu de c&#244;t&#233;</text>
+<line x1="568.0" y1="418.0" x2="760.0" y2="418.0" stroke="#9a9a9a" stroke-width="2"/>
+<rect x="604.0" y="398.0" width="120.0" height="20.0" fill="#d8b44a" fill-opacity="0.55" stroke="#5c470d" stroke-width="1.2"/>
+<line x1="664.0" y1="328.0" x2="664.0" y2="364.0" stroke="#9a9a9a" stroke-width="1.4" stroke-dasharray="4 4"/>
+<rect x="656.0" y="364.0" width="16" height="14" rx="2" fill="#cfd6dd" stroke="#8a8a8a" stroke-width="1"/>
+<ellipse cx="664.0" cy="382.0" rx="11" ry="5" fill="#b03a2e" stroke="#8a8a8a" stroke-width="1"/>
+<line x1="664.0" y1="398.0" x2="729.0" y2="398.0" stroke="#c0392b" stroke-width="2.6" stroke-linecap="round"/>
+<polygon points="736.0,398.0 726.0,401.6 726.0,394.4" fill="#c0392b"/>
+<text x="744.0" y="403.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#c0392b" text-anchor="start">x</text>
+<line x1="664.0" y1="398.0" x2="664.0" y2="451.0" stroke="#2b6cb0" stroke-width="2.6" stroke-linecap="round"/>
+<polygon points="664.0,458.0 660.4,448.0 667.6,448.0" fill="#2b6cb0"/>
+<text x="674.0" y="450.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#2b6cb0" text-anchor="start">z : (0 , 0 , &#8722;1)</text>
+<text x="674.0" y="466.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="11" font-weight="400" fill="#777" text-anchor="start">il descend vers la mati&#232;re</text>
+<circle cx="620.0" cy="384.0" r="8" fill="none" stroke="#2e9e4f" stroke-width="2"/>
+<circle cx="620.0" cy="384.0" r="2.6" fill="#2e9e4f"/>
+<text x="608.0" y="388.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700" fill="#2e9e4f" text-anchor="end">y</text>
+<text x="608.0" y="404.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="11" font-weight="400" fill="#777" text-anchor="end">vers vous</text>
+<rect x="268.0" y="512.0" width="86.0" height="136.0" rx="6" fill="#c0392b" fill-opacity="0.09"/>
+<rect x="354.0" y="512.0" width="86.0" height="136.0" rx="6" fill="#2e9e4f" fill-opacity="0.09"/>
+<rect x="440.0" y="512.0" width="86.0" height="136.0" rx="6" fill="#2b6cb0" fill-opacity="0.09"/>
+<rect x="526.0" y="512.0" width="86.0" height="136.0" rx="6" fill="#333" fill-opacity="0.09"/>
+<path d="M 267.0 506.0 h -11.0 v 148.0 h 11.0" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 613.0 506.0 h 11.0 v 148.0 h -11.0" fill="none" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="311.0" y="535.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#c0392b" text-anchor="middle">c</text>
+<text x="397.0" y="535.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2e9e4f" text-anchor="middle">s</text>
+<text x="483.0" y="535.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2b6cb0" text-anchor="middle">0</text>
+<text x="569.0" y="535.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#333" text-anchor="middle">x</text>
+<text x="311.0" y="569.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#c0392b" text-anchor="middle">s</text>
+<text x="397.0" y="569.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2e9e4f" text-anchor="middle">&#8722;c</text>
+<text x="483.0" y="569.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2b6cb0" text-anchor="middle">0</text>
+<text x="569.0" y="569.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#333" text-anchor="middle">y</text>
+<text x="311.0" y="603.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#c0392b" text-anchor="middle">0</text>
+<text x="397.0" y="603.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2e9e4f" text-anchor="middle">0</text>
+<text x="483.0" y="603.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2b6cb0" text-anchor="middle">&#8722;1</text>
+<text x="569.0" y="603.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#333" text-anchor="middle">z</text>
+<text x="311.0" y="637.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#c0392b" text-anchor="middle">0</text>
+<text x="397.0" y="637.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2e9e4f" text-anchor="middle">0</text>
+<text x="483.0" y="637.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#2b6cb0" text-anchor="middle">0</text>
+<text x="569.0" y="637.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="17" font-weight="700" fill="#333" text-anchor="middle">1</text>
+<text x="236.0" y="586.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="16" font-weight="700" fill="#333" text-anchor="end">cible(a) =</text>
+<text x="311.0" y="674.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">la longueur</text>
+<text x="397.0" y="674.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">la largeur, retourn&#233;e</text>
+<text x="483.0" y="674.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">l&#8217;approche</text>
+<text x="569.0" y="674.0" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400" fill="#555" text-anchor="middle">o&#249; elle se pose</text>
 </svg>

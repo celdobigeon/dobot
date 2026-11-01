@@ -1,4 +1,4 @@
-# Bâtir un mur vrillé — activité de programmation
+# Bâtir une structure vrillée — activité de programmation
 
 IUT, université de Bordeaux · Dobot Magician et sa ventouse
 À lire avec le [manuel](README.md) et la [procédure de mise en route](PROCEDURE_CONVOYEUR.md)
@@ -7,29 +7,30 @@ IUT, université de Bordeaux · Dobot Magician et sa ventouse
 
 ## La structure à réaliser
 
-![Mur de kapla vrillé : vue de dessus et vue isométrique](assets/mur_kapla.svg)
+![Structure de kapla vrillée : vue de dessus et vue isométrique](assets/structure_kapla.svg)
 
-Des planches de **125 × 30 × 10 mm**, posées **deux par assise**, et
+Des pièces de **125 × 30 × 10 mm**, posées **deux par assise**, et
 chaque assise **tournée de 75°** par rapport à la précédente. Six
-assises, douze planches.
+assises, douze pièces.
 
-Vue de dessus, c'est une rosace. De côté, c'est un mur qui vrille.
+Vue de dessus, c'est une rosace. De côté, c'est une structure qui
+vrille.
 
-![Le mur terminé dans le simulateur](assets/mur_kapla_simulateur.png)
+![La structure terminée dans le simulateur](assets/structure_kapla_simulateur.png)
 
-Le même mur dans le simulateur, à la fin du cycle. À **droite**, les
+La même structure dans le simulateur, à la fin du cycle. À **droite**, les
 six assises posées. À **gauche**, le magasin, où la ventouse revient
-chercher chaque planche — toujours au même endroit, toujours dans la
+chercher chaque pièce — toujours au même endroit, toujours dans la
 même orientation. Le petit trièdre posé dessus est celui de la **cible
-de prise** : son `z`, en bleu, **descend** vers la planche, là où celui
+de prise** : son `z`, en bleu, **descend** vers la pièce, là où celui
 de la base, au centre, monte.
 
-> Le mur n'est pas au milieu de l'image par hasard : il est **droit
-> devant le robot**, et le magasin **sur le côté**. Cette disposition
+> La structure n'est pas au milieu de l'image par hasard : elle est
+> **droit devant le robot**, et le magasin **sur le côté**. Cette disposition
 > n'est pas un détail d'esthétique — la section 6 montrera qu'elle
 > décide de ce que le poignet peut faire.
 
-> **Le robot prend toutes les planches au même endroit, dans la même
+> **Le robot prend toutes les pièces au même endroit, dans la même
 > orientation.** C'est donc lui qui les tourne, une par une, et c'est
 > tout l'objet de l'activité : une cible n'est pas un point, c'est une
 > **position *et* une orientation**.
@@ -77,8 +78,8 @@ programmation**.
 
 Un repère de programmation est un **point de la cellule qu'on nomme**,
 et par rapport auquel on exprime ensuite les cibles. Ici il en faut
-deux : le **magasin**, où les planches sont présentées, et la
-**structure**, le centre du mur à bâtir.
+deux : le **magasin**, où les pièces sont présentées, et la
+**structure**, le centre de ce qu'on bâtit.
 
 L'intérêt tient en une phrase : **chaque nombre ne dit plus qu'une
 seule chose.**
@@ -86,9 +87,9 @@ seule chose.**
 | Ce qui change dans l'atelier | Ce qu'on reprend dans le programme |
 |---|---|
 | le magasin est déplacé | la dernière colonne de `MAGASIN`, et rien d'autre |
-| les planches font 8 mm | la constante `EPAISSEUR`, et rien d'autre |
-| le mur est bâti ailleurs | la dernière colonne de `STRUCTURE` |
-| le mur vrille de 60° au lieu de 75° | la constante `ANGLE` |
+| les pièces font 8 mm | la constante `EPAISSEUR`, et rien d'autre |
+| la structure est bâtie ailleurs | la dernière colonne de `STRUCTURE` |
+| la structure vrille de 60° au lieu de 75° | la constante `ANGLE` |
 
 Sans repères, chacune de ces quatre lignes toucherait les douze cibles
 à la fois — et une cote y mélangerait toujours deux faits.
@@ -96,7 +97,7 @@ Sans repères, chacune de ces quatre lignes toucherait les douze cibles
 ### 1.2 Les écrire
 
 Mesurez au réglet, **par rapport au centre de la base du robot**, où se
-trouvent le magasin et le centre du mur.
+trouvent le magasin et le centre de la structure.
 
 ```python
 MAGASIN = np.array([[1, 0, 0, ...],
@@ -146,8 +147,8 @@ PRISE = MAGASIN @ DANS_LE_MAGASIN
 
 Comparez avec ce que vous aviez écrit la dernière fois. La cible est la
 même ; ce qui a changé, c'est qu'elle **se lit** : *le magasin*, puis
-*la planche dans le magasin*. La cote `EPAISSEUR` ne parle plus que de
-la planche, et les cotes du magasin ne parlent plus que du magasin.
+*la pièce dans le magasin*. La cote `EPAISSEUR` ne parle plus que de
+la pièce, et les cotes du magasin ne parlent plus que du magasin.
 
 > **Question 2.** Dans `MAGASIN @ DANS_LE_MAGASIN`, l'ordre compte-t-il ?
 > Essayez l'autre sens, regardez où part la cible, expliquez.
@@ -169,7 +170,7 @@ z = (n + 1) × EPAISSEUR
 ```
 
 C'est le **décalage d'empilement**, et il doit être un paramètre : des
-planches de 8 mm ne doivent demander qu'une ligne à changer.
+pièces de 8 mm ne doivent demander qu'une ligne à changer.
 
 ### 2.2 L'orientation
 
@@ -188,7 +189,7 @@ dans_la_structure = np.array([[c,  s,  0, ex],
 cible = STRUCTURE @ dans_la_structure
 ```
 
-Colonne 0 : la **longueur** de la planche. Colonne 1 : sa largeur,
+Colonne 0 : la **longueur** de la pièce. Colonne 1 : sa largeur,
 **retournée** par le demi-tour autour de x. Colonne 2 : l'approche,
 vers le bas. C'est `Rz(a) · Rx(180°)`, comme dans l'activité
 précédente — seul `a` change désormais à chaque assise.
@@ -200,15 +201,15 @@ précédente — seul `a` change désormais à chaque assise.
 
 ---
 
-## 3. L'écart des deux planches d'une assise
+## 3. L'écart des deux pièces d'une assise
 
-Les deux planches d'une assise sont écartées de `±DECALAGE`,
+Les deux pièces d'une assise sont écartées de `±DECALAGE`,
 **perpendiculairement** à leur longueur — donc le long de
 `(−sin a, cos a)`.
 
 **Et ce décalage n'est pas libre : il se déduit de l'angle.**
 
-Une planche de l'assise du dessus croise celles du dessous à une
+Une pièce de l'assise du dessus croise celles du dessous à une
 distance du centre qui vaut `DECALAGE / tan(a/2)`. Pour qu'elle repose
 franchement, ce croisement doit rester à au moins une demi-largeur du
 bout :
@@ -227,14 +228,14 @@ DECALAGE = (LONGUEUR - LARGEUR) / 2 * np.tan(np.radians(ANGLE) / 2)
 > Retrouvez-vous une figure connue ? Expliquez pourquoi le carré
 > classique du kapla est le cas particulier de cette formule.
 
-> **Question 6.** Les deux planches d'une même assise ne doivent pas se
+> **Question 6.** Les deux pièces d'une même assise ne doivent pas se
 > chevaucher : il leur faut au moins une demi-largeur chacune. Écrivez
 > cette condition, et **déduisez-en l'angle minimal**. Un quart de tour
-> de 30° est-il possible avec ces planches ?
+> de 30° est-il possible avec ces pièces ?
 
 > **Question 7.** Pourquoi l'écart se prend-il le long de
 > `(−sin a, cos a)` ? Que donnerait `(cos a, sin a)`, et à quoi
-> ressemblerait le mur ?
+> ressemblerait la structure ?
 
 ---
 
@@ -243,14 +244,14 @@ DECALAGE = (LONGUEUR - LARGEUR) / 2 * np.tan(np.radians(ANGLE) / 2)
 ```python
 robot.repli()
 for assise in range(ASSISES):
-    for planche in (0, 1):
-        cible = depose(assise, planche)
+    for pièce in (0, 1):
+        cible = depose(assise, pièce)
         # prise  : approche, descente, aspiration, retrait
         # depose : le meme geste, a la hauteur et dans l'orientation voulues
 robot.repli()
 ```
 
-Une seule fonction `depose(assise, planche)` doit produire les douze
+Une seule fonction `depose(assise, pièce)` doit produire les douze
 cibles. Si vous avez écrit douze matrices, recommencez.
 
 > **Question 8.** Votre `depose` prend deux entiers et rend une matrice.
@@ -260,28 +261,28 @@ cibles. Si vous avez écrit douze matrices, recommencez.
 
 ---
 
-## 5. Voir les planches bouger
+## 5. Voir les pièces bouger
 
 ```python
 robot.poser_piece(x=..., y=..., dims=(125, 30, 10), magasin=True)
 ```
 
-La fenêtre dessine la planche et la fait **suivre la ventouse** : on la
-voit quitter le magasin, traverser, et se poser sur le mur. Une prise
+La fenêtre dessine la pièce et la fait **suivre la ventouse** : on la
+voit quitter le magasin, traverser, et se poser sur la structure. Une prise
 qui vise à côté se voit alors immédiatement.
 
 `magasin=True` : une autre réapparaît dès que le robot emporte
-celle-ci — comme l'opérateur qui repose une planche à chaque cycle.
+celle-ci — comme l'opérateur qui repose une pièce à chaque cycle.
 Sans cela, le magasin se vide au premier passage et les onze cycles
 suivants brassent du vide.
 
-> Rembobinez la lecture : les planches reviennent exactement où elles
+> Rembobinez la lecture : les pièces reviennent exactement où elles
 > étaient. Rien n'est accumulé dans ce simulateur — tout est **fonction
 > du temps**, y compris ce que le robot porte.
 
 > Douze cycles couvrent la vue d'arcs bleus et de points jaunes :
 > **Affichage ▸ Vue épurée** (Ctrl+Shift+V) ne laisse que la cellule et
-> le mur.
+> la structure.
 
 ---
 
@@ -299,14 +300,15 @@ for a in robot.controler():
 
 ### Le poignet, et sa course
 
-C'est **ici** que le mur vrillé se distingue d'un pick and place. Vous
+C'est **ici** que la structure vrillée se distingue d'un pick and
+place. Vous
 verrez passer des réserves de ce genre :
 
 ```
 [47 MOVJ] cible : J4 outil = -103.04 deg hors de [-90 ; 90]
 ```
 
-Le poignet ne tourne que dans `[−90° ; +90°]`. Or **une planche est
+Le poignet ne tourne que dans `[−90° ; +90°]`. Or **une pièce est
 symétrique** : la poser à 165° ou à −15° revient au même, elle occupe la
 même place. On peut donc ajouter ou retirer des demi-tours librement.
 
@@ -319,12 +321,12 @@ J4 = orientation − J1
 Les orientations atteignables sont centrées sur **J1**, c'est-à-dire sur
 la direction où pointe le bras, **et non sur zéro**. Ramener dans
 `]−90 ; +90]` par réflexe enverrait 165° sur −15°, et le poignet à
-−105° : hors course, pour exactement la même planche au même endroit.
+−105° : hors course, pour exactement la même pièce au même endroit.
 
 > **Question 9.** Dans quel intervalle faut-il ramener les
 > orientations ? Écrivez la fonction qui le fait.
 
-> **Question 10.** Le mur peut être bâti dans n'importe quelle
+> **Question 10.** La structure peut être bâtie dans n'importe quelle
 > orientation de départ — le tourner en entier ne change pas sa forme.
 > Montrez qu'un départ à **15°** laisse 15° de marge au poignet, là où
 > un départ à 0° le met en butée. Combien d'assises peut-on empiler
@@ -349,8 +351,8 @@ python votre_programme.py --reel
 - **Changez l'angle** : 90°, 60°, 45°. Le décalage suit tout seul si
   vous l'avez écrit en fonction de l'angle. Quelle forme obtenez-vous à
   90° ?
-- **Changez l'épaisseur** des planches dans une seule constante, et
-  vérifiez que le mur monte toujours juste.
+- **Changez l'épaisseur** des pièces dans une seule constante, et
+  vérifiez que la structure monte toujours juste.
 - **Déplacez le magasin**, mesurez sa nouvelle position, changez **une
   seule matrice**. Si vous avez dû toucher autre chose, vos cibles
   n'étaient pas vraiment exprimées dans le repère.
@@ -365,6 +367,6 @@ python votre_programme.py --reel
    vient** et **par rapport à quoi**.
 2. Les réponses aux onze questions.
 3. La sortie de `robot.controler()`, et votre explication de ce qui
-   limite la hauteur du mur.
+   limite la hauteur de la structure.
 4. La comparaison demandée à la question 3 : le même changement
    d'atelier, traité sans repères puis avec.

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CORRIGE de l'activite du mur de kapla -- cellule/ACTIVITE_MUR_KAPLA.md
+CORRIGE de l'activite du structure de kapla -- cellule/ACTIVITE_STRUCTURE_KAPLA.md
 
-    python corrige_mur_kapla.py                simulation
-    python corrige_mur_kapla.py --reel         sur la machine
-    python corrige_mur_kapla.py --angle 90     le carre classique
+    python corrige_structure_kapla.py                simulation
+    python corrige_structure_kapla.py --reel         sur la machine
+    python corrige_structure_kapla.py --angle 90     le carre classique
 
 NE PAS METTRE DANS cellule/. Ce fichier vit dans l'atelier parce que
 l'activite consiste precisement a l'ecrire. Le donner, c'est la
@@ -19,7 +19,7 @@ Ce que l'activite demande, et ou c'est fait ici
     2. decalage d'empilement              -- section 4
     3. ORIENTATION variable d'une assise  -- section 4, le coeur
        a l'autre
-    4. ecart des deux planches, DEDUIT    -- section 2
+    4. ecart des deux pieces, DEDUIT    -- section 2
        de l'angle
     5. boucle                             -- section 5
     6. butees du poignet                  -- section 4, angle_outil
@@ -78,18 +78,18 @@ OUTIL = np.array([[1,  0,  0,        0],
                   [0,  0, -1, -L_OUTIL],
                   [0,  0,  0,        1]], dtype=float)
 
-robot = Pilote(nom="mur-kapla", outil="ventouse",
+robot = Pilote(nom="structure-kapla", outil="ventouse",
                vitesse=100, acceleration=300, vitesse_articulaire=50)
 robot.definir_repere_outil(OUTIL)
 
 # ---------------------------------------------------------------------------
-# 2. LA PLANCHE, L'ANGLE, ET CE QUE L'ANGLE IMPOSE
+# 2. LA PIECE, L'ANGLE, ET CE QUE L'ANGLE IMPOSE
 # ---------------------------------------------------------------------------
 
 LONGUEUR = 125.0        # mm, mesure
 LARGEUR = 30.0
 EPAISSEUR = 10.0
-ASSISES = 6             # hauteur du mur, en assises de deux planches
+ASSISES = 6             # hauteur de la structure, en assises de deux pieces
 
 #: angle dont chaque assise tourne par rapport a la precedente
 ANGLE = 75.0
@@ -98,12 +98,12 @@ if "--angle" in sys.argv:
 
 # L'ORIENTATION DE DEPART, ET POURQUOI ELLE N'EST PAS ZERO.
 #
-# Le mur peut etre bati dans n'importe quelle orientation : la tourner
+# La structure peut etre batie dans n'importe quelle orientation : la tourner
 # en entier ne change rien a sa forme. Mais elle change tout pour le
 # POIGNET.
 #
 # A la structure, la base est a J1 = 90 degres environ. Le poignet doit
-# donc fournir J4 = (orientation de la planche) - 90, et il ne tourne
+# donc fournir J4 = (orientation de la piece) - 90, et il ne tourne
 # que dans [-90 ; +90]. Les six assises demandent six orientations qui
 # s'etalent sur 150 degres ; il faut donc CENTRER cet etalement sur la
 # direction de la base.
@@ -111,25 +111,25 @@ if "--angle" in sys.argv:
 #   depart =  0 deg  ->  J4 de -90 a +60   marge  0 deg : en butee
 #   depart = 15 deg  ->  J4 de -75 a +75   marge 15 deg : confortable
 #
-# Quinze degres de rotation du mur entier, et le poignet respire. Rien
+# Quinze degres de rotation de la structure entiere, et le poignet respire. Rien
 # dans la structure n'a change.
 ANGLE_DEPART = 15.0
 
 # LE DECALAGE N'EST PAS LIBRE : IL SE DEDUIT DE L'ANGLE.
 #
-# Une assise est faite de DEUX planches paralleles, ecartees de
+# Une assise est faite de DEUX pieces paralleles, ecartees de
 # +-DECALAGE de part et d'autre du centre. L'assise suivante, tournee
 # de ANGLE, repose sur elles -- a condition de les croiser DANS leur
 # longueur.
 #
-# Ou tombe ce croisement ? Une planche du dessus est une droite a la
-# distance DECALAGE du centre ; une planche du dessous aussi, tournee
+# Ou tombe ce croisement ? Une piece du dessus est une droite a la
+# distance DECALAGE du centre ; une piece du dessous aussi, tournee
 # de ANGLE. Leur intersection est a
 #
 #       croisement = DECALAGE / tan(ANGLE / 2)
 #
 # du centre, pour le croisement le plus eloigne des deux. On veut que
-# ce point reste a au moins une DEMI-LARGEUR du bout de la planche,
+# ce point reste a au moins une DEMI-LARGEUR du bout de la piece,
 # faute de quoi elle repose sur une arete :
 #
 #       croisement <= LONGUEUR/2 - LARGEUR/2
@@ -144,13 +144,13 @@ ANGLE_DEPART = 15.0
 DECALAGE = (LONGUEUR - LARGEUR) / 2.0 * np.tan(np.radians(ANGLE) / 2.0)
 
 # ET UNE SECONDE CONDITION, QUI BORNE L'ANGLE PAR LE BAS. Les deux
-# planches d'une meme assise ne doivent pas se chevaucher : il leur
+# pieces d'une meme assise ne doivent pas se chevaucher : il leur
 # faut au moins une demi-largeur chacune de part et d'autre du centre.
 #
 #       DECALAGE >= LARGEUR/2    ->   ANGLE >= 35,1 degres
 #
 # C'est la raison geometrique pour laquelle un quart de tour de 30
-# degres est impossible avec ces planches : le profil degenere avant
+# degres est impossible avec ces pieces : le profil degenere avant
 # meme qu'on parle de stabilite.
 ANGLE_MINIMAL = 2.0 * np.degrees(np.arctan(
     (LARGEUR / 2.0) / ((LONGUEUR - LARGEUR) / 2.0)))
@@ -161,39 +161,39 @@ ANGLE_MINIMAL = 2.0 * np.degrees(np.arctan(
 #
 # LE CHANGEMENT DE METHODE EST ICI. La seance precedente ecrivait
 # chaque cible directement depuis la base, et chaque cote y melangeait
-# deux faits : ou est le magasin, et ou est la planche dedans. Avec
+# deux faits : ou est le magasin, et ou est la piece dedans. Avec
 # douze cibles, ce melange devient ingerable.
 #
 # Un repere de programmation rend a chaque nombre une seule
 # signification :
 #
 #   le magasin est deplace      -> la derniere colonne de MAGASIN
-#   les planches font 8 mm      -> la constante EPAISSEUR
-#   le mur est bati ailleurs    -> la derniere colonne de STRUCTURE
-#   le mur vrille de 60 degres  -> la constante ANGLE
+#   les pieces font 8 mm      -> la constante EPAISSEUR
+#   la structure est batie ailleurs    -> la derniere colonne de STRUCTURE
+#   la structure vrille de 60 deg   -> la constante ANGLE
 #
 # Donnes PAR RAPPORT A LA BASE DU ROBOT, et ecrits en matrices.
 #
 # Un repere de travail a son axe z vers le HAUT -- c'est une table, pas
 # un outil. D'ou le contraste avec OUTIL ci-dessus, dont le z descend.
 
-# le magasin : une planche presentee toujours au meme endroit, couchee
+# le magasin : une piece presentee toujours au meme endroit, couchee
 # le long de x. Hors de l'emprise du convoyeur (x = 150 a 270).
 MAGASIN = np.array([[1, 0, 0,   60],
                     [0, 1, 0, -220],
                     [0, 0, 1,    0],
                     [0, 0, 0,    1]], dtype=float)
 
-# la structure : le centre du mur a batir, de l'autre cote du robot
+# la structure : le centre de ce qu'on batit, de l'autre cote du robot
 STRUCTURE = np.array([[1, 0, 0,   0],
                      [0, 1, 0, 240],
                      [0, 0, 1,   0],
                      [0, 0, 0,   1]], dtype=float)
 
-# DANS LE MAGASIN : la ventouse sur le dessus de la planche, couchee a
+# DANS LE MAGASIN : la ventouse sur le dessus de la piece, couchee a
 # plat, donc a EPAISSEUR du plan.
 #
-# Pas de rotation ici : la planche du magasin est deja le long de x.
+# Pas de rotation ici : la piece du magasin est deja le long de x.
 # C'est l'orientation des DEPOSES qui travaillera.
 DANS_LE_MAGASIN = np.array([[1,  0,  0,         0],
                             [0, -1,  0,         0],
@@ -202,26 +202,26 @@ DANS_LE_MAGASIN = np.array([[1,  0,  0,         0],
 
 PRISE = MAGASIN @ DANS_LE_MAGASIN
 
-# LA PLANCHE DANS LE SIMULATEUR. Du decor : aucune instruction, aucune
+# LA PIECE DANS LE SIMULATEUR. Du decor : aucune instruction, aucune
 # trajectoire. La fenetre la dessine et la fait SUIVRE LA VENTOUSE
-# pendant la lecture -- on voit la planche quitter le magasin,
-# traverser, et se poser sur le mur.
+# pendant la lecture -- on voit la piece quitter le magasin,
+# traverser, et se poser sur la structure.
 #
 # magasin=True : une autre reapparait des qu'on emporte celle-ci,
-# comme l'operateur qui repose une planche a chaque cycle. Sans cela le
+# comme l'operateur qui repose une piece a chaque cycle. Sans cela le
 # magasin se vide au premier passage et les onze cycles suivants
 # brasseraient du vide.
 robot.poser_piece(x=float(MAGASIN[0, 3]), y=float(MAGASIN[1, 3]),
                   dims=(LONGUEUR, LARGEUR, EPAISSEUR), magasin=True,
-                  nom="planche")
+                  nom="piece")
 
 # Le degagement, exprime dans le repere de l'OUTIL. L'axe z de l'outil
 # pointant vers le bas, un degagement VERS LE HAUT s'ecrit avec un z
 # NEGATIF. On le verifie plutot que de le croire.
 # 80 mm, et pas 90 : a 90 le bras doit se redresser davantage pour
-# approcher le sommet du mur par le dessus, et `controler()` signale
+# approcher le sommet de la structure par le dessus, et `controler()` signale
 # J2 a 5 degres de sa butee. Le degagement est un reglage, pas une
-# constante -- il se choisit avec la hauteur du mur.
+# constante -- il se choisit avec la hauteur de la structure.
 HAUT = hg.translation(0, 0, -80)
 
 assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
@@ -240,7 +240,7 @@ def angle_outil(assise):
     """
     Orientation de l'assise, ramenee dans la course du poignet.
 
-    UNE PLANCHE EST SYMETRIQUE : la poser a 165 degres ou a -15 revient
+    UNE PIECE EST SYMETRIQUE : la poser a 165 degres ou a -15 revient
     au meme, elle occupe la meme place. On peut donc ajouter ou retirer
     des demi-tours librement, et c'est gratuit pour la structure.
 
@@ -253,7 +253,7 @@ def angle_outil(assise):
     sur la direction ou pointe le bras -- ici le cap de la structure, 90
     degres. Ramener dans ]-90 ; +90] comme on le ferait par reflexe
     enverrait 165 degres sur -15, et le poignet a -105 : hors course,
-    pour exactement la meme planche au meme endroit.
+    pour exactement la meme piece au meme endroit.
 
     On ramene donc autour du CAP, et non autour de zero. C'est la
     correction qui a fait tomber quatorze reserves d'un coup.
@@ -266,28 +266,28 @@ def angle_outil(assise):
     return a
 
 
-def depose(assise, planche):
+def depose(assise, piece):
     """
-    Cible de depose, pour l'assise et la planche donnees (des zero).
+    Cible de depose, pour l'assise et la piece donnees (des zero).
 
     DEUX CHOSES CHANGENT D'UNE CIBLE A L'AUTRE, et c'est tout l'objet
     de l'exercice :
 
       LA HAUTEUR. L'assise n repose sur les n precedentes, donc
       (n + 1) * EPAISSEUR au-dessus du plan de la structure -- la cote du
-      DESSUS de la planche, ou la ventouse se pose.
+      DESSUS de la piece, ou la ventouse se pose.
 
       L'ORIENTATION. Chaque assise tourne de ANGLE par rapport a la
-      precedente. C'est ce qui fait tenir le mur : les planches se
-      croisent au lieu de s'empiler bout a bout, et le mur vrille.
+      precedente. C'est ce qui fait tenir la structure : les pieces se
+      croisent au lieu de s'empiler bout a bout, et la structure vrille.
 
     LA MATRICE, COLONNE PAR COLONNE. Pour un angle a :
 
         colonne 0 : ( cos a,  sin a, 0)   l'axe x de l'outil, donc la
-                                          LONGUEUR de la planche
+                                          LONGUEUR de la piece
         colonne 1 : ( sin a, -cos a, 0)   son y, retourne
         colonne 2 : (     0,      0, -1)  son z, vers le BAS
-        colonne 3 : l'ecart, perpendiculaire a la planche, et la hauteur
+        colonne 3 : l'ecart, perpendiculaire a la piece, et la hauteur
 
     C'est Rz(a) . Rx(180) ecrit en clair. A a = 0 on retrouve la
     matrice de la prise ; a 90 degres, le quart de tour du carre.
@@ -295,9 +295,9 @@ def depose(assise, planche):
     a = np.radians(angle_outil(assise))
     c, s = np.cos(a), np.sin(a)
 
-    # l'ecart est PERPENDICULAIRE a la planche : on tourne le vecteur
+    # l'ecart est PERPENDICULAIRE a la piece : on tourne le vecteur
     # (0, 1) de l'angle a, ce qui donne (-sin a, cos a)
-    signe = 1.0 if planche == 0 else -1.0
+    signe = 1.0 if piece == 0 else -1.0
     ex = -signe * DECALAGE * s
     ey = signe * DECALAGE * c
     z = (assise + 1) * EPAISSEUR
@@ -315,8 +315,8 @@ def depose(assise, planche):
 
 robot.repli()
 for assise in range(ASSISES):
-    for planche in (0, 1):
-        cible = depose(assise, planche)
+    for piece in (0, 1):
+        cible = depose(assise, piece)
 
         # prise : approche, descente, aspiration, retrait
         robot.movj(PRISE @ HAUT, lissage=70)
@@ -338,24 +338,24 @@ robot.repli()
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("planche {:.0f} x {:.0f} x {:.0f} mm"
+    print("piece {:.0f} x {:.0f} x {:.0f} mm"
           .format(LONGUEUR, LARGEUR, EPAISSEUR))
     print("angle par assise : {:.0f} deg   (minimum geometrique {:.1f})"
           .format(ANGLE, ANGLE_MINIMAL))
     print("decalage deduit  : {:.1f} mm".format(DECALAGE))
     if DECALAGE < LARGEUR / 2.0:
         print("")
-        print("  IMPOSSIBLE : a cet angle, les deux planches d'une meme")
+        print("  IMPOSSIBLE : a cet angle, les deux pieces d'une meme")
         print("  assise se chevauchent. Le profil degenere avant meme")
         print("  qu'on parle de stabilite.")
     print("")
     print("prise : x={:.1f}  y={:.1f}  z={:.1f}".format(*PRISE[:3, 3]))
     for assise in range(ASSISES):
-        for planche in (0, 1):
-            T = depose(assise, planche)
-            print("  assise {} planche {} : x={:6.1f}  y={:6.1f}  z={:5.1f}"
+        for piece in (0, 1):
+            T = depose(assise, piece)
+            print("  assise {} piece {} : x={:6.1f}  y={:6.1f}  z={:5.1f}"
                   "   a {:+.0f} deg"
-                  .format(assise + 1, planche + 1, T[0, 3], T[1, 3], T[2, 3],
+                  .format(assise + 1, piece + 1, T[0, 3], T[1, 3], T[2, 3],
                           angle_outil(assise)))
     print("")
     print(robot.resume().splitlines()[0])

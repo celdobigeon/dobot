@@ -7,24 +7,24 @@ IUT, université de Bordeaux · Dobot Magician et sa ventouse
 
 ## Le geste à réaliser
 
-**Une planche**, prise au **magasin** et posée sur la **structure**.
+**Une pièce**, prise au **magasin** et posée sur la **structure**.
 Rien de plus.
 
 C'est le geste le plus courant de la robotique industrielle, et il
 tient en six instructions. Toute la difficulté est ailleurs : **dire au
 robot où aller, sans jamais l'y amener à la main.**
 
-La planche est posée dans une **autre orientation** que celle où elle a
+La pièce est posée dans une **autre orientation** que celle où elle a
 été prise — c'est la seule différence entre les deux cibles, et c'est
 déjà de quoi faire travailler les matrices.
 
 > **Dans cette activité, toutes les cibles sont écrites par rapport à
 > la base du robot.** C'est la façon la plus directe, et c'est celle
-> qu'on pratique en premier. L'activité suivante — [bâtir un mur
-> vrillé](ACTIVITE_MUR_KAPLA.md) — montrera ce qu'elle coûte, et
+> qu'on pratique en premier. L'activité suivante — [bâtir une
+> structure vrillée](ACTIVITE_STRUCTURE_KAPLA.md) — montrera ce qu'elle coûte, et
 > introduira les **repères de programmation** pour y remédier. La
 > dernière partie de ce sujet prépare le terrain : **gardez-la pour la
-> fin, et répondez-y honnêtement.**
+> fin.**
 
 ---
 
@@ -35,7 +35,7 @@ déjà de quoi faire travailler les matrices.
    la base du robot — position **et** orientation.
 3. **Composer les approches et les retraits** avec `@`, dans le repère
    de l'outil.
-4. **Lisser les raccords**, et mesurer ce que cela coûte et rapporte.
+4. **Le lissage** et son utilisation.
 
 Toutes les cibles seront des **matrices homogènes 4×4**, construites à
 partir de cotes mesurées au réglet. Aucun point ne sera appris en
@@ -96,13 +96,8 @@ la suite.
 
 ![Repère de la base et repère de l'outil](assets/reperes_base_outil.svg)
 
-Regardez la figure avant d'écrire quoi que ce soit. Elle montre les deux
-repères dont il est question :
-
-| | Son `x` | Son `y` | Son `z` |
-|---|---|---|---|
-| **base** du robot | vers l'avant | à gauche de l'opérateur | vers le **haut** |
-| **outil** (la ventouse) | le même | **retourné** | vers le **bas** |
+Regardez la figure avant d'écrire quoi que ce soit : les deux repères
+ont le **même `x`**, et leurs `y` et `z` sont **retournés**.
 
 Le `z` de l'outil pointe vers le bas parce que c'est sa **direction
 d'approche** : l'outil avance vers la pièce, et la pièce est en
@@ -156,36 +151,36 @@ ventouse sur un plan de cote connue et comparez.
 
 ---
 
-## 3. Les deux cibles, écrites depuis la base
+## 3. Les deux cibles exprimées dans la base
 
-Une cible n'est pas un triplet de coordonnées : c'est une **situation**
-— *où* va la ventouse **et** *comment* elle est orientée. Les deux
-tiennent dans une matrice 4×4.
+Le repère de la ventouse vient se confondre avec le repère de la cible
+lors de l'exécution de la trajectoire. Une cible définit donc la
+**position et l'orientation de l'outil à un instant t**.
 
 ### 3.1 La prise
 
 Relevez au réglet, depuis le **centre de la base du robot**, où est la
-planche dans le magasin. Elle y est couchée à plat, le long de `x`.
+pièce dans le magasin. Elle y est couchée à plat, le long de `x`.
 
 ```python
 LONGUEUR, LARGEUR, EPAISSEUR = 125.0, 30.0, 10.0
 
 PRISE = np.array([[1,  0,  0,      ...],      # x du magasin
                   [0, -1,  0,      ...],      # y du magasin
-                  [0,  0, -1, EPAISSEUR],     # le DESSUS de la planche
+                  [0,  0, -1, EPAISSEUR],     # le DESSUS de la pièce
                   [0,  0,  0,        1]], dtype=float)
 ```
 
 La partie rotation est celle de `OUTIL` : même demi-tour, pour la même
-raison — la ventouse descend sur la planche.
+raison — la ventouse descend sur la pièce.
 
-Le `z` mérite qu'on s'y arrête. Le plan du magasin est à 0, la planche
+Le `z` mérite qu'on s'y arrête. Le plan du magasin est à 0, la pièce
 fait `EPAISSEUR`, la ventouse se pose **dessus** : `z = EPAISSEUR`.
 
 > **Question 5.** Ce seul nombre mélange deux informations : la hauteur
-> du plan qui porte la planche, et l'épaisseur de la planche. Si vous
+> du plan qui porte la pièce, et l'épaisseur de la pièce. Si vous
 > glissiez une cale de 5 mm sous le magasin, quel nombre changeriez-vous
-> et de combien ? Et si les planches faisaient 8 mm ? **Rien dans la
+> et de combien ? Et si les pièces faisaient 8 mm ? **Rien dans la
 > matrice ne dit laquelle des deux vous corrigez** — notez-le, la
 > dernière partie y revient.
 
@@ -193,7 +188,7 @@ fait `EPAISSEUR`, la ventouse se pose **dessus** : `z = EPAISSEUR`.
 
 ![D'où viennent le cosinus et le sinus](assets/cible_angle.svg)
 
-La planche est posée sur la structure, tournée de `a` :
+La pièce est posée sur la structure, tournée de `a` :
 
 ```python
 c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
@@ -209,10 +204,10 @@ retenir :
 
 | Colonne | Ce qu'elle dit |
 |---|---|
-| 0 : `(c, s, 0)` | l'axe x de l'outil — donc la **longueur** de la planche. Ses composantes **sont** les projections `cos a` et `sin a` sur les axes de la base |
+| 0 : `(c, s, 0)` | l'axe x de l'outil — donc la **longueur** de la pièce. Ses composantes **sont** les projections `cos a` et `sin a` sur les axes de la base |
 | 1 : `(s, −c, 0)` | son y, **retourné** : c'est encore le demi-tour autour de x |
 | 2 : `(0, 0, −1)` | son z, vers le bas |
-| 3 | où la planche se pose |
+| 3 | où la pièce se pose |
 
 C'est `Rz(a) · Rx(180°)` écrit en clair. **À `a = 0`, la partie rotation
 redevient celle de la prise** : la prise est le cas particulier de la
@@ -224,7 +219,7 @@ par une position et un angle.
 > changement de signe, et sur quelle **autre** colonne agit le même
 > retournement ? (La partie droite de la figure est l'indice.)
 
-> **Question 7.** Posez `a = 180°`. La planche occupe-t-elle la même
+> **Question 7.** Posez `a = 180°`. La pièce occupe-t-elle la même
 > place qu'à `a = 0` ? Et la matrice est-elle la même ? Qu'est-ce que
 > cela dit d'une pièce symétrique ?
 
@@ -246,7 +241,7 @@ protester, puis avec `a = 90` et voyez la réserve disparaître.
 
 > **Question 8.** Expliquez, avec la relation ci-dessus, pourquoi
 > `a = 90°` ne coûte rien au poignet alors que `a = 0` le met en butée.
-> Une planche étant symétrique, poser à `a` ou à `a + 180°` revient au
+> Une pièce étant symétrique, poser à `a` ou à `a + 180°` revient au
 > même : cela vous sauve-t-il ici ? Pourquoi ?
 
 ---
@@ -333,7 +328,7 @@ print(np.min(np.linalg.norm(P - (PRISE @ HAUT)[:3, 3], axis=1)), "mm")
 ### 5.3 La règle
 
 **On ne lisse jamais un point où l'outil agit.** La ventouse qui aspire
-à côté de la planche n'emporte rien. Dans le cycle ci-dessus, les
+à côté de la pièce n'emporte rien. Dans le cycle ci-dessus, les
 dégagements sont lissés et les deux points de contact restent à zéro.
 
 Le modèle vous protège à moitié :
@@ -382,9 +377,9 @@ une mesure utile : elle chiffre ce que coûte un arrêt inutile.
 
 ---
 
-## 6. Voir la planche bouger
+## 6. Voir la pièce bouger
 
-Le simulateur peut dessiner la planche et la faire **suivre la
+Le simulateur peut dessiner la pièce et la faire **suivre la
 ventouse** :
 
 ```python
@@ -437,7 +432,7 @@ maintenant, pendant qu'il ne coûte encore rien.
 >
 > Maintenant, **sans l'écrire**, répondez à ceci : l'activité suivante
 > demande **douze** dépôts, à six hauteurs et six orientations
-> différentes, tous définis par rapport au centre du mur. Si ce centre
+> différentes, tous définis par rapport au centre de la structure. Si ce centre
 > bouge de deux centimètres, combien de nombres faudrait-il reprendre
 > en écrivant les cibles comme ici ?
 
@@ -445,10 +440,10 @@ maintenant, pendant qu'il ne coûte encore rien.
 > vaut `EPAISSEUR` parce que le plan du magasin est à zéro. Si le plan
 > était à 60 mm, vous écririez `60 + EPAISSEUR` — **un seul nombre pour
 > deux faits indépendants** : où est le magasin, et quelle est
-> l'épaisseur de la planche.
+> l'épaisseur de la pièce.
 >
 > Proposez une façon d'écrire la cible qui **sépare** ces deux faits,
-> de sorte que déplacer le magasin et changer l'épaisseur des planches
+> de sorte que déplacer le magasin et changer l'épaisseur des pièces
 > ne touchent pas au même endroit du programme. Vous venez de décrire
 > un **repère de programmation** — et c'est le sujet de la prochaine
 > séance.

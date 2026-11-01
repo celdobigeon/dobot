@@ -26,7 +26,7 @@ import numpy as np
 SORTIE = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "cellule", "assets", "reperes_base_outil.svg")
 
-# -- projection isometrique, la meme que dessiner_mur_kapla ------------------
+# -- projection isometrique, la meme que dessiner_structure_kapla ------------------
 COS30, SIN30 = np.cos(np.pi / 6), np.sin(np.pi / 6)
 
 
@@ -35,16 +35,9 @@ def projeter(p):
     return ((x - y) * COS30, (x + y) * SIN30 - z)
 
 
-# couleurs des axes : celles du simulateur
-ROUGE, VERT, BLEU = "#c0392b", "#2e9e4f", "#2b6cb0"
-GRIS, TRAIT, ENCRE = "#d8d8d8", "#8a8a8a", "#333"
-POLICE = "IBM Plex Sans, Segoe UI, sans-serif"
+from dessin_svg import BLEU, ENCRE, ROUGE, VERT, matrice_4x4, texte
 
-
-def texte(u, v, t, taille=14, couleur=ENCRE, poids="400", ancre="start"):
-    return ('<text x="{:.1f}" y="{:.1f}" font-family="{}" font-size="{}" '
-            'font-weight="{}" fill="{}" text-anchor="{}">{}</text>'
-            .format(u, v, POLICE, taille, poids, couleur, ancre, t))
+GRIS, TRAIT = "#d8d8d8", "#8a8a8a"
 
 
 def axe(direction, longueur, couleur, nom, decal=(0, 0)):
@@ -120,7 +113,7 @@ def panneau_outil(longueur_outil=92.0):
 
 
 def main():
-    larg, haut = 820.0, 410.0
+    larg, haut = 820.0, 470.0
     corps = []
 
     corps.append('<g transform="translate(180 195)">')
@@ -147,20 +140,16 @@ def main():
     corps.append(texte(400, 132, "puis translation de &#8722;L selon z",
                        12, "#7a6a2a", "400", "middle"))
 
-    # la matrice, colonne par colonne, aux couleurs des axes
-    y0 = 330
-    corps.append(texte(56, y0 - 14, "OUTIL =", 15, ENCRE, "700"))
-    colonnes = [("1&#160;&#160;0&#160;&#160;0", ROUGE, "x : inchang&#233;"),
-                ("0&#160;&#8722;1&#160;&#160;0", VERT, "y : retourn&#233;"),
-                ("0&#160;&#160;0&#160;&#8722;1", BLEU, "z : vers le bas"),
-                ("0&#160;&#160;0&#160;&#8722;L", ENCRE, "la pointe")]
-    for i, (col, couleur, note) in enumerate(colonnes):
-        x = 148 + i * 162
-        corps.append('<rect x="{:.0f}" y="{:.0f}" width="148" height="30" '
-                     'rx="5" fill="{}" fill-opacity="0.10" stroke="{}" '
-                     'stroke-width="1"/>'.format(x, y0 - 22, couleur, couleur))
-        corps.append(texte(x + 74, y0, col, 15, couleur, "700", "middle"))
-        corps.append(texte(x + 74, y0 + 24, note, 12, "#555", "400", "middle"))
+    # LA MATRICE ENTIERE, et non quatre etiquettes : la ligne du bas
+    # -- 0 0 0 1 -- est justement celle qu'on oublie d'ecrire.
+    corps += matrice_4x4(
+        252, 268, "OUTIL =",
+        [["1", "0", "0", "0"],
+         ["0", "&#8722;1", "0", "0"],
+         ["0", "0", "&#8722;1", "&#8722;L"],
+         ["0", "0", "0", "1"]],
+        ["x : inchang&#233;", "y : retourn&#233;", "z : vers le bas",
+         "la pointe"])
 
     svg = ('<?xml version="1.0" encoding="UTF-8"?>\n'
            '<svg xmlns="http://www.w3.org/2000/svg" '

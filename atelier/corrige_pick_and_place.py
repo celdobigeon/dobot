@@ -8,9 +8,9 @@ CORRIGE de l'activite pick and place -- cellule/ACTIVITE_PICK_AND_PLACE.md
     python corrige_pick_and_place.py --lissage 0      sans arrondi
     python corrige_pick_and_place.py --angle 30       depose en biais
 
-UNE planche, prise a un endroit et posee a un autre. Rien de plus :
+UNE piece, prise a un endroit et posee a un autre. Rien de plus :
 l'empilement et la rotation d'une assise a l'autre sont l'objet de
-l'activite suivante, le mur de kapla.
+l'activite suivante, le structure de kapla.
 
 NE PAS METTRE DANS cellule/. L'activite consiste a ecrire ce fichier.
 
@@ -24,9 +24,9 @@ avant qu'on lui vende la solution.
 Ce qu'elle coute se mesure a la derniere question du sujet. Deplacez
 le magasin de deux centimetres : ici, deux nombres a reprendre, c'est
 indolore. Mais chaque cote de la cible melange DEUX informations --
-ou est le magasin, et ou est la planche dans le magasin -- et plus
-rien ne dit laquelle on corrige. Avec douze deposes, comme au mur de
-kapla, la facture devient impayable.
+ou est le magasin, et ou est la piece dans le magasin -- et plus
+rien ne dit laquelle on corrige. Avec douze deposes, comme a la
+structure de kapla, la facture devient impayable.
 
 L'activite suivante introduit `MAGASIN` et `STRUCTURE`, et la meme
 cible s'y ecrit `MAGASIN @ DANS_LE_MAGASIN`. Ne pas anticiper : le
@@ -94,13 +94,13 @@ def option(nom, defaut):
 
 #: pourcentage d'arrondi des raccords de DEGAGEMENT. 0 a 100.
 LISSAGE = option("--lissage", 70.0)
-#: orientation de la planche deposee, en degres. 0 = le long de x.
+#: orientation de la piece deposee, en degres. 0 = le long de x.
 #:
 #: 90 PAR DEFAUT, ET CE N'EST PAS UN GOUT. La structure est droit
 #: devant le robot, cap 90 degres ; or J4 = orientation - J1, et J4 ne
 #: va que de -90 a +90. Une depose a 0 degre demande donc au poignet
 #: d'aller exactement en butee -- `controler()` le signale. A 90 degres
-#: la planche pointe dans l'axe du bras et le poignet reste a zero.
+#: la piece pointe dans l'axe du bras et le poignet reste a zero.
 #: Essayez `--angle 0` pour voir la reserve apparaitre.
 ANGLE = option("--angle", 90.0)
 
@@ -143,11 +143,11 @@ robot.definir_repere_outil(OUTIL)
 # Les cotes se relevent au reglet depuis le CENTRE DE LA BASE.
 
 # le magasin est a droite du robot, hors de l'emprise du convoyeur
-# (x = 150 a 270). La planche y est couchee le long de x.
+# (x = 150 a 270). La piece y est couchee le long de x.
 #
-#   x = 60, y = -220   la planche, mesuree depuis la base
-#   z = 10             le DESSUS de la planche : le plan porte a 0,
-#                      la planche fait EPAISSEUR, la ventouse se pose
+#   x = 60, y = -220   la piece, mesuree depuis la base
+#   z = 10             le DESSUS de la piece : le plan porte a 0,
+#                      la piece fait EPAISSEUR, la ventouse se pose
 #                      dessus. Les deux cotes sont deja melangees dans
 #                      ce seul nombre -- retenez-le pour la derniere
 #                      question.
@@ -156,12 +156,12 @@ PRISE = np.array([[1,  0,  0,        60.0],
                   [0,  0, -1,   EPAISSEUR],
                   [0,  0,  0,         1.0]], dtype=float)
 
-# la depose est droit devant le robot, et la planche y est tournee de
+# la depose est droit devant le robot, et la piece y est tournee de
 # ANGLE. Voir cellule/assets/cible_angle.svg, qui montre d'ou viennent
 # c et s :
 #
 #   colonne 0 : ( cos a,  sin a, 0)   l'axe x de l'outil, donc la
-#                                     LONGUEUR de la planche
+#                                     LONGUEUR de la piece
 #   colonne 1 : ( sin a, -cos a, 0)   son y, retourne par Rx(180)
 #   colonne 2 : (     0,      0, -1)  son z, vers le BAS
 #   colonne 3 : ou elle se pose
@@ -176,11 +176,11 @@ DEPOSE = np.array([[_c,  _s,  0,         0.0],
                    [ 0,   0, -1,   EPAISSEUR],
                    [ 0,   0,  0,         1.0]], dtype=float)
 
-# la planche du simulateur : du decor, aucune instruction. magasin=True
+# la piece du simulateur : du decor, aucune instruction. magasin=True
 # en fait reapparaitre une des qu'on emporte celle-ci.
 robot.poser_piece(x=float(PRISE[0, 3]), y=float(PRISE[1, 3]),
                   dims=(LONGUEUR, LARGEUR, EPAISSEUR), magasin=True,
-                  nom="planche")
+                  nom="piece")
 
 # ---------------------------------------------------------------------------
 # 3. LES DEGAGEMENTS, PAR @
@@ -225,7 +225,7 @@ robot.repli()
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("planche {:.0f} x {:.0f} x {:.0f} mm"
+    print("piece {:.0f} x {:.0f} x {:.0f} mm"
           .format(LONGUEUR, LARGEUR, EPAISSEUR))
     print("lissage des degagements : {:.0f} %".format(LISSAGE))
     print("orientation a la depose : {:+.0f} deg".format(ANGLE))

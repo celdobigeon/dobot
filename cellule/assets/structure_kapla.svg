@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 318" width="790" height="318" role="img" aria-label="Mur de kapla vrille : vue de dessus et vue isometrique">
-<title>Mur de kapla vrill&#233;</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 790 318" width="790" height="318" role="img" aria-label="Structure de kapla vrille : vue de dessus et vue isometrique">
+<title>Structure de kapla vrill&#233;</title>
 <rect width="790" height="318" fill="#fdfcf7"/>
 <text x="30" y="40" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#333">vue de dessus</text>
 <text x="235" y="40" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#333">vue isom&#233;trique</text>
@@ -52,5 +52,5 @@
 <polygon points="103.3,-18.4 -103.3,-18.4 -103.3,-47.0 103.3,-47.0" fill="#a8821f" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
 <polygon points="103.3,-18.4 -103.3,-18.4 -103.3,-4.9 103.3,-4.9" fill="#8a6b14" stroke="#5c470d" stroke-width="1" stroke-linejoin="round"/>
 </g>
-<text x="30" y="306" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" fill="#555">planche 125 &#215; 30 &#215; 10 mm &#183; 6 assises &#183; 75&#176; par assise &#183; d&#233;calage 36.4 mm &#183; emprise 125 &#215; 125 mm</text>
+<text x="30" y="306" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" fill="#555">piece 125 &#215; 30 &#215; 10 mm &#183; 6 assises &#183; 75&#176; par assise &#183; d&#233;calage 36.4 mm &#183; emprise 125 &#215; 125 mm</text>
 </svg>
