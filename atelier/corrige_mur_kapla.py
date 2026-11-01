@@ -13,15 +13,19 @@ supprimer.
 
 Ce que l'activite demande, et ou c'est fait ici
 -----------------------------------------------
-    1. mise en route                      -- hors du script, dobot.py
-    2. mesure et matrice de l'outil       -- section 1
-    3. reperes, en matriciel              -- section 3
-    4. cibles, approches par @            -- section 3
-    5. prises exprimees dans le repere    -- section 3
-    6. boucle                             -- section 5
-    7. decalage d'empilement              -- section 4
-    8. ORIENTATION variable d'une assise  -- section 4, le coeur
+    1. decalage d'empilement              -- section 4
+    2. ORIENTATION variable d'une assise  -- section 4, le coeur
        a l'autre
+    3. ecart des deux planches, DEDUIT    -- section 2
+       de l'angle
+    4. boucle                             -- section 5
+    5. butees du poignet                  -- section 4, angle_outil
+
+Le reste -- mise en route, mesure et matrice de l'outil, reperes,
+composition des cibles par @, lissage -- appartient a l'activite
+precedente, `corrige_pick_and_place.py` et
+cellule/ACTIVITE_PICK_AND_PLACE.md. Les sections 1 et 3 ci-dessous les
+reprennent telles quelles, sans les re-expliquer.
 
 UNE NOTE POUR L'ENSEIGNANT, sur la longueur d'outil
 ----------------------------------------------------
