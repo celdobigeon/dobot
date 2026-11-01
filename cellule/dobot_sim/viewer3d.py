@@ -458,8 +458,42 @@ class Vue3D(gl.GLViewWidget):
         for k, b in enumerate(boites):
             self._items_objets += self._items_boite(b, cible is not None and k == cible)
 
+    def _items_cylindre(self, b: dict) -> list:
+        """
+        Un cylindre, ajoute a la scene. Rend une PAIRE, comme les boites.
+
+        Le repere de la forme a son troisieme axe le long du cylindre,
+        et `dims` vaut (diametre, diametre, longueur). Le maillage de
+        pyqtgraph part de l'origine vers +z : on le recentre.
+
+        Le second item est une ligne vide. Les appelants attendent deux
+        elements -- le corps et ses aretes -- et un cylindre n'a pas
+        d'aretes a montrer ; mieux vaut rendre la paire que casser le
+        contrat pour en economiser un.
+        """
+        c = np.asarray(b["centre"], dtype=float)
+        R = np.asarray(b["axes"], dtype=float)
+        rayon = float(b["dims"][0]) / 2.0
+        longueur = float(b["dims"][2])
+
+        md = gl.MeshData.cylinder(rows=1, cols=24,
+                                  radius=[rayon, rayon], length=longueur)
+        item = gl.GLMeshItem(meshdata=md, smooth=True, shader="shaded",
+                             glOptions="translucent")
+        T = np.eye(4)
+        T[:3, :3] = R
+        T[:3, 3] = c
+        item.setTransform(_qmat(T @ hg.translation(0.0, 0.0, -longueur / 2.0)))
+        self.addItem(item)
+
+        vide = gl.GLLinePlotItem(pos=np.zeros((0, 3)), mode="lines")
+        self.addItem(vide)
+        return [item, vide]
+
     def _items_boite(self, b: dict, en_evidence: bool = False) -> list:
         """Une boite (faces translucides et aretes), ajoutee a la scene."""
+        if b.get("forme") == "cylindre":
+            return self._items_cylindre(b)
         signes = np.array([[sx, sy, sz] for sz in (-1, 1) for sy in (-1, 1)
                            for sx in (-1, 1)], dtype=float)
         faces = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5],

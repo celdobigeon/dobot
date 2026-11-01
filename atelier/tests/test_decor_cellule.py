@@ -69,6 +69,37 @@ class TestDecorConvoyeur(unittest.TestCase):
         self.assertAlmostEqual(fenetre["dims"][0], 24.0,
                                msg="la fenetre vaut DEUX demi-largeurs")
 
+    def test_le_capteur_est_un_barillet_en_travers_de_la_bande(self):
+        """
+        Un cube a cote du tapis ne disait pas ce que le capteur fait.
+        Un barillet couche en travers, si : il regarde l'axe de la bande.
+
+        On verifie donc la FORME et l'ORIENTATION, pas seulement la
+        presence -- c'etait precisement ce qui manquait.
+        """
+        t = Convoyeur(repere=repere_travail(x=210, y=-400, rz=90),
+                      longueur=698, largeur=100, capteur_s=300)
+        capteur = _un(t.boites(), "capteur")
+        self.assertEqual(capteur.get("forme"), "cylindre")
+
+        R = np.asarray(capteur["axes"], dtype=float)
+        # l'axe du cylindre est le TROISIEME, par convention de la vue
+        np.testing.assert_allclose(R[:, 2], np.asarray(t.repere)[:3, 1],
+                                   atol=1e-9)
+        self.assertAlmostEqual(float(np.linalg.det(R)), 1.0, places=9,
+                               msg="un repere indirect retourne le maillage")
+        self.assertAlmostEqual(capteur["dims"][0], capteur["dims"][1],
+                               msg="un barillet a une section ronde")
+
+    def test_le_capteur_se_pose_a_cote_de_la_bande_et_au_dessus(self):
+        """Il est visse sur l'equerre, pas pose sur la bande."""
+        t = Convoyeur(repere=hg.identite(), longueur=698, largeur=100,
+                      capteur_s=300, capteur_y=46, capteur_z=16)
+        c = _un(t.boites(), "capteur")["centre"]
+        np.testing.assert_allclose(c, [300.0, 46.0, 16.0], atol=1e-9)
+        self.assertGreater(c[1], 100 / 2 - 10,
+                           "le barillet doit border la bande, pas la couvrir")
+
     def test_sans_capteur_ni_camera_rien_n_est_dessine(self):
         formes = Convoyeur(capteur_s=None, camera_s=None).boites()
         self.assertNotIn("capteur", _roles(formes))

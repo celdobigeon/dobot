@@ -110,6 +110,25 @@ class Convoyeur:
     #: port EIO, quand le capteur est cable en tout-ou-rien
     capteur_eio: Optional[int] = None
 
+    # -- ou se trouve le CORPS du capteur, pour le dessiner ----------------
+    #
+    # `capteur_s` dit ou il REGARDE, le long de la bande : c'est la seule
+    # cote qui entre dans un calcul. Les trois qui suivent ne servent
+    # qu'au dessin -- elles placent le barillet sur son support, en
+    # travers de la bande.
+    #
+    # Valeurs relevees sur le maillage du tapis du labo : son equerre
+    # tient entre y = 26 et 66, et monte de z = 14 a 31. Le capteur se
+    # visse dedans, vise le centre de la bande, et sa fenetre tombe a
+    # mi-hauteur d'un cube de 25.
+    #: ecart du corps du capteur a l'axe de la bande, en mm
+    capteur_y: float = 46.0
+    #: hauteur du corps du capteur au-dessus de la bande, en mm
+    capteur_z: float = 16.0
+    #: diametre et longueur du barillet, en mm
+    capteur_diametre: float = 14.0
+    capteur_longueur: float = 34.0
+
     #: abscisse du champ de la camera, et son diametre apparent
     camera_s: float = 300.0
     camera_champ: float = 80.0
@@ -327,8 +346,22 @@ class Convoyeur:
 
         if self.capteur_s is not None:
             s = float(self.capteur_s)
-            formes.append(boite((s, l / 2 + 26, 26.0), (16.0, 16.0, 16.0),
-                                "capteur"))
+            # LE CORPS DU CAPTEUR : un barillet couche EN TRAVERS de la
+            # bande, pas un cube pose a cote. C'est la forme qui dit ce
+            # qu'il fait -- il regarde vers l'axe du tapis.
+            #
+            # Son axe est le y du tapis. Les colonnes du repere d'un
+            # cylindre sont (u, v, AXE), et il faut qu'elles restent
+            # directes : (z, x, y) l'est, puisque z ^ x = y.
+            axes_capteur = np.column_stack((axes[:, 2], axes[:, 0],
+                                            axes[:, 1]))
+            centre = (R @ np.array([s, float(self.capteur_y),
+                                    float(self.capteur_z), 1.0]))[:3]
+            formes.append({"centre": centre, "axes": axes_capteur,
+                           "dims": (float(self.capteur_diametre),
+                                    float(self.capteur_diametre),
+                                    float(self.capteur_longueur)),
+                           "role": "capteur", "forme": "cylindre"})
             # la fenetre surveillee, en travers de la bande : la voir
             # explique d'un coup qu'une piece trop rapide la traverse
             # entre deux lectures
