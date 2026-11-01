@@ -8,12 +8,8 @@ IUT, université de Bordeaux · Dobot Magician et sa ventouse
 ## Le geste à réaliser
 
 **Une pièce**, prise au **magasin** et posée sur la **structure** —
-et posée **deux fois**, de deux façons :
-
-| | La pièce est posée… | Ce que la cible demande |
-|---|---|---|
-| **cas 1** | **comme on l'a prise** | une seule rotation : le demi-tour qui fait descendre l'outil |
-| **cas 2** | **tournée** d'un angle `a` | deux rotations, et c'est là que le produit matriciel se gagne |
+et posée **deux fois** : une première comme on l'a prise, une seconde
+tournée.
 
 C'est le geste le plus courant de la robotique industrielle, et il
 tient en six instructions. Toute la difficulté est ailleurs : **dire au
