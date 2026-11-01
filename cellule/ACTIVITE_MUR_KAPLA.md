@@ -22,19 +22,17 @@ Vue de dessus, c'est une rosace. De côté, c'est un mur qui vrille.
 
 ---
 
-## Ce qui est supposé acquis
+## Ce qui est acquis, et ce qui ne l'est pas
 
 Cette activité **continue** [Prendre et
-poser](ACTIVITE_PICK_AND_PLACE.md). Tout ce qui suit y a été établi, et
-n'est ici que rappelé :
+poser](ACTIVITE_PICK_AND_PLACE.md). On y reprend tel quel :
 
-| Acquis | Ce qu'on en reprend tel quel |
+| Acquis | Ce qu'on en garde |
 |---|---|
 | mise en route | `python dobot.py mise-en-route`, puis la ligne `defauts effaces` |
 | matrice de l'outil | `OUTIL`, mesurée puis vérifiée par une descente |
-| repères de travail | `MAGASIN` et `CHANTIER`, par rapport à la base |
-| la prise | `PRISE = MAGASIN @ DANS_LE_MAGASIN` |
-| les dégagements | `PRISE @ HAUT`, avec `HAUT = translation(0, 0, −80)` |
+| la cible comme situation | une matrice 4×4 : position **et** orientation |
+| les dégagements | `CIBLE @ HAUT`, avec `HAUT = translation(0, 0, −80)` |
 | le lissage | lissé sur les dégagements, jamais sur un point de contact |
 
 ```python
@@ -45,25 +43,110 @@ OUTIL = np.array([[1,  0,  0,        0],
                   [0,  0,  0,        1]], dtype=float)
 robot.definir_repere_outil(OUTIL)
 
-MAGASIN  = np.array(...)     # mesures au reglet, depuis la base
-CHANTIER = np.array(...)     # le CENTRE du mur a batir
+HAUT = hg.translation(0, 0, -80)
+```
+
+**Ce qui change, et c'est le cœur de la séance :** la dernière fois,
+vos deux cibles étaient écrites directement par rapport à la base du
+robot. Ici il y en a **douze**, à six hauteurs et six orientations.
+Écrites de la même façon, elles deviendraient ingérables — vous l'avez
+pressenti à la question 15 du sujet précédent.
+
+On va donc faire ce que vous avez proposé : **déclarer des repères de
+programmation**.
+
+---
+
+## 1. Les repères de programmation
+
+### 1.1 Ce qu'on y gagne, avant de les écrire
+
+Un repère de programmation est un **point de la cellule qu'on nomme**,
+et par rapport auquel on exprime ensuite les cibles. Ici il en faut
+deux : le **magasin**, où les planches sont présentées, et la
+**structure**, le centre du mur à bâtir.
+
+L'intérêt tient en une phrase : **chaque nombre ne dit plus qu'une
+seule chose.**
+
+| Ce qui change dans l'atelier | Ce qu'on reprend dans le programme |
+|---|---|
+| le magasin est déplacé | la dernière colonne de `MAGASIN`, et rien d'autre |
+| les planches font 8 mm | la constante `EPAISSEUR`, et rien d'autre |
+| le mur est bâti ailleurs | la dernière colonne de `STRUCTURE` |
+| le mur vrille de 60° au lieu de 75° | la constante `ANGLE` |
+
+Sans repères, chacune de ces quatre lignes toucherait les douze cibles
+à la fois — et une cote y mélangerait toujours deux faits.
+
+### 1.2 Les écrire
+
+Mesurez au réglet, **par rapport au centre de la base du robot**, où se
+trouvent le magasin et le centre du mur.
+
+```python
+MAGASIN = np.array([[1, 0, 0, ...],
+                    [0, 1, 0, ...],
+                    [0, 0, 1,   0],
+                    [0, 0, 0,   1]], dtype=float)
+
+STRUCTURE = np.array([[1, 0, 0, ...],
+                      [0, 1, 0, ...],
+                      [0, 0, 1,   0],
+                      [0, 0, 0,   1]], dtype=float)
+```
+
+Partie rotation = **identité** : les deux sont parallèles à la base. La
+dernière colonne porte leur position.
+
+> **Un repère de table a son `z` vers le HAUT.** C'est le contraste avec
+> `OUTIL`, dont le `z` descend : l'un décrit un plan qui porte, l'autre
+> un outil qui approche. Ce ne sont pas les mêmes objets.
+
+> **Question 1.** Que faudrait-il changer si le magasin était posé en
+> biais, tourné d'un quart de tour ? Combien de nombres reprendre, et
+> dans quelle partie de la matrice ?
+
+**Vérification** — `repere_travail(x=..., y=...)` construit la même
+chose à partir de coordonnées :
+
+```python
+assert np.allclose(MAGASIN, repere_travail(x=..., y=...))
+```
+
+Si l'assertion passe, votre matrice est juste. **Gardez la vôtre** :
+c'est elle que l'activité demande.
+
+### 1.3 La prise, enfin séparée en deux faits
+
+```python
+LONGUEUR, LARGEUR, EPAISSEUR = 125.0, 30.0, 10.0
 
 DANS_LE_MAGASIN = np.array([[1,  0,  0,         0],
                             [0, -1,  0,         0],
                             [0,  0, -1, EPAISSEUR],
                             [0,  0,  0,         1]], dtype=float)
+
 PRISE = MAGASIN @ DANS_LE_MAGASIN
-HAUT  = hg.translation(0, 0, -80)
 ```
 
-Ce qui est **nouveau**, et qui fait toute l'activité : la dépose change
-d'une planche à l'autre, en **hauteur** et en **orientation**.
+Comparez avec ce que vous aviez écrit la dernière fois. La cible est la
+même ; ce qui a changé, c'est qu'elle **se lit** : *le magasin*, puis
+*la planche dans le magasin*. La cote `EPAISSEUR` ne parle plus que de
+la planche, et les cotes du magasin ne parlent plus que du magasin.
+
+> **Question 2.** Dans `MAGASIN @ DANS_LE_MAGASIN`, l'ordre compte-t-il ?
+> Essayez l'autre sens, regardez où part la cible, expliquez.
+
+> **Question 3.** Reprenez votre programme de la séance précédente et
+> celui-ci. Glissez une cale de 5 mm sous le magasin : montrez que dans
+> l'un vous devez réfléchir à ce que vous corrigez, et dans l'autre non.
 
 ---
 
-## 1. La dépose : position **et** orientation
+## 2. La dépose : position **et** orientation
 
-### 1.1 La hauteur
+### 2.1 La hauteur
 
 L'assise *n* repose sur les *n* précédentes :
 
@@ -74,7 +157,7 @@ z = (n + 1) × EPAISSEUR
 C'est le **décalage d'empilement**, et il doit être un paramètre : des
 planches de 8 mm ne doivent demander qu'une ligne à changer.
 
-### 1.2 L'orientation
+### 2.2 L'orientation
 
 ![D'où viennent le cosinus et le sinus](assets/cible_angle.svg)
 
@@ -83,10 +166,12 @@ L'assise *n* est tournée de `n × 75°`. Pour un angle `a` :
 ```python
 c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
 
-dans_le_chantier = np.array([[c,  s,  0, ex],
-                             [s, -c,  0, ey],
-                             [0,  0, -1,  z],
-                             [0,  0,  0,  1]], dtype=float)
+dans_la_structure = np.array([[c,  s,  0, ex],
+                              [s, -c,  0, ey],
+                              [0,  0, -1,  z],
+                              [0,  0,  0,  1]], dtype=float)
+
+cible = STRUCTURE @ dans_la_structure
 ```
 
 Colonne 0 : la **longueur** de la planche. Colonne 1 : sa largeur,
@@ -94,14 +179,14 @@ Colonne 0 : la **longueur** de la planche. Colonne 1 : sa largeur,
 vers le bas. C'est `Rz(a) · Rx(180°)`, comme dans l'activité
 précédente — seul `a` change désormais à chaque assise.
 
-> **Question 1.** Vérifiez une fois pour toutes que c'est une rotation :
+> **Question 4.** Vérifiez une fois pour toutes que c'est une rotation :
 > colonnes unitaires, orthogonales deux à deux, déterminant **+1**.
 > Le déterminant vaut-il encore `+1` quand `a` change ? Pourquoi
 > était-ce prévisible ?
 
 ---
 
-## 2. L'écart des deux planches d'une assise
+## 3. L'écart des deux planches d'une assise
 
 Les deux planches d'une assise sont écartées de `±DECALAGE`,
 **perpendiculairement** à leur longueur — donc le long de
@@ -124,22 +209,22 @@ d'où, en prenant l'égalité — le profil le plus large qui tienne :
 DECALAGE = (LONGUEUR - LARGEUR) / 2 * np.tan(np.radians(ANGLE) / 2)
 ```
 
-> **Question 2.** Que vaut `DECALAGE` pour un angle de **90°** ?
+> **Question 5.** Que vaut `DECALAGE` pour un angle de **90°** ?
 > Retrouvez-vous une figure connue ? Expliquez pourquoi le carré
 > classique du kapla est le cas particulier de cette formule.
 
-> **Question 3.** Les deux planches d'une même assise ne doivent pas se
+> **Question 6.** Les deux planches d'une même assise ne doivent pas se
 > chevaucher : il leur faut au moins une demi-largeur chacune. Écrivez
 > cette condition, et **déduisez-en l'angle minimal**. Un quart de tour
 > de 30° est-il possible avec ces planches ?
 
-> **Question 4.** Pourquoi l'écart se prend-il le long de
+> **Question 7.** Pourquoi l'écart se prend-il le long de
 > `(−sin a, cos a)` ? Que donnerait `(cos a, sin a)`, et à quoi
 > ressemblerait le mur ?
 
 ---
 
-## 3. La boucle
+## 4. La boucle
 
 ```python
 robot.repli()
@@ -154,14 +239,14 @@ robot.repli()
 Une seule fonction `depose(assise, planche)` doit produire les douze
 cibles. Si vous avez écrit douze matrices, recommencez.
 
-> **Question 5.** Votre `depose` prend deux entiers et rend une matrice.
+> **Question 8.** Votre `depose` prend deux entiers et rend une matrice.
 > Quels sont **tous** les nombres mesurés dont elle dépend ? Faites-en
 > la liste, et dites pour chacun ce qu'il faudrait reprendre s'il
-> changeait.
+> changeait. Combien en auriez-vous eu sans les repères ?
 
 ---
 
-## 4. Voir les planches bouger
+## 5. Voir les planches bouger
 
 ```python
 robot.poser_piece(x=..., y=..., dims=(125, 30, 10), magasin=True)
@@ -170,6 +255,11 @@ robot.poser_piece(x=..., y=..., dims=(125, 30, 10), magasin=True)
 La fenêtre dessine la planche et la fait **suivre la ventouse** : on la
 voit quitter le magasin, traverser, et se poser sur le mur. Une prise
 qui vise à côté se voit alors immédiatement.
+
+`magasin=True` : une autre réapparaît dès que le robot emporte
+celle-ci — comme l'opérateur qui repose une planche à chaque cycle.
+Sans cela, le magasin se vide au premier passage et les onze cycles
+suivants brassent du vide.
 
 > Rembobinez la lecture : les planches reviennent exactement où elles
 > étaient. Rien n'est accumulé dans ce simulateur — tout est **fonction
@@ -181,7 +271,7 @@ qui vise à côté se voit alors immédiatement.
 
 ---
 
-## 5. Valider hors ligne, puis descendre sur la machine
+## 6. Valider hors ligne, puis descendre sur la machine
 
 ```bash
 python votre_programme.py          # sans --reel : le simulateur
@@ -217,16 +307,16 @@ la direction où pointe le bras, **et non sur zéro**. Ramener dans
 `]−90 ; +90]` par réflexe enverrait 165° sur −15°, et le poignet à
 −105° : hors course, pour exactement la même planche au même endroit.
 
-> **Question 6.** Dans quel intervalle faut-il ramener les
+> **Question 9.** Dans quel intervalle faut-il ramener les
 > orientations ? Écrivez la fonction qui le fait.
 
-> **Question 7.** Le mur peut être bâti dans n'importe quelle
+> **Question 10.** Le mur peut être bâti dans n'importe quelle
 > orientation de départ — le tourner en entier ne change pas sa forme.
 > Montrez qu'un départ à **15°** laisse 15° de marge au poignet, là où
 > un départ à 0° le met en butée. Combien d'assises peut-on empiler
 > avant que la course du poignet ne suffise plus, et pourquoi ?
 
-> **Question 8.** Le dégagement vaut 80 mm et non 90. Montez-le à 90,
+> **Question 11.** Le dégagement vaut 80 mm et non 90. Montez-le à 90,
 > relancez `controler()`, et expliquez la réserve qui apparaît sur J2.
 > Qu'est-ce que cela dit d'un dégagement « généreux » ?
 
@@ -240,13 +330,16 @@ python votre_programme.py --reel
 
 ---
 
-## 6. Pour aller plus loin
+## 7. Pour aller plus loin
 
 - **Changez l'angle** : 90°, 60°, 45°. Le décalage suit tout seul si
   vous l'avez écrit en fonction de l'angle. Quelle forme obtenez-vous à
   90° ?
 - **Changez l'épaisseur** des planches dans une seule constante, et
   vérifiez que le mur monte toujours juste.
+- **Déplacez le magasin**, mesurez sa nouvelle position, changez **une
+  seule matrice**. Si vous avez dû toucher autre chose, vos cibles
+  n'étaient pas vraiment exprimées dans le repère.
 - **Posez le magasin en biais** et décrivez-le par la partie rotation de
   `MAGASIN`. Le reste du programme ne doit pas bouger.
 
@@ -255,7 +348,9 @@ python votre_programme.py --reel
 ## Ce qu'il faut rendre
 
 1. Le programme, commenté — chaque cote mesurée doit dire **d'où elle
-   vient**.
-2. Les réponses aux huit questions.
+   vient** et **par rapport à quoi**.
+2. Les réponses aux onze questions.
 3. La sortie de `robot.controler()`, et votre explication de ce qui
    limite la hauteur du mur.
+4. La comparaison demandée à la question 3 : le même changement
+   d'atelier, traité sans repères puis avec.

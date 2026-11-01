@@ -14,14 +14,31 @@ l'activite suivante, le mur de kapla.
 
 NE PAS METTRE DANS cellule/. L'activite consiste a ecrire ce fichier.
 
+PAS DE REPERE DE PROGRAMMATION ICI, ET C'EST VOULU
+---------------------------------------------------
+Les deux cibles sont ecrites DIRECTEMENT par rapport a la base du
+robot. C'est la facon naive, et c'est exactement celle qu'il faut
+faire pratiquer d'abord : l'etudiant doit sentir ce qu'elle coute
+avant qu'on lui vende la solution.
+
+Ce qu'elle coute se mesure a la derniere question du sujet. Deplacez
+le magasin de deux centimetres : ici, deux nombres a reprendre, c'est
+indolore. Mais chaque cote de la cible melange DEUX informations --
+ou est le magasin, et ou est la planche dans le magasin -- et plus
+rien ne dit laquelle on corrige. Avec douze deposes, comme au mur de
+kapla, la facture devient impayable.
+
+L'activite suivante introduit `MAGASIN` et `STRUCTURE`, et la meme
+cible s'y ecrit `MAGASIN @ DANS_LE_MAGASIN`. Ne pas anticiper : le
+confort ne se comprend que par le manque.
+
 Ce que l'activite demande, et ou c'est fait ici
 -----------------------------------------------
     1. mise en route                       -- hors du script, dobot.py
     2. mesure et matrice de l'outil        -- section 1
-    3. les deux reperes, en matriciel      -- section 2
-    4. cibles, approches et retraits par @ -- sections 3 et 4
-    5. prises exprimees dans le repere     -- section 3
-    6. LE LISSAGE, et ce qu'il coute       -- section 5, le coeur
+    3. les deux cibles, depuis la base     -- section 2
+    4. approches et retraits par @         -- section 3
+    5. LE LISSAGE, et ce qu'il coute       -- section 4, le coeur
 
 LE LISSAGE, PUISQUE C'EST L'OBJET DE L'ACTIVITE
 ------------------------------------------------
@@ -79,13 +96,15 @@ def option(nom, defaut):
 LISSAGE = option("--lissage", 70.0)
 #: orientation de la planche deposee, en degres. 0 = le long de x.
 #:
-#: 90 PAR DEFAUT, ET CE N'EST PAS UN GOUT. Le chantier est droit devant
-#: le robot, cap 90 degres ; or J4 = orientation - J1, et J4 ne va que
-#: de -90 a +90. Une depose a 0 degre demande donc au poignet d'aller
-#: exactement en butee -- `controler()` le signale. A 90 degres la
-#: planche pointe dans l'axe du bras et le poignet reste a zero.
+#: 90 PAR DEFAUT, ET CE N'EST PAS UN GOUT. La structure est droit
+#: devant le robot, cap 90 degres ; or J4 = orientation - J1, et J4 ne
+#: va que de -90 a +90. Une depose a 0 degre demande donc au poignet
+#: d'aller exactement en butee -- `controler()` le signale. A 90 degres
+#: la planche pointe dans l'axe du bras et le poignet reste a zero.
 #: Essayez `--angle 0` pour voir la reserve apparaitre.
 ANGLE = option("--angle", 90.0)
+
+LONGUEUR, LARGEUR, EPAISSEUR = 125.0, 30.0, 10.0
 
 # ---------------------------------------------------------------------------
 # 1. L'OUTIL
@@ -114,93 +133,74 @@ robot = Pilote(nom="pick-and-place", outil="ventouse",
 robot.definir_repere_outil(OUTIL)
 
 # ---------------------------------------------------------------------------
-# 2. LES DEUX REPERES
+# 2. LES DEUX CIBLES, PAR RAPPORT A LA BASE DU ROBOT
 # ---------------------------------------------------------------------------
 #
-# Donnes PAR RAPPORT A LA BASE DU ROBOT. Un repere de TABLE a son z
-# vers le haut -- d'ou le contraste avec OUTIL, dont le z descend.
-
-LONGUEUR, LARGEUR, EPAISSEUR = 125.0, 30.0, 10.0
-
-# le magasin : une planche presentee toujours au meme endroit, couchee
-# le long de x. Hors de l'emprise du convoyeur (x = 150 a 270).
-MAGASIN = np.array([[1, 0, 0,   60],
-                    [0, 1, 0, -220],
-                    [0, 0, 1,    0],
-                    [0, 0, 0,    1]], dtype=float)
-
-# le chantier : le debut de la rangee, de l'autre cote du robot
-CHANTIER = np.array([[1, 0, 0,   0],
-                     [0, 1, 0, 240],
-                     [0, 0, 1,   0],
-                     [0, 0, 0,   1]], dtype=float)
-
-# ---------------------------------------------------------------------------
-# 3. LA PRISE
-# ---------------------------------------------------------------------------
+# Chacune est une situation complete : OU va la ventouse, et COMMENT
+# elle est orientee. Rien d'autre n'est declare -- pas de repere de
+# travail, c'est le sujet de l'activite suivante.
 #
-# La ventouse se pose sur le DESSUS de la planche, donc a EPAISSEUR du
-# plan du magasin. Pas de rotation : la planche y est deja le long de x.
+# Les cotes se relevent au reglet depuis le CENTRE DE LA BASE.
 
-DANS_LE_MAGASIN = np.array([[1,  0,  0,         0],
-                            [0, -1,  0,         0],
-                            [0,  0, -1, EPAISSEUR],
-                            [0,  0,  0,         1]], dtype=float)
+# le magasin est a droite du robot, hors de l'emprise du convoyeur
+# (x = 150 a 270). La planche y est couchee le long de x.
+#
+#   x = 60, y = -220   la planche, mesuree depuis la base
+#   z = 10             le DESSUS de la planche : le plan porte a 0,
+#                      la planche fait EPAISSEUR, la ventouse se pose
+#                      dessus. Les deux cotes sont deja melangees dans
+#                      ce seul nombre -- retenez-le pour la derniere
+#                      question.
+PRISE = np.array([[1,  0,  0,        60.0],
+                  [0, -1,  0,      -220.0],
+                  [0,  0, -1,   EPAISSEUR],
+                  [0,  0,  0,         1.0]], dtype=float)
 
-PRISE = MAGASIN @ DANS_LE_MAGASIN
+# la depose est droit devant le robot, et la planche y est tournee de
+# ANGLE. Voir cellule/assets/cible_angle.svg, qui montre d'ou viennent
+# c et s :
+#
+#   colonne 0 : ( cos a,  sin a, 0)   l'axe x de l'outil, donc la
+#                                     LONGUEUR de la planche
+#   colonne 1 : ( sin a, -cos a, 0)   son y, retourne par Rx(180)
+#   colonne 2 : (     0,      0, -1)  son z, vers le BAS
+#   colonne 3 : ou elle se pose
+#
+# A ANGLE = 0 cette matrice redevient celle de la prise, au point pres :
+# la prise est le cas particulier ou l'on ne tourne rien.
+_a = np.radians(ANGLE)
+_c, _s = np.cos(_a), np.sin(_a)
 
-# le degagement, exprime dans le repere de l'OUTIL. Son z pointant vers
-# le bas, monter s'ecrit avec un z NEGATIF. On le verifie.
-HAUT = hg.translation(0, 0, -80)
-assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
+DEPOSE = np.array([[_c,  _s,  0,         0.0],
+                   [_s, -_c,  0,       240.0],
+                   [ 0,   0, -1,   EPAISSEUR],
+                   [ 0,   0,  0,         1.0]], dtype=float)
 
 # la planche du simulateur : du decor, aucune instruction. magasin=True
 # en fait reapparaitre une des qu'on emporte celle-ci.
-robot.poser_piece(x=float(MAGASIN[0, 3]), y=float(MAGASIN[1, 3]),
+robot.poser_piece(x=float(PRISE[0, 3]), y=float(PRISE[1, 3]),
                   dims=(LONGUEUR, LARGEUR, EPAISSEUR), magasin=True,
                   nom="planche")
 
 # ---------------------------------------------------------------------------
-# 4. LA DEPOSE
+# 3. LES DEGAGEMENTS, PAR @
 # ---------------------------------------------------------------------------
+#
+# Exprimes dans le repere de l'OUTIL : c'est le seul endroit du
+# programme ou l'on compose, et c'est deja beaucoup. L'axe z de l'outil
+# pointant vers le bas, MONTER s'ecrit avec un z NEGATIF -- on le
+# verifie plutot que de le croire.
 
-
-def depose():
-    """
-    Cible de depose : au centre du chantier, orientee de ANGLE.
-
-    LA MATRICE, COLONNE PAR COLONNE -- voir
-    cellule/assets/cible_angle.svg, qui montre d'ou viennent c et s :
-
-        colonne 0 : ( cos a,  sin a, 0)   l'axe x de l'outil, donc la
-                                          LONGUEUR de la planche
-        colonne 1 : ( sin a, -cos a, 0)   son y, retourne par Rx(180)
-        colonne 2 : (     0,      0, -1)  son z, vers le BAS
-        colonne 3 : (0, 0, EPAISSEUR)     la ventouse sur le DESSUS de
-                                          la planche posee
-
-    C'est la SEULE difference avec la prise : une orientation. La
-    planche est prise le long de x et posee le long de a, et c'est le
-    poignet qui fait la difference.
-    """
-    a = np.radians(ANGLE)
-    c, s = np.cos(a), np.sin(a)
-    dans_le_chantier = np.array([[c,  s,  0,         0],
-                                 [s, -c,  0,         0],
-                                 [0,  0, -1, EPAISSEUR],
-                                 [0,  0,  0,         1]], dtype=float)
-    return CHANTIER @ dans_le_chantier
-
+HAUT = hg.translation(0, 0, -80)
+assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 
 # ---------------------------------------------------------------------------
-# 5. LE CYCLE, ET LE LISSAGE
+# 4. LE CYCLE, ET LE LISSAGE
 # ---------------------------------------------------------------------------
 #
 # LE LISSAGE NE PORTE QUE SUR LES DEGAGEMENTS. Les deux points ou
 # l'outil agit -- la prise et la depose -- restent a 0 : un point lisse
 # n'est pas atteint, et une ventouse qui aspire a cote n'emporte rien.
-
-CIBLE = depose()
 
 robot.repli()
 
@@ -212,16 +212,16 @@ robot.attendre(0.3)
 robot.movl(PRISE @ HAUT, lissage=LISSAGE)
 
 # depose : le meme geste, a l'autre bout et dans l'autre orientation
-robot.movj(CIBLE @ HAUT, lissage=LISSAGE)
-robot.movl(CIBLE, vitesse=40)
+robot.movj(DEPOSE @ HAUT, lissage=LISSAGE)
+robot.movl(DEPOSE, vitesse=40)
 robot.ventouse(False)
 robot.attendre(0.3)
-robot.movl(CIBLE @ HAUT, lissage=LISSAGE)
+robot.movl(DEPOSE @ HAUT, lissage=LISSAGE)
 
 robot.repli()
 
 # ---------------------------------------------------------------------------
-# 6. CONTROLE, PUIS EXECUTION
+# 5. CONTROLE, PUIS EXECUTION
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     print("prise  : x={:6.1f}  y={:6.1f}  z={:5.1f}   a   +0 deg"
           .format(*PRISE[:3, 3]))
     print("depose : x={:6.1f}  y={:6.1f}  z={:5.1f}   a {:+.0f} deg"
-          .format(CIBLE[0, 3], CIBLE[1, 3], CIBLE[2, 3], ANGLE))
+          .format(DEPOSE[0, 3], DEPOSE[1, 3], DEPOSE[2, 3], ANGLE))
     print("")
     print(robot.resume().splitlines()[0])
 

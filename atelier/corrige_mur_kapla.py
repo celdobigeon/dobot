@@ -13,19 +13,27 @@ supprimer.
 
 Ce que l'activite demande, et ou c'est fait ici
 -----------------------------------------------
-    1. decalage d'empilement              -- section 4
-    2. ORIENTATION variable d'une assise  -- section 4, le coeur
+    1. REPERES DE PROGRAMMATION           -- section 3
+       (MAGASIN, STRUCTURE), et la prise
+       qui s'y exprime
+    2. decalage d'empilement              -- section 4
+    3. ORIENTATION variable d'une assise  -- section 4, le coeur
        a l'autre
-    3. ecart des deux planches, DEDUIT    -- section 2
+    4. ecart des deux planches, DEDUIT    -- section 2
        de l'angle
-    4. boucle                             -- section 5
-    5. butees du poignet                  -- section 4, angle_outil
+    5. boucle                             -- section 5
+    6. butees du poignet                  -- section 4, angle_outil
 
-Le reste -- mise en route, mesure et matrice de l'outil, reperes,
-composition des cibles par @, lissage -- appartient a l'activite
-precedente, `corrige_pick_and_place.py` et
-cellule/ACTIVITE_PICK_AND_PLACE.md. Les sections 1 et 3 ci-dessous les
-reprennent telles quelles, sans les re-expliquer.
+LES REPERES SONT LE SUJET DE LA SEANCE, PAS UN ACQUIS
+------------------------------------------------------
+L'activite precedente (`corrige_pick_and_place.py`) ecrit ses deux
+cibles DIRECTEMENT par rapport a la base, et c'est delibere : deux
+cibles, cela passe. Douze, non. L'etudiant arrive ici en ayant senti
+le manque, et la section 3 lui donne la reponse.
+
+Ce qui est en revanche acquis et seulement rappele ci-dessous : la
+mise en route, la mesure et la matrice de l'outil, la composition des
+degagements par @, et le lissage.
 
 UNE NOTE POUR L'ENSEIGNANT, sur la longueur d'outil
 ----------------------------------------------------
@@ -94,7 +102,7 @@ if "--angle" in sys.argv:
 # en entier ne change rien a sa forme. Mais elle change tout pour le
 # POIGNET.
 #
-# Au chantier, la base est a J1 = 90 degres environ. Le poignet doit
+# A la structure, la base est a J1 = 90 degres environ. Le poignet doit
 # donc fournir J4 = (orientation de la planche) - 90, et il ne tourne
 # que dans [-90 ; +90]. Les six assises demandent six orientations qui
 # s'etalent sur 150 degres ; il faut donc CENTRER cet etalement sur la
@@ -148,8 +156,21 @@ ANGLE_MINIMAL = 2.0 * np.degrees(np.arctan(
     (LARGEUR / 2.0) / ((LONGUEUR - LARGEUR) / 2.0)))
 
 # ---------------------------------------------------------------------------
-# 3. LES DEUX REPERES, ET LA PRISE
+# 3. LES DEUX REPERES DE PROGRAMMATION, ET LA PRISE
 # ---------------------------------------------------------------------------
+#
+# LE CHANGEMENT DE METHODE EST ICI. La seance precedente ecrivait
+# chaque cible directement depuis la base, et chaque cote y melangeait
+# deux faits : ou est le magasin, et ou est la planche dedans. Avec
+# douze cibles, ce melange devient ingerable.
+#
+# Un repere de programmation rend a chaque nombre une seule
+# signification :
+#
+#   le magasin est deplace      -> la derniere colonne de MAGASIN
+#   les planches font 8 mm      -> la constante EPAISSEUR
+#   le mur est bati ailleurs    -> la derniere colonne de STRUCTURE
+#   le mur vrille de 60 degres  -> la constante ANGLE
 #
 # Donnes PAR RAPPORT A LA BASE DU ROBOT, et ecrits en matrices.
 #
@@ -163,8 +184,8 @@ MAGASIN = np.array([[1, 0, 0,   60],
                     [0, 0, 1,    0],
                     [0, 0, 0,    1]], dtype=float)
 
-# le chantier : le centre du mur a batir, de l'autre cote du robot
-CHANTIER = np.array([[1, 0, 0,   0],
+# la structure : le centre du mur a batir, de l'autre cote du robot
+STRUCTURE = np.array([[1, 0, 0,   0],
                      [0, 1, 0, 240],
                      [0, 0, 1,   0],
                      [0, 0, 0,   1]], dtype=float)
@@ -210,9 +231,9 @@ assert (PRISE @ HAUT)[2, 3] > PRISE[2, 3], "le degagement descend !"
 # ---------------------------------------------------------------------------
 
 
-#: direction du chantier vue de la base, en degres. C'est autour
+#: direction de la structure vue de la base, en degres. C'est autour
 #: d'elle qu'il faut ramener les orientations -- voir angle_outil.
-CAP_CHANTIER = np.degrees(np.arctan2(CHANTIER[1, 3], CHANTIER[0, 3]))
+CAP_STRUCTURE = np.degrees(np.arctan2(STRUCTURE[1, 3], STRUCTURE[0, 3]))
 
 
 def angle_outil(assise):
@@ -229,7 +250,7 @@ def angle_outil(assise):
         J4 = orientation - J1,   avec J4 dans [-90 ; +90]
 
     Les orientations atteignables sont donc centrees sur J1, c'est-a-dire
-    sur la direction ou pointe le bras -- ici le cap du chantier, 90
+    sur la direction ou pointe le bras -- ici le cap de la structure, 90
     degres. Ramener dans ]-90 ; +90] comme on le ferait par reflexe
     enverrait 165 degres sur -15, et le poignet a -105 : hors course,
     pour exactement la meme planche au meme endroit.
@@ -238,9 +259,9 @@ def angle_outil(assise):
     correction qui a fait tomber quatorze reserves d'un coup.
     """
     a = (ANGLE_DEPART + assise * ANGLE) % 180.0
-    while a - CAP_CHANTIER > 90.0:
+    while a - CAP_STRUCTURE > 90.0:
         a -= 180.0
-    while a - CAP_CHANTIER < -90.0:
+    while a - CAP_STRUCTURE < -90.0:
         a += 180.0
     return a
 
@@ -253,7 +274,7 @@ def depose(assise, planche):
     de l'exercice :
 
       LA HAUTEUR. L'assise n repose sur les n precedentes, donc
-      (n + 1) * EPAISSEUR au-dessus du plan du chantier -- la cote du
+      (n + 1) * EPAISSEUR au-dessus du plan de la structure -- la cote du
       DESSUS de la planche, ou la ventouse se pose.
 
       L'ORIENTATION. Chaque assise tourne de ANGLE par rapport a la
@@ -281,11 +302,11 @@ def depose(assise, planche):
     ey = signe * DECALAGE * c
     z = (assise + 1) * EPAISSEUR
 
-    dans_le_chantier = np.array([[c,  s,  0, ex],
+    dans_la_structure = np.array([[c,  s,  0, ex],
                                  [s, -c,  0, ey],
                                  [0,  0, -1,  z],
                                  [0,  0,  0,  1]], dtype=float)
-    return CHANTIER @ dans_le_chantier
+    return STRUCTURE @ dans_la_structure
 
 
 # ---------------------------------------------------------------------------

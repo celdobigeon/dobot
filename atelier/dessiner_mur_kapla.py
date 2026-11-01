@@ -36,7 +36,7 @@ ECHELLE = 1.35
 
 
 def projeter(p):
-    """Point (x, y, z) du chantier -> point (u, v) de l'image."""
+    """Point (x, y, z) de la structure -> point (u, v) de l'image."""
     x, y, z = p
     return (ECHELLE * (x - y) * COS30,
             ECHELLE * ((x + y) * SIN30 - z))
@@ -132,9 +132,9 @@ def main():
         for planche in (0, 1):
             T = mur.depose(assise, planche)
             # la cible designe le DESSUS de la planche, dans le repere
-            # de la base ; on repasse dans celui du chantier pour
+            # de la base ; on repasse dans celui de la structure pour
             # dessiner le mur centre
-            centre = T[:3, 3] - mur.CHANTIER[:3, 3]
+            centre = T[:3, 3] - mur.STRUCTURE[:3, 3]
             pieces.append((assise, centre, mur.angle_outil(assise)))
 
     # peintre : du plus loin au plus proche. L'oeil etant en (+x, +y, +z),
