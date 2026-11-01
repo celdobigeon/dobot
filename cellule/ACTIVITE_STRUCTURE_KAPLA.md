@@ -21,9 +21,7 @@ vrille.
 La même structure dans le simulateur, à la fin du cycle. À **droite**, les
 six assises posées. À **gauche**, le magasin, où la ventouse revient
 chercher chaque pièce — toujours au même endroit, toujours dans la
-même orientation. Le petit trièdre posé dessus est celui de la **cible
-de prise** : son `z`, en bleu, **descend** vers la pièce, là où celui
-de la base, au centre, monte.
+même orientation.
 
 > La structure n'est pas au milieu de l'image par hasard : elle est
 > **droit devant le robot**, et le magasin **sur le côté**. Cette disposition
@@ -67,8 +65,7 @@ robot. Ici il y en a **douze**, à six hauteurs et six orientations.
 Écrites de la même façon, elles deviendraient ingérables — vous l'avez
 pressenti à la question 15 du sujet précédent.
 
-On va donc faire ce que vous avez proposé : **déclarer des repères de
-programmation**.
+On va donc **déclarer des repères de programmation**.
 
 ---
 
@@ -189,10 +186,21 @@ dans_la_structure = np.array([[c,  s,  0, ex],
 cible = STRUCTURE @ dans_la_structure
 ```
 
-Colonne 0 : la **longueur** de la pièce. Colonne 1 : sa largeur,
-**retournée** par le demi-tour autour de x. Colonne 2 : l'approche,
-vers le bas. C'est `Rz(a) · Rx(180°)`, comme dans l'activité
-précédente — seul `a` change désormais à chaque assise.
+La figure la construit en deux temps : `Rz(a)`, la rotation du cours,
+puis `Rx(180°)`, le demi-tour qui fait approcher l'outil par le dessus.
+Les colonnes y portent le nom des axes de l'outil, les lignes celui du
+repère de base.
+
+| Colonne | Ce qu'elle dit |
+|---|---|
+| 0 : `(c, s, 0)` | l'axe x de l'outil — donc la **longueur** de la pièce. Ses composantes **sont** les projections `cos a` et `sin a` sur les axes de la base |
+| 1 : `(s, −c, 0)` | son y, **retourné** : c'est encore le demi-tour autour de x |
+| 2 : `(0, 0, −1)` | son z, vers le bas |
+| 3 | l'écart et la hauteur : où la pièce se pose |
+
+Rien de neuf par rapport à l'activité précédente — **seul `a` change
+désormais d'une assise à l'autre**, et c'est tout ce qui fait vriller
+la structure.
 
 > **Question 4.** Vérifiez une fois pour toutes que c'est une rotation :
 > colonnes unitaires, orthogonales deux à deux, déterminant **+1**.
