@@ -135,6 +135,48 @@ class TestDecorConvoyeur(unittest.TestCase):
                                353.15, places=1,
                                msg="l'abscisse ou le constructeur l'a dessine")
 
+    def test_les_deux_postes_se_detachent_du_maillage(self):
+        """
+        La vue glisse chaque poste jusqu'a sa cote declaree. Encore
+        faut-il savoir lequel des 13 734 triangles compose quoi.
+
+        Le bras du capteur est une plaque qui monte a 31 mm ; le socle
+        de la camera, un assemblage de quatorze corps -- embase,
+        plots, entretoises, plaques -- qui monte a 16. Le carter du
+        moteur, lui, ne depasse pas 6 et doit rester avec le tapis :
+        le faire voyager couperait la machine en deux.
+        """
+        import numpy as np
+        from dobot_sim.meshes import charger_obj, grappes_laterales
+
+        obj = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "cellule", "Modele3D",
+            "convoyeur.obj")
+        if not os.path.isfile(obj):
+            self.skipTest("le maillage du tapis n'est pas la")
+
+        V, F = charger_obj(obj)
+        grappes = grappes_laterales(V, F)
+        self.assertEqual(len(grappes), 2,
+                         "deux postes, pas un de plus : le bati doit rester")
+
+        (m_capteur, x_capteur), (m_camera, x_camera) = grappes
+        self.assertAlmostEqual(x_capteur, 353.15, places=1)
+        self.assertAlmostEqual(x_camera, 278.1, places=1)
+        self.assertGreater(x_capteur, x_camera,
+                           "la camera regarde la piece AVANT le capteur")
+
+        emporte = int(m_capteur.sum() + m_camera.sum())
+        self.assertLess(emporte, len(F) / 8.0,
+                        "la selection a emporte un morceau du tapis")
+        self.assertFalse((m_capteur & m_camera).any(),
+                         "une face ne peut pas appartenir aux deux postes")
+
+        # le socle doit partir ENTIER : ses pieds descendent sous la bande
+        socle = V[np.unique(F[m_camera])]
+        self.assertLess(socle[:, 2].min(), 0.0,
+                        "le socle a ete coupe a hauteur de bande")
+
     def test_la_camera_ne_regarde_pas_le_capteur(self):
         """
         Deux postes, deux endroits. La camera lit la couleur d'une

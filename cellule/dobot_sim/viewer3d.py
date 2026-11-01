@@ -575,25 +575,29 @@ class Vue3D(gl.GLViewWidget):
         # le reste : le capteur, sa fenetre, le champ de la camera et les
         # pieces n'existent dans aucune CAO -- ce sont des grandeurs de
         # la cellule, pas de la mecanique.
-        corps, support, x_support = self._maillage_tapis(tapis)
-        if corps is None:
+        pieces = self._maillage_tapis(tapis)
+        if pieces.get("corps") is None:
             self._items_tapis = self._peindre(tapis.boites(t))
             return
 
         R = np.asarray(tapis.repere, dtype=float)
-        self._items_tapis = [corps]
-        corps.setTransform(_qmat(R))
+        self._items_tapis = [pieces["corps"]]
+        pieces["corps"].setTransform(_qmat(R))
 
-        # LE BRAS DU CAPTEUR SUIT LE CAPTEUR. Le constructeur l'a dessine
-        # a une abscisse qui est la sienne ; sur la cellule il coulisse
-        # dans sa rainure, et c'est `capteur_s` qui dit ou. On le glisse
-        # donc le long de la bande, au lieu de laisser le barillet
-        # flotter a cote de son support.
-        if support is not None:
-            self._items_tapis.append(support)
-            s = getattr(tapis, "capteur_s", None)
-            dx = 0.0 if s is None else float(s) - x_support
-            support.setTransform(_qmat(R @ hg.translation(dx, 0.0, 0.0)))
+        # CHAQUE POSTE SUIT SA COTE. Le constructeur a dessine le bras du
+        # capteur et le socle de la camera la ou il les voulait ; sur la
+        # cellule ils coulissent dans leur rainure, et ce sont
+        # `capteur_s` et `camera_s` qui disent ou. On les glisse donc le
+        # long de la bande, au lieu de laisser le barillet flotter a cote
+        # de son support et le champ de la camera loin de son socle.
+        for nom, cote in (("capteur", "capteur_s"), ("camera", "camera_s")):
+            item, x_dessine = pieces.get(nom, (None, 0.0))
+            if item is None:
+                continue
+            self._items_tapis.append(item)
+            s_voulu = getattr(tapis, cote, None)
+            dx = 0.0 if s_voulu is None else float(s_voulu) - x_dessine
+            item.setTransform(_qmat(R @ hg.translation(dx, 0.0, 0.0)))
 
         garde = {"bande", "bati"}
         self._items_tapis += self._peindre(
@@ -603,33 +607,42 @@ class Vue3D(gl.GLViewWidget):
         """
         Le maillage OBJ du tapis, charge une fois et garde.
 
-        Rend `(corps, support, x_support)` : le tapis, le BRAS DU
-        CAPTEUR detache, et l'abscisse ou le constructeur l'a dessine.
-        Le bras est rendu a part pour pouvoir le glisser la ou le
-        capteur est declare.
+        Rend un dictionnaire : `corps` pour le tapis, et pour chaque
+        poste detache -- `capteur`, `camera` -- un couple
+        `(element, abscisse ou le constructeur l'a dessine)`. Les
+        postes sont rendus a part pour pouvoir les glisser la ou la
+        cellule les declare.
 
-        `(None, None, 0.0)` si le tapis ne declare pas de maillage ou si
-        le fichier manque : on retombe alors sur les boites, et la scene
-        reste lisible. Un modele 3D absent ne doit pas faire disparaitre
-        le convoyeur.
+        `{}` si le tapis ne declare pas de maillage ou si le fichier
+        manque : on retombe alors sur les boites, et la scene reste
+        lisible. Un modele 3D absent ne doit pas faire disparaitre le
+        convoyeur.
         """
-        vide = (None, None, 0.0)
         chemin = getattr(tapis, "maillage", None)
         if not chemin:
-            return vide
+            return {}
         cache = getattr(self, "_cache_tapis", {})
         if chemin not in cache:
             cache[chemin] = self._charger_tapis(chemin)
             self._cache_tapis = cache
-        corps, support, x_support = cache[chemin]
-        for item in (corps, support):
+        pieces = cache[chemin]
+        for valeur in pieces.values():
+            item = valeur[0] if isinstance(valeur, tuple) else valeur
             if item is not None and item not in self.items:
                 self.addItem(item)
-        return corps, support, x_support
+        return pieces
 
     def _charger_tapis(self, chemin):
-        """Lit l'OBJ et en detache le bras du capteur. Voir _maillage_tapis."""
-        from .meshes import charger_obj, composante_du_plus_haut
+        """
+        Lit l'OBJ et en detache les postes. Voir _maillage_tapis.
+
+        L'OBJ du constructeur est d'un seul tenant, sans groupes : les
+        postes s'en separent par leurs composantes connexes. La plus
+        haute est le bras du capteur, la suivante le socle de la
+        camera -- voir `meshes.grappes_laterales`, qui ne nomme ni
+        l'une ni l'autre et les trie par hauteur.
+        """
+        from .meshes import charger_obj, grappes_laterales
 
         def peindre(V, F):
             md = gl.MeshData(vertexes=V.astype(np.float32),
@@ -641,18 +654,25 @@ class Vue3D(gl.GLViewWidget):
         try:
             V, F = charger_obj(chemin)
         except Exception:
-            return (None, None, 0.0)
+            return {}
         try:
-            haut = composante_du_plus_haut(V, F)
-            if not haut.any() or haut.all():
-                raise ValueError("rien a detacher")
-            sommets = V[np.unique(F[haut])]
-            x_support = float(sommets[:, 0].min() + sommets[:, 0].max()) / 2.0
-            return (peindre(V, F[~haut]), peindre(V, F[haut]), x_support)
+            grappes = grappes_laterales(V, F)[:2]
+            reste = np.ones(len(F), dtype=bool)
+            pieces = {}
+            for nom, (masque, x_dessine) in zip(("capteur", "camera"),
+                                                grappes):
+                if not masque.any():
+                    continue
+                reste &= ~masque
+                pieces[nom] = (peindre(V, F[masque]), x_dessine)
+            if not reste.any():
+                raise ValueError("il ne reste rien du tapis")
+            pieces["corps"] = peindre(V, F[reste])
+            return pieces
         except Exception:
             # le decoupage a echoue : on dessine le tapis d'un bloc,
             # plutot que pas de tapis du tout
-            return (peindre(V, F), None, 0.0)
+            return {"corps": peindre(V, F)}
 
     def definir_rail(self, axe, l: float = 0.0) -> None:
         """

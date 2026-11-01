@@ -202,28 +202,18 @@ def charger_obj(chemin: str, utiliser_cache: bool = True
 # Configuration
 # ---------------------------------------------------------------------------
 
-def composante_du_plus_haut(V: np.ndarray, F: np.ndarray) -> np.ndarray:
+def composantes_connexes(V: np.ndarray, F: np.ndarray) -> np.ndarray:
     """
-    Les faces du CORPS AUQUEL APPARTIENT LE POINT LE PLUS HAUT.
-
-    Sert a detacher d'un maillage d'un seul tenant la piece qui domine
-    la scene -- sur le convoyeur, le bras qui porte le capteur. Rend un
-    masque booleen sur `F`.
-
-    POURQUOI « LE PLUS HAUT » ET NON UNE BOITE DE SELECTION. Parce
-    qu'une boite se deregle des qu'on change de modele, et sans rien
-    dire : elle rendrait des faces arbitraires. Le point culminant,
-    lui, designe toujours quelque chose, et sur un tapis c'est le bras
-    du capteur -- rien d'autre ne depasse la bande.
+    Etiquette chaque face par le CORPS auquel elle appartient.
 
     Le decoupage suit les ARETES PARTAGEES : une piece boulonnee mais
-    maillee a part reste une composante distincte, ce qui est
-    exactement ce qu'on veut.
+    maillee a part reste un corps distinct, ce qui est exactement ce
+    qu'on veut pour detacher un accessoire d'un OBJ d'un seul tenant.
     """
     V = np.asarray(V, dtype=float)
     F = np.asarray(F, dtype=np.int64)
     if not len(F):
-        return np.zeros(0, dtype=bool)
+        return np.zeros(0, dtype=np.int64)
 
     parent = np.arange(len(V), dtype=np.int64)
 
@@ -241,8 +231,83 @@ def composante_du_plus_haut(V: np.ndarray, F: np.ndarray) -> np.ndarray:
         if rb != rc:
             parent[rb] = rc
 
-    racine = trouver(int(np.argmax(V[:, 2])))
-    return np.array([trouver(int(f[0])) == racine for f in F], dtype=bool)
+    return np.array([trouver(int(f[0])) for f in F], dtype=np.int64)
+
+
+def composante_du_plus_haut(V: np.ndarray, F: np.ndarray) -> np.ndarray:
+    """
+    Les faces du corps auquel appartient le POINT LE PLUS HAUT.
+
+    POURQUOI « LE PLUS HAUT » ET NON UNE BOITE DE SELECTION. Parce
+    qu'une boite se deregle des qu'on change de modele, et sans rien
+    dire : elle rendrait des faces arbitraires. Le point culminant,
+    lui, designe toujours quelque chose, et sur un tapis c'est le bras
+    du capteur -- rien d'autre ne depasse autant la bande.
+    """
+    V = np.asarray(V, dtype=float)
+    etiquettes = composantes_connexes(V, F)
+    if not len(etiquettes):
+        return np.zeros(0, dtype=bool)
+    F = np.asarray(F, dtype=np.int64)
+    haut = int(np.argmax(V[:, 2]))
+    # l'etiquette du sommet le plus haut : celle d'une face qui le porte
+    cible = etiquettes[int(np.argmax((F == haut).any(axis=1)))]
+    return etiquettes == cible
+
+
+def grappes_laterales(V, F, y_mini: float = 15.0, z_mini: float = 3.0,
+                      hauteur_mini: float = 10.0,
+                      jeu: float = 20.0) -> List[Tuple[np.ndarray, float]]:
+    """
+    Les GRAPPES de pieces posees a cote de la bande et qui la depassent.
+
+    Un accessoire de convoyeur n'est pas un corps mais un assemblage :
+    le socle de la camera, par exemple, compte quatorze corps distincts
+    -- une embase, six plots, quatre entretoises, deux plaques. On
+    regroupe donc les corps dont les abscisses se touchent a `jeu`
+    pres.
+
+    Rend `[(masque de faces, abscisse du milieu), ...]`, trie du plus
+    haut au moins haut. Le premier est le bras du capteur, qui domine ;
+    le suivant, le socle de la camera.
+
+    DEUX SEUILS, ET ILS NE FONT PAS LA MEME CHOSE. `z_mini` decide qui
+    ENTRE dans une grappe : bas, pour que l'embase et les entretoises
+    du socle partent avec ses plaques -- sinon on deplacerait le
+    dessus en laissant les pieds. `hauteur_mini` decide quelles
+    grappes on GARDE : sur le tapis du labo, le carter du moteur monte
+    a 6 mm, le socle de la camera a 16 et le bras du capteur a 31, si
+    bien qu'un seuil a 10 separe les postes du bati sans avoir a
+    nommer ni l'un ni l'autre.
+
+    `y_mini` ecarte ce qui est sur la bande.
+    """
+    V = np.asarray(V, dtype=float)
+    F = np.asarray(F, dtype=np.int64)
+    etiquettes = composantes_connexes(V, F)
+    if not len(etiquettes):
+        return []
+
+    corps = []
+    for e in np.unique(etiquettes):
+        m = etiquettes == e
+        s = V[np.unique(F[m])]
+        if s[:, 1].min() > y_mini and s[:, 2].max() > z_mini:
+            corps.append((float(s[:, 0].min()), float(s[:, 0].max()),
+                          float(s[:, 2].max()), m))
+    corps.sort(key=lambda c: c[0])
+
+    grappes = []
+    for x0, x1, zmax, m in corps:
+        if grappes and x0 - grappes[-1][1] <= jeu:
+            g = grappes[-1]
+            grappes[-1] = (g[0], max(g[1], x1), max(g[2], zmax), g[3] | m)
+        else:
+            grappes.append((x0, x1, zmax, m))
+
+    grappes = [g for g in grappes if g[2] > hauteur_mini]
+    grappes.sort(key=lambda g: -g[2])
+    return [(m, (x0 + x1) / 2.0) for x0, x1, _, m in grappes]
 
 
 def chemin_config_defaut() -> str:
