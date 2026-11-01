@@ -146,7 +146,8 @@ TAPIS = Convoyeur(
     sens=-1,               # CABLAGE du moteur, pas geometrie -- voir plus haut
     capteur_s=300,         # mm depuis l'axe moteur -- releve au reglet,
                            # ce qui met le capteur a y = -100 du robot
-    camera_s=200,          # abscisse du champ de la camera, en amont
+    camera_s=120,          # la camera lit la COULEUR : un poste a part,
+                           # pres de l'entree, jamais sur le capteur
     # Le capteur de presence est l'INFRAROUGE du kit, sur GP4.
     # Ce n'est pas un detail de cablage : voir plus bas, il
     # change la forme meme du cycle sur la machine.

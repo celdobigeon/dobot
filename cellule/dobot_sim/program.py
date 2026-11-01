@@ -273,7 +273,7 @@ def _tapis_depuis_dict(data):
         sens=int(data.get("sens", 1)),
         impulsions_par_mm=data.get("impulsions_par_mm"),
         capteur_s=data.get("capteur_s", 300.0),
-        camera_s=data.get("camera_s", 200.0),
+        camera_s=data.get("camera_s", 120.0),
         capteur_port=data.get("capteur_port"),
         capteur_eio=data.get("capteur_eio"),
         depassement=data.get("depassement", 0.0))

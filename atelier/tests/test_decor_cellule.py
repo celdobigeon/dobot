@@ -135,6 +135,25 @@ class TestDecorConvoyeur(unittest.TestCase):
                                353.15, places=1,
                                msg="l'abscisse ou le constructeur l'a dessine")
 
+    def test_la_camera_ne_regarde_pas_le_capteur(self):
+        """
+        Deux postes, deux endroits. La camera lit la couleur d'une
+        piece qui defile, le capteur arrete la bande ; leur mettre la
+        meme abscisse ne veut rien dire, et cela s'est vu a l'ecran --
+        le champ de la camera couche sur le capteur.
+
+        Le defaut de `camera_s` valait 300, comme le `capteur_s` du
+        corrige. Un defaut qui coincide avec une valeur courante est un
+        piege : il ne se trahit que par le dessin.
+        """
+        t = Convoyeur(capteur_s=300)
+        self.assertIsNotNone(t.camera_s)
+        ecart = abs(float(t.camera_s) - float(t.capteur_s))
+        self.assertGreater(ecart, t.camera_champ / 2 + t.capteur_fenetre,
+                           "les deux postes se chevauchent")
+        self.assertLess(float(t.camera_s), float(t.capteur_s),
+                        "la camera regarde la piece AVANT qu'on l'arrete")
+
     def test_sans_capteur_ni_camera_rien_n_est_dessine(self):
         formes = Convoyeur(capteur_s=None, camera_s=None).boites()
         self.assertNotIn("capteur", _roles(formes))

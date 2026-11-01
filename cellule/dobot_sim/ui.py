@@ -2389,7 +2389,9 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
                 index_moteur=self.cb_tapis_moteur.currentIndex(),
                 impulsions_par_mm=self.sp_tapis_imp.value(),
                 capteur_s=self.sp_tapis_capteur.value(),
-                camera_s=max(0.0, self.sp_tapis_capteur.value() - 100.0),
+                # pres de l'entree, et TOUJOURS en amont du capteur :
+                # deux postes au meme endroit ne se lisent pas
+                camera_s=min(120.0, 0.4 * self.sp_tapis_capteur.value()),
                 maillage=_maillage_convoyeur())
             self.tapis.pieces = pieces
         self._cellule_redessiner()

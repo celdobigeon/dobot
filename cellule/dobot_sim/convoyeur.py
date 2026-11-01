@@ -134,8 +134,15 @@ class Convoyeur:
     capteur_diametre: float = 9.0
     capteur_longueur: float = 40.0
 
-    #: abscisse du champ de la camera, et son diametre apparent
-    camera_s: float = 300.0
+    #: abscisse du champ de la camera, et son diametre apparent.
+    #:
+    #: LA CAMERA EST UN POSTE A PART, PRES DE L'ENTREE. Elle lit la
+    #: couleur d'une piece qui defile ; le capteur, lui, arrete la
+    #: bande. Les poser au meme endroit n'a aucun sens -- et cela s'est
+    #: vu tout de suite dans la fenetre, le champ venant se coucher sur
+    #: le capteur, parce que ce defaut valait 300 comme `capteur_s`.
+    #: Le defaut est donc pres de l'entree, et independant du capteur.
+    camera_s: float = 120.0
     camera_champ: float = 80.0
 
     #: Distance parcourue APRES l'ordre d'arret, en mm, et la vitesse a

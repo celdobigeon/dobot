@@ -193,6 +193,10 @@ TAPIS = Convoyeur(repere=CONVOYEUR, longueur=698, largeur=100,
                   # une machine et -1 sur une autre, tapis inchange.
                   sens=-1,
                   capteur_s=CAPTEUR_S,
+                  # la camera lit la COULEUR des pieces. Elle n'est pas
+                  # encore utilisee, et elle est pres de l'entree : deux
+                  # postes au meme endroit ne se lisent pas.
+                  camera_s=120.0,
                   capteur_port=PORTS_GP["GP4"],
                   depassement=0.0)
 robot.tapis = TAPIS
