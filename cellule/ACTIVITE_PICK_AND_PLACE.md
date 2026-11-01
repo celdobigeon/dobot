@@ -243,17 +243,33 @@ DEPOSE_2 = np.array([[c,  s,  0,       ...],
 **À `a = 0` on retombe sur le cas 1** — le cas 1 est celui où l'on ne
 tourne rien.
 
-**D'où viennent ces nombres ?** De **deux** rotations cette fois.
-Écrivez le produit à côté — trois facteurs, trois gestes — puis
-comparez :
+**D'où viennent ces nombres ?** De **trois transformations
+enchaînées**, chacune écrite en 4×4 comme les autres :
 
 ```python
-produit = (hg.translation(..., ..., EPAISSEUR)   # on va la
-           @ hg.rot_z(np.radians(a))             # 1. on tourne de a
-           @ hg.rot_x(np.pi))                    # 2. on retourne l'outil
+OU_ELLE_SE_POSE = np.array([[1, 0, 0,       ...],   # on va la
+                            [0, 1, 0,       ...],
+                            [0, 0, 1, EPAISSEUR],
+                            [0, 0, 0,         1]], dtype=float)
 
-assert np.allclose(DEPOSE_2, produit)
+ROTATION_Z = np.array([[c, -s, 0, 0],               # 1. on tourne de a
+                       [s,  c, 0, 0],
+                       [0,  0, 1, 0],
+                       [0,  0, 0, 1]], dtype=float)
+
+DEMI_TOUR_X = np.array([[1,  0,  0, 0],             # 2. on retourne l'outil
+                        [0, -1,  0, 0],
+                        [0,  0, -1, 0],
+                        [0,  0,  0, 1]], dtype=float)
+
+assert np.allclose(DEPOSE_2,
+                   OU_ELLE_SE_POSE @ ROTATION_Z @ DEMI_TOUR_X)
 ```
+
+Reconnaissez `ROTATION_Z` : c'est le `Rz(a)` du cours, complété par sa
+quatrième ligne et sa quatrième colonne. Et `DEMI_TOUR_X` n'a ni
+sinus ni cosinus — à 180° ils valent 0 et −1, et on y lit directement
+ce que le demi-tour fait : il laisse `x`, il retourne `y` et `z`.
 
 **Et l'ordre compte.** Les deux rotations ne commutent pas ; la
 section suivante dit pourquoi, et autour de quel axe tourne la
@@ -293,8 +309,8 @@ tourne autour du `x` **fixe**, celui de la base, et ne donne pas la
 même matrice. Essayez les deux :
 
 ```python
-print(hg.rot_z(a) @ hg.rot_x(np.pi))    # autour de u : ce qu'on veut
-print(hg.rot_x(np.pi) @ hg.rot_z(a))    # autour du x fixe : autre chose
+print(ROTATION_Z @ DEMI_TOUR_X)    # autour de u : ce qu'on veut
+print(DEMI_TOUR_X @ ROTATION_Z)    # autour du x fixe : autre chose
 ```
 
 > **À retenir.** À droite, on tourne dans le repère qu'on vient de

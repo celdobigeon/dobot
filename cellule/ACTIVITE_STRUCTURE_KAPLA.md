@@ -191,14 +191,34 @@ cible = STRUCTURE @ dans_la_structure
 ```
 
 **D'où viennent ces seize nombres ?** Du même produit qu'à l'activité
-précédente — on va à sa place, on tourne de `a`, on retourne l'outil :
+précédente — trois transformations, chacune écrite en 4×4 :
 
 ```python
+OU_ELLE_SE_POSE = np.array([[1, 0, 0, ex],     # on va a sa place
+                            [0, 1, 0, ey],
+                            [0, 0, 1,  z],
+                            [0, 0, 0,  1]], dtype=float)
+
+ROTATION_Z = np.array([[c, -s, 0, 0],          # 1. on tourne de a
+                       [s,  c, 0, 0],
+                       [0,  0, 1, 0],
+                       [0,  0, 0, 1]], dtype=float)
+
+DEMI_TOUR_X = np.array([[1,  0,  0, 0],        # 2. on retourne l'outil
+                        [0, -1,  0, 0],
+                        [0,  0, -1, 0],
+                        [0,  0,  0, 1]], dtype=float)
+
 assert np.allclose(dans_la_structure,
-                   hg.translation(ex, ey, z)
-                   @ hg.rot_z(np.radians(a))
-                   @ hg.rot_x(np.pi))
+                   OU_ELLE_SE_POSE @ ROTATION_Z @ DEMI_TOUR_X)
 ```
+
+`DEMI_TOUR_X` n'a pas de sinus ni de cosinus : à 180°, ils valent 0
+et −1. On y lit directement ce que le demi-tour fait — il laisse `x`
+et retourne `y` et `z`.
+
+Seul `a` change d'une assise à l'autre. Tout le reste de la fonction
+`depose` est le même pour les douze pièces.
 
 > **Le produit de deux matrices homogènes** demande quelques précautions
 > — l'ordre, les repères successifs, la lecture colonne par colonne. La

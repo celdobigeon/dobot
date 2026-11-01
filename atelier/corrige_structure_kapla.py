@@ -315,9 +315,23 @@ def depose(assise, piece):
     # approche par le dessus. Rx(180) est ecrit A DROITE, donc il tourne
     # dans le repere que Rz vient de produire -- autour de u, et non
     # autour du x de la base. C'est de la que vient le signe.
+    #
+    # Chaque facteur s'ecrit en 4x4 comme le reste : une transformation
+    # est une matrice, pas un appel de fonction.
+    ou_elle_se_pose = np.array([[1, 0, 0, ex],
+                                [0, 1, 0, ey],
+                                [0, 0, 1,  z],
+                                [0, 0, 0,  1]], dtype=float)
+    rotation_z = np.array([[c, -s, 0, 0],
+                           [s,  c, 0, 0],
+                           [0,  0, 1, 0],
+                           [0,  0, 0, 1]], dtype=float)
+    demi_tour_x = np.array([[1,  0,  0, 0],
+                            [0, -1,  0, 0],
+                            [0,  0, -1, 0],
+                            [0,  0,  0, 1]], dtype=float)
     assert np.allclose(dans_la_structure,
-                       hg.translation(ex, ey, z) @ hg.rot_z(a)
-                       @ hg.rot_x(np.pi))
+                       ou_elle_se_pose @ rotation_z @ demi_tour_x)
     return STRUCTURE @ dans_la_structure
 
 

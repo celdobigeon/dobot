@@ -206,14 +206,26 @@ DEPOSE_2 = np.array([[_c,  _s,  0,         0.0],
                      [0,    0, -1,   EPAISSEUR],
                      [0,    0,  0,         1.0]], dtype=float)
 
-# LE PRODUIT QUI LA JUSTIFIE, dans l'ordre de la figure : on va la,
-# on tourne de ANGLE autour de la verticale, on retourne l'outil. On
-# l'ecrit a part plutot que dans l'assertion : c'est la matiere de
-# l'activite, pas un detail de controle.
-produit = (hg.translation(0.0, 240.0, EPAISSEUR)
-           @ hg.rot_z(np.radians(ANGLE))
-           @ hg.rot_x(np.pi))
-assert np.allclose(DEPOSE_2, produit)
+# LE PRODUIT QUI LA JUSTIFIE, dans l'ordre de la figure, et chaque
+# facteur ecrit en 4x4 comme le reste : une transformation est une
+# matrice, pas un appel de fonction.
+OU_ELLE_SE_POSE = np.array([[1, 0, 0,       0.0],
+                            [0, 1, 0,     240.0],
+                            [0, 0, 1, EPAISSEUR],
+                            [0, 0, 0,       1.0]], dtype=float)
+
+ROTATION_Z = np.array([[_c, -_s, 0, 0],
+                       [_s,  _c, 0, 0],
+                       [0,    0, 1, 0],
+                       [0,    0, 0, 1]], dtype=float)
+
+# a 180 degres, cos et sin valent -1 et 0 : le demi-tour se lit en clair
+DEMI_TOUR_X = np.array([[1,  0,  0, 0],
+                        [0, -1,  0, 0],
+                        [0,  0, -1, 0],
+                        [0,  0,  0, 1]], dtype=float)
+
+assert np.allclose(DEPOSE_2, OU_ELLE_SE_POSE @ ROTATION_Z @ DEMI_TOUR_X)
 
 # POURQUOI LES DEUX NE SONT PAS AU MEME ENDROIT. J4 = orientation - J1,
 # et J4 ne va que de -90 a +90. Le cas 1 garde l'orientation 0, il lui

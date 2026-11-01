@@ -29,10 +29,17 @@ déclarée, par exemple — c'est cette comparaison qu'on écrit, et le
 produit disparaît :
 
 ```python
-# un demi-tour autour de x, a cet endroit
-assert np.allclose(DEPOSE,
-                   hg.translation(140.0, 200.0, EPAISSEUR) @ hg.rot_x(np.pi))
+DEMI_TOUR_X = np.array([[1,  0,  0, 0],
+                        [0, -1,  0, 0],
+                        [0,  0, -1, 0],
+                        [0,  0,  0, 1]], dtype=float)
+
+assert np.allclose(DEPOSE, OU_ELLE_SE_POSE @ DEMI_TOUR_X)
 ```
+
+**Les facteurs du produit sont eux aussi des 4×4 écrites en clair** —
+ce sont des transformations, pas des appels de fonction. Les aides
+`hg.rot_z`, `hg.translation` servent à calculer, pas à montrer.
 
 L'ordre compte : une matrice écrite **à droite** agit dans le repère
 que les précédentes viennent de construire.
