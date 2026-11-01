@@ -294,6 +294,39 @@ table.compacte td{vertical-align:top;}
 }
 .voir a::before{content:"\2192"; margin-right:5px; color:var(--muet);}
 .voir a:hover{border-bottom-color:var(--accent);}
+/* ---- les rotations : schema + matrice cote a cote ---- */
+.duo{display:flex; align-items:center; gap:22px; flex-wrap:wrap; margin:18px 0 6px;}
+.rotfig{flex:0 0 auto; font-family:var(--sans);}
+.grille.rot{
+  display:grid; grid-template-columns:auto repeat(4, minmax(58px, auto));
+  gap:2px 6px; align-items:center; font-family:var(--mono); font-size:12.5px;
+}
+.grille.rot > span{text-align:center; padding:5px 6px; border-radius:4px;}
+.grille.rot .titre{color:var(--axe-y); font-weight:700; padding-bottom:2px;}
+.grille.rot .cote{color:var(--axe-z); font-weight:700; text-align:right;}
+.grille.rot .vide{padding:0;}
+.grille.rot .bas{color:var(--muet);}
+
+/* ---- l'animation ---- */
+.demo{
+  background:var(--carte); border:1px solid var(--trait); border-radius:6px;
+  box-shadow:var(--ombre); padding:16px 18px; margin:18px 0;
+}
+.demo-cmd{display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  font-family:var(--sans); font-size:13px; margin-bottom:10px;}
+.demo .axes{display:flex; gap:6px;}
+.demo button{
+  font:inherit; cursor:pointer; padding:5px 11px; border-radius:5px;
+  border:1px solid var(--trait); background:var(--fond); color:var(--encre2);
+}
+.demo button.actif{background:var(--accent-doux); border-color:var(--accent);
+  color:var(--accent); font-weight:600;}
+.demo .jouer{margin-left:auto;}
+.demo .curseur{display:flex; align-items:center; gap:10px;}
+.demo .curseur input{width:170px;}
+.demo output{font-family:var(--mono); font-weight:700;}
+.demo-corps{display:flex; align-items:center; gap:24px; flex-wrap:wrap;}
+@media (max-width:640px){ .duo, .demo-corps{gap:12px;} }
 </style>
 </head>
 <body>
@@ -322,6 +355,7 @@ table.compacte td{vertical-align:top;}
   <a href="#passage">02 La matrice de passage</a>
   <a href="#homogene">03 La transformation homog&egrave;ne</a>
   <a href="#rotations">04 Les trois rotations</a>
+  <a href="#animation">&#9654; &#192; manipuler</a>
   <a href="#composer">05 Composer, et de quel c&ocirc;t&eacute;</a>
   <a href="#programme">06 Du cours au programme</a>
   <a href="#verifier">07 V&eacute;rifier une matrice</a>
@@ -440,51 +474,189 @@ au lieu de les additionner &agrave; part.</p>
 <section id="rotations">
 <h2><span class="num">04</span> Les trois rotations</h2>
 
-<p class="intro">Les colonnes portent les axes du rep&egrave;re tourn&eacute;
-(<em>u</em>,&nbsp;<em>v</em>,&nbsp;<em>w</em>), les lignes celles du rep&egrave;re fixe
-(<em>x</em>,&nbsp;<em>y</em>,&nbsp;<em>z</em>). On retrouve &agrave; chaque fois le m&ecirc;me
-motif, d&eacute;cal&eacute; d'un cran.</p>
+<p class="intro">Les colonnes portent les axes du rep&egrave;re
+<strong>tourn&eacute;</strong>, les lignes ceux du rep&egrave;re
+<strong>fixe</strong>. Chaque sch&eacute;ma montre le plan dans lequel la
+rotation a lieu&nbsp;: l&#8217;axe de la rotation, lui, sort de la feuille et
+ne bouge pas.</p>
 
-<div class="matrice">
-  <span class="etiq">R<sub>x</sub>(&alpha;)&nbsp;=</span>
-  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
-    <span>1</span><span>0</span><span>0</span>
-    <span>0</span><span>cos&nbsp;&alpha;</span><span>&minus;sin&nbsp;&alpha;</span>
-    <span>0</span><span>sin&nbsp;&alpha;</span><span>cos&nbsp;&alpha;</span>
+<div class="duo">
+<svg viewBox="0 0 250 200" width="250" height="200" class="rotfig" role="img" aria-label="rotation autour de x"><line x1="86.0" y1="138.0" x2="175.2" y2="138.0" stroke="#3d6fd8" stroke-width="1.8" stroke-linecap="round"/><polygon points="180.0,138.0 172.0,141.2 172.0,134.8" fill="#3d6fd8"/><line x1="86.0" y1="138.0" x2="86.0" y2="48.8" stroke="#3d6fd8" stroke-width="1.8" stroke-linecap="round"/><polygon points="86.0,44.0 89.2,52.0 82.8,52.0" fill="#3d6fd8"/><text x="186.0" y="143.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="start">y</text><text x="83.0" y="38.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="middle">z</text><line x1="86.0" y1="138.0" x2="139.4" y2="100.6" stroke="#3a9448" stroke-width="2.2" stroke-linecap="round"/><polygon points="143.3,97.8 138.6,105.1 135.0,99.8" fill="#3a9448"/><line x1="86.0" y1="138.0" x2="48.6" y2="84.6" stroke="#3a9448" stroke-width="2.2" stroke-linecap="round"/><polygon points="45.8,80.7 53.1,85.4 47.8,89.0" fill="#3a9448"/><text x="151.3" y="93.8" font-size="12" font-weight="700" fill="#3a9448" text-anchor="start">v<sub>1</sub></text><text x="37.8" y="72.7" font-size="12" font-weight="700" fill="#3a9448" text-anchor="end">w<sub>1</sub></text><line x1="143.3" y1="97.8" x2="143.3" y2="138.0" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/><line x1="143.3" y1="97.8" x2="86.0" y2="97.8" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/><line x1="86.0" y1="151.0" x2="143.3" y2="151.0" stroke="#c8792a" stroke-width="3"/><text x="114.7" y="166.0" font-size="11" font-weight="700" fill="#c8792a" text-anchor="middle">cos&nbsp;&alpha;</text><line x1="73.0" y1="138.0" x2="73.0" y2="97.8" stroke="#c8792a" stroke-width="3"/><text x="66.0" y="121.9" font-size="11" font-weight="700" fill="#c8792a" text-anchor="end">sin&nbsp;&alpha;</text><path d="M 118.0 138.0 A 32 32 0 0 0 112.2 119.6" fill="none" stroke="#555" stroke-width="1.2"/><text x="129.9" y="128.2" font-size="13" font-weight="700" fill="#333" text-anchor="middle">&alpha;</text><circle cx="86.0" cy="138.0" r="9" fill="none" stroke="#3a9448" stroke-width="2"/><circle cx="86.0" cy="138.0" r="2.6" fill="#3a9448"/><text x="70.0" y="158.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="end">x = u<sub>1</sub></text></svg>
+<div class="matrice"><span class="etiq">R<sub>x</sub>(&alpha;) =</span><div class="grille rot"><span class="vide"></span><span class="titre">u<sub>1</sub></span><span class="titre">v<sub>1</sub></span><span class="titre">w<sub>1</sub></span><span class="titre">O</span><span class="cote">x</span><span>1</span><span>0</span><span>0</span><span>0</span><span class="cote">y</span><span>0</span><span>cos&nbsp;&alpha;</span><span>&minus;sin&nbsp;&alpha;</span><span>0</span><span class="cote">z</span><span>0</span><span>sin&nbsp;&alpha;</span><span>cos&nbsp;&alpha;</span><span>0</span><span class="cote"></span><span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span></div></div>
+</div>
+<p class="legende-mat">L&#8217;axe <strong>x</strong> est celui de la rotation&nbsp;: sa colonne et sa ligne restent intactes. Le couple (y,&nbsp;z) tourne dans le plan de la feuille.</p>
+
+<div class="duo">
+<svg viewBox="0 0 250 200" width="250" height="200" class="rotfig" role="img" aria-label="rotation autour de y"><line x1="86.0" y1="138.0" x2="175.2" y2="138.0" stroke="#3d6fd8" stroke-width="1.8" stroke-linecap="round"/><polygon points="180.0,138.0 172.0,141.2 172.0,134.8" fill="#3d6fd8"/><line x1="86.0" y1="138.0" x2="86.0" y2="48.8" stroke="#3d6fd8" stroke-width="1.8" stroke-linecap="round"/><polygon points="86.0,44.0 89.2,52.0 82.8,52.0" fill="#3d6fd8"/><text x="186.0" y="143.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="start">z</text><text x="83.0" y="38.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="middle">x</text><line x1="86.0" y1="138.0" x2="139.4" y2="100.6" stroke="#3a9448" stroke-width="2.2" stroke-linecap="round"/><polygon points="143.3,97.8 138.6,105.1 135.0,99.8" fill="#3a9448"/><line x1="86.0" y1="138.0" x2="48.6" y2="84.6" stroke="#3a9448" stroke-width="2.2" stroke-linecap="round"/><polygon points="45.8,80.7 53.1,85.4 47.8,89.0" fill="#3a9448"/><text x="151.3" y="93.8" font-size="12" font-weight="700" fill="#3a9448" text-anchor="start">w<sub>2</sub></text><text x="37.8" y="72.7" font-size="12" font-weight="700" fill="#3a9448" text-anchor="end">u<sub>2</sub></text><line x1="143.3" y1="97.8" x2="143.3" y2="138.0" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/><line x1="143.3" y1="97.8" x2="86.0" y2="97.8" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/><line x1="86.0" y1="151.0" x2="143.3" y2="151.0" stroke="#c8792a" stroke-width="3"/><text x="114.7" y="166.0" font-size="11" font-weight="700" fill="#c8792a" text-anchor="middle">cos&nbsp;&phi;</text><line x1="73.0" y1="138.0" x2="73.0" y2="97.8" stroke="#c8792a" stroke-width="3"/><text x="66.0" y="121.9" font-size="11" font-weight="700" fill="#c8792a" text-anchor="end">sin&nbsp;&phi;</text><path d="M 118.0 138.0 A 32 32 0 0 0 112.2 119.6" fill="none" stroke="#555" stroke-width="1.2"/><text x="129.9" y="128.2" font-size="13" font-weight="700" fill="#333" text-anchor="middle">&phi;</text><circle cx="86.0" cy="138.0" r="9" fill="none" stroke="#3a9448" stroke-width="2"/><circle cx="86.0" cy="138.0" r="2.6" fill="#3a9448"/><text x="70.0" y="158.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="end">y = v<sub>2</sub></text></svg>
+<div class="matrice"><span class="etiq">R<sub>y</sub>(&phi;) =</span><div class="grille rot"><span class="vide"></span><span class="titre">u<sub>2</sub></span><span class="titre">v<sub>2</sub></span><span class="titre">w<sub>2</sub></span><span class="titre">O</span><span class="cote">x</span><span>cos&nbsp;&phi;</span><span>0</span><span>sin&nbsp;&phi;</span><span>0</span><span class="cote">y</span><span>0</span><span>1</span><span>0</span><span>0</span><span class="cote">z</span><span>&minus;sin&nbsp;&phi;</span><span>0</span><span>cos&nbsp;&phi;</span><span>0</span><span class="cote"></span><span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span></div></div>
+</div>
+<p class="legende-mat">M&#234;me motif, d&#233;cal&#233; d&#8217;un cran&nbsp;: c&#8217;est le couple (z,&nbsp;x) qui tourne. Le signe moins a chang&#233; de place &#8212; il suit toujours le couple, jamais l&#8217;axe.</p>
+
+<div class="duo">
+<svg viewBox="0 0 250 200" width="250" height="200" class="rotfig" role="img" aria-label="rotation autour de z"><line x1="86.0" y1="138.0" x2="175.2" y2="138.0" stroke="#3d6fd8" stroke-width="1.8" stroke-linecap="round"/><polygon points="180.0,138.0 172.0,141.2 172.0,134.8" fill="#3d6fd8"/><line x1="86.0" y1="138.0" x2="86.0" y2="48.8" stroke="#3d6fd8" stroke-width="1.8" stroke-linecap="round"/><polygon points="86.0,44.0 89.2,52.0 82.8,52.0" fill="#3d6fd8"/><text x="186.0" y="143.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="start">x</text><text x="83.0" y="38.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="middle">y</text><line x1="86.0" y1="138.0" x2="139.4" y2="100.6" stroke="#3a9448" stroke-width="2.2" stroke-linecap="round"/><polygon points="143.3,97.8 138.6,105.1 135.0,99.8" fill="#3a9448"/><line x1="86.0" y1="138.0" x2="48.6" y2="84.6" stroke="#3a9448" stroke-width="2.2" stroke-linecap="round"/><polygon points="45.8,80.7 53.1,85.4 47.8,89.0" fill="#3a9448"/><text x="151.3" y="93.8" font-size="12" font-weight="700" fill="#3a9448" text-anchor="start">u<sub>3</sub></text><text x="37.8" y="72.7" font-size="12" font-weight="700" fill="#3a9448" text-anchor="end">v<sub>3</sub></text><line x1="143.3" y1="97.8" x2="143.3" y2="138.0" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/><line x1="143.3" y1="97.8" x2="86.0" y2="97.8" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/><line x1="86.0" y1="151.0" x2="143.3" y2="151.0" stroke="#c8792a" stroke-width="3"/><text x="114.7" y="166.0" font-size="11" font-weight="700" fill="#c8792a" text-anchor="middle">cos&nbsp;&theta;</text><line x1="73.0" y1="138.0" x2="73.0" y2="97.8" stroke="#c8792a" stroke-width="3"/><text x="66.0" y="121.9" font-size="11" font-weight="700" fill="#c8792a" text-anchor="end">sin&nbsp;&theta;</text><path d="M 118.0 138.0 A 32 32 0 0 0 112.2 119.6" fill="none" stroke="#555" stroke-width="1.2"/><text x="129.9" y="128.2" font-size="13" font-weight="700" fill="#333" text-anchor="middle">&theta;</text><circle cx="86.0" cy="138.0" r="9" fill="none" stroke="#3a9448" stroke-width="2"/><circle cx="86.0" cy="138.0" r="2.6" fill="#3a9448"/><text x="70.0" y="158.0" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="end">z = w<sub>3</sub></text></svg>
+<div class="matrice"><span class="etiq">R<sub>z</sub>(&theta;) =</span><div class="grille rot"><span class="vide"></span><span class="titre">u<sub>3</sub></span><span class="titre">v<sub>3</sub></span><span class="titre">w<sub>3</sub></span><span class="titre">O</span><span class="cote">x</span><span>cos&nbsp;&theta;</span><span>&minus;sin&nbsp;&theta;</span><span>0</span><span>0</span><span class="cote">y</span><span>sin&nbsp;&theta;</span><span>cos&nbsp;&theta;</span><span>0</span><span>0</span><span class="cote">z</span><span>0</span><span>0</span><span>1</span><span>0</span><span class="cote"></span><span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span></div></div>
+</div>
+<p class="legende-mat">Celle qu&#8217;on &#233;crit le plus souvent&nbsp;: le robot tourne autour de la verticale, et le couple (x,&nbsp;y) suit.</p>
+
+<p class="legende-mat">Le m&ecirc;me motif revient trois fois,
+d&eacute;cal&eacute; d&#8217;un cran. L&#8217;axe de la rotation garde sa colonne
+et sa ligne&nbsp;: (1,&nbsp;0,&nbsp;0) pour R<sub>x</sub>,
+(0,&nbsp;1,&nbsp;0) pour R<sub>y</sub>, (0,&nbsp;0,&nbsp;1) pour
+R<sub>z</sub>. C&#8217;est le moyen le plus rapide de v&eacute;rifier
+qu&#8217;on n&#8217;a pas confondu deux d&#8217;entre elles.</p>
+
+<h3 id="animation">&Agrave; manipuler</h3>
+
+<p class="intro">Choisissez l&#8217;axe, tirez l&#8217;angle, et regardez les
+seize nombres suivre. C&#8217;est la m&ecirc;me matrice que ci-dessus&nbsp;:
+seule la valeur de l&#8217;angle change.</p>
+
+<div class="demo">
+  <div class="demo-cmd">
+    <div class="axes" role="group" aria-label="axe de la rotation">
+      <button type="button" data-axe="x">R<sub>x</sub>(&alpha;)</button>
+      <button type="button" data-axe="y">R<sub>y</sub>(&phi;)</button>
+      <button type="button" class="actif" data-axe="z">R<sub>z</sub>(&theta;)</button>
+    </div>
+    <label class="curseur">
+      <span>angle&nbsp;: <output id="val">35&deg;</output></span>
+      <input id="ang" type="range" min="-180" max="180" step="1" value="35">
+    </label>
+    <button type="button" id="jouer" class="jouer">&#9654;&nbsp;animer</button>
+  </div>
+
+  <div class="demo-corps">
+    <svg id="fig" viewBox="0 0 250 200" width="250" height="200"
+         role="img" aria-label="le repere tourne autour de l axe choisi">
+      <line id="ax1" x1="86" y1="138" x2="180" y2="138" stroke="#3d6fd8" stroke-width="1.8"/>
+      <line id="ax2" x1="86" y1="138" x2="86" y2="44" stroke="#3d6fd8" stroke-width="1.8"/>
+      <text id="n1" x="186" y="143" font-size="12" font-weight="700" fill="#3d6fd8">x</text>
+      <text id="n2" x="83" y="36" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="middle">y</text>
+      <line id="pr1" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <line id="pr2" stroke="#c8792a" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <line id="pc" stroke="#c8792a" stroke-width="3"/>
+      <line id="ps" stroke="#c8792a" stroke-width="3"/>
+      <path id="arc" fill="none" stroke="#555" stroke-width="1.2"/>
+      <line id="t1" stroke="#3a9448" stroke-width="2.4" stroke-linecap="round"/>
+      <line id="t2" stroke="#3a9448" stroke-width="2.4" stroke-linecap="round"/>
+      <text id="m1" font-size="12" font-weight="700" fill="#3a9448">u</text>
+      <text id="m2" font-size="12" font-weight="700" fill="#3a9448" text-anchor="end">v</text>
+      <circle cx="86" cy="138" r="9" fill="none" stroke="#3a9448" stroke-width="2"/>
+      <circle cx="86" cy="138" r="2.6" fill="#3a9448"/>
+      <text id="m3" x="70" y="158" font-size="12" font-weight="700" fill="#3d6fd8" text-anchor="end">z = w</text>
+      <text id="lc" font-size="11" font-weight="700" fill="#c8792a" text-anchor="middle">cos</text>
+      <text id="ls" font-size="11" font-weight="700" fill="#c8792a" text-anchor="end">sin</text>
+    </svg>
+
+    <div class="matrice">
+      <span class="etiq" id="nom">R<sub>z</sub>(&theta;) =</span>
+      <div class="grille rot">
+        <span class="vide"></span>
+        <span class="titre">u</span><span class="titre">v</span>
+        <span class="titre">w</span><span class="titre">O</span>
+        <span class="cote">x</span><span id="c00"></span><span id="c01"></span><span id="c02"></span><span class="bas">0</span>
+        <span class="cote">y</span><span id="c10"></span><span id="c11"></span><span id="c12"></span><span class="bas">0</span>
+        <span class="cote">z</span><span id="c20"></span><span id="c21"></span><span id="c22"></span><span class="bas">0</span>
+        <span class="cote"></span><span class="bas">0</span><span class="bas">0</span><span class="bas">0</span><span class="bas">1</span>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="matrice">
-  <span class="etiq">R<sub>y</sub>(&phi;)&nbsp;=</span>
-  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
-    <span>cos&nbsp;&phi;</span><span>0</span><span>sin&nbsp;&phi;</span>
-    <span>0</span><span>1</span><span>0</span>
-    <span>&minus;sin&nbsp;&phi;</span><span>0</span><span>cos&nbsp;&phi;</span>
-  </div>
-</div>
+<p class="legende-mat" id="dit"></p>
 
-<div class="matrice">
-  <span class="etiq">R<sub>z</sub>(&theta;)&nbsp;=</span>
-  <div class="grille" style="grid-template-columns:repeat(3,1fr)">
-    <span>cos&nbsp;&theta;</span><span>&minus;sin&nbsp;&theta;</span><span>0</span>
-    <span>sin&nbsp;&theta;</span><span>cos&nbsp;&theta;</span><span>0</span>
-    <span>0</span><span>0</span><span>1</span>
-  </div>
-</div>
-<p class="legende-mat">L'axe de la rotation garde sa colonne et sa ligne
-intactes&nbsp;: une colonne (1,&nbsp;0,&nbsp;0) pour R<sub>x</sub>, (0,&nbsp;1,&nbsp;0)
-pour R<sub>y</sub>, (0,&nbsp;0,&nbsp;1) pour R<sub>z</sub>. C'est le moyen le plus
-rapide de v&eacute;rifier qu'on n'a pas confondu deux d'entre elles.</p>
+<script>
+(function () {
+  var CX = 86, CY = 138, R = 70;
+  var AXES = {
+    x: {fixes: ["y", "z"], tournes: ["v", "w"], hors: "x = u", nom: "R<sub>x</sub>(&alpha;)",
+        dit: "L&rsquo;axe <strong>x</strong> ne bouge pas : sa colonne reste (1, 0, 0). C&rsquo;est le couple (y, z) qui tourne."},
+    y: {fixes: ["z", "x"], tournes: ["w", "u"], hors: "y = v", nom: "R<sub>y</sub>(&phi;)",
+        dit: "L&rsquo;axe <strong>y</strong> ne bouge pas. Le signe moins a chang&eacute; de place : il suit le couple (z, x)."},
+    z: {fixes: ["x", "y"], tournes: ["u", "v"], hors: "z = w", nom: "R<sub>z</sub>(&theta;)",
+        dit: "L&rsquo;axe <strong>z</strong> ne bouge pas : c&rsquo;est la rotation autour de la verticale, celle qu&rsquo;on &eacute;crit le plus souvent."}
+  };
+  var axe = "z", jeu = null;
 
-<p>Dans le simulateur, elles sont d&eacute;j&agrave; &eacute;crites, en <strong>4&times;4</strong> et en
-<strong>radians</strong>&nbsp;:</p>
+  function $(id) { return document.getElementById(id); }
+  function pose(el, x1, y1, x2, y2) {
+    el.setAttribute("x1", x1.toFixed(1)); el.setAttribute("y1", y1.toFixed(1));
+    el.setAttribute("x2", x2.toFixed(1)); el.setAttribute("y2", y2.toFixed(1));
+  }
+  function nb(v) {
+    if (Math.abs(v) < 5e-4) return "0";
+    if (Math.abs(v - 1) < 5e-4) return "1";
+    if (Math.abs(v + 1) < 5e-4) return "&minus;1";
+    return (v < 0 ? "&minus;" : "") + Math.abs(v).toFixed(3);
+  }
 
-<pre class="api"><code>from dobot_sim import homogeneous as hg
+  function dessiner() {
+    var deg = +$("ang").value, a = deg * Math.PI / 180;
+    var c = Math.cos(a), s = Math.sin(a), d = AXES[axe];
+    $("val").textContent = deg + "°";
+    $("nom").innerHTML = d.nom + " =";
+    $("n1").textContent = d.fixes[0];
+    $("n2").textContent = d.fixes[1];
+    $("m1").innerHTML = d.tournes[0];
+    $("m2").innerHTML = d.tournes[1];
+    $("m3").innerHTML = d.hors;
+    $("dit").innerHTML = d.dit;
+    var noms = ["u", "v", "w"];
+    var titres = document.querySelectorAll(".demo .titre");
+    for (var i = 0; i < 3; i++) { titres[i].textContent = noms[i]; }
+    var cotes = document.querySelectorAll(".demo .cote");
+    cotes[0].textContent = "x"; cotes[1].textContent = "y"; cotes[2].textContent = "z";
 
-hg.rot_x(np.pi)                 <span class="c"># un demi-tour autour de x</span>
-hg.rot_z(np.radians(38))        <span class="c"># 38 degres autour de z</span>
-hg.translation(140, 200, 10)    <span class="c"># en millimetres</span>
-hg.identite()</code></pre>
+    var p1x = CX + R * c, p1y = CY - R * s;
+    var p2x = CX - R * s, p2y = CY - R * c;
+    pose($("t1"), CX, CY, p1x, p1y);
+    pose($("t2"), CX, CY, p2x, p2y);
+    $("m1").setAttribute("x", p1x + 9); $("m1").setAttribute("y", p1y - 4);
+    $("m2").setAttribute("x", p2x - 9); $("m2").setAttribute("y", p2y - 7);
+
+    pose($("pr1"), p1x, p1y, p1x, CY);
+    pose($("pr2"), p1x, p1y, CX, p1y);
+    pose($("pc"), CX, CY + 13, p1x, CY + 13);
+    pose($("ps"), CX - 13, CY, CX - 13, p1y);
+    $("lc").setAttribute("x", (CX + p1x) / 2); $("lc").setAttribute("y", CY + 28);
+    $("ls").setAttribute("x", CX - 20); $("ls").setAttribute("y", (CY + p1y) / 2 + 4);
+
+    var grand = Math.abs(deg) > 180 ? 1 : 0, sens = deg >= 0 ? 0 : 1;
+    $("arc").setAttribute("d", "M " + (CX + 32) + " " + CY + " A 32 32 0 " +
+      grand + " " + sens + " " + (CX + 32 * c).toFixed(1) + " " +
+      (CY - 32 * s).toFixed(1));
+
+    // la matrice : le bloc tourne occupe les deux axes du couple
+    var M = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    var i0 = {x: 1, y: 2, z: 0}[axe], i1 = {x: 2, y: 0, z: 1}[axe];
+    M[i0][i0] = c; M[i0][i1] = -s; M[i1][i0] = s; M[i1][i1] = c;
+    for (var l = 0; l < 3; l++) {
+      for (var k = 0; k < 3; k++) { $("c" + l + k).innerHTML = nb(M[l][k]); }
+    }
+  }
+
+  document.querySelectorAll(".demo .axes button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".demo .axes button").forEach(function (o) {
+        o.classList.remove("actif");
+      });
+      b.classList.add("actif"); axe = b.dataset.axe; dessiner();
+    });
+  });
+  $("ang").addEventListener("input", dessiner);
+  $("jouer").addEventListener("click", function () {
+    if (jeu) { clearInterval(jeu); jeu = null; $("jouer").innerHTML = "&#9654;&nbsp;animer"; return; }
+    $("jouer").innerHTML = "&#10073;&#10073;&nbsp;pause";
+    jeu = setInterval(function () {
+      var v = +$("ang").value + 2;
+      $("ang").value = v > 180 ? -180 : v;
+      dessiner();
+    }, 40);
+  });
+  dessiner();
+})();
+</script>
+
 </section>
 
 <!-- ------------------------------------------------------------------ -->
@@ -573,7 +745,11 @@ pi&egrave;ce dans le magasin</em>.</p>
 <p><strong>Le z de l'outil pointe vers le BAS</strong>&nbsp;: c'est sa direction
 d'approche. Un d&eacute;gagement <em>vers le haut</em> s'&eacute;crit donc avec un z
 <strong>n&eacute;gatif</strong>.</p>
-<pre class="api"><code>HAUT = hg.translation(0, 0, -80)
+<pre class="api"><code>HAUT = np.array([[1, 0, 0,   0],
+                 [0, 1, 0,   0],
+                 [0, 0, 1, -80],
+                 [0, 0, 0,   1]], dtype=float)
+
 assert (CIBLE @ HAUT)[2, 3] &gt; CIBLE[2, 3], "le degagement descend !"</code></pre>
 </div>
 </section>
@@ -585,18 +761,27 @@ assert (CIBLE @ HAUT)[2, 3] &gt; CIBLE[2, 3], "le degagement descend !"</code></
 <p class="intro">Quatre contr&ocirc;les, trente secondes, et ils attrapent la quasi-
 totalit&eacute; des fautes d'&eacute;criture.</p>
 
-<pre class="api"><code>R = T[:3, :3]
-
-np.allclose(np.linalg.norm(R, axis=0), 1)     <span class="c"># colonnes unitaires</span>
-np.allclose(R.T @ R, np.eye(3))               <span class="c"># et orthogonales</span>
-np.isclose(np.linalg.det(R), +1)              <span class="c"># direct, pas un miroir</span>
-np.allclose(T[3], [0, 0, 0, 1])               <span class="c"># la ligne oubliee</span></code></pre>
+<pre class="api"><code><span class="c"># tout se verifie sur la 4x4, sans en decouper le bloc de rotation</span>
+np.allclose(np.linalg.norm(T[:, :3], axis=0), 1)   <span class="c"># trois colonnes unitaires</span>
+np.allclose(hg.inverse(T) @ T, np.eye(4))          <span class="c"># et orthogonales</span>
+np.isclose(np.linalg.det(T), +1)                   <span class="c"># directe, pas un miroir</span>
+np.allclose(T[3], [0, 0, 0, 1])                    <span class="c"># la ligne oubliee</span></code></pre>
 
 <div class="note">
 <p>Un d&eacute;terminant de <strong>&minus;1</strong> n'est pas une rotation mais une
 <strong>sym&eacute;trie</strong>&nbsp;: vous avez retourn&eacute; un nombre impair d'axes. Le
 demi-tour de l'outil en retourne <em>deux</em>&nbsp;&mdash; y et z&nbsp;&mdash; et
 reste donc &agrave; +1.</p>
+</div>
+
+<div class="note">
+<p><strong>Pourquoi le deuxi&egrave;me contr&ocirc;le marche.</strong>
+<code class="k">hg.inverse</code> ne calcule pas un vrai inverse&nbsp;: il pose
+R<sup>T</sup> &agrave; la place de R<sup>&minus;1</sup>, ce qui n'est valable que
+pour une matrice orthogonale. Si elle ne l'est pas, le produit ne rend pas
+l'identit&eacute; &mdash; et c'est pr&eacute;cis&eacute;ment ce qu'on veut savoir.
+Le d&eacute;terminant de la 4&times;4 vaut celui de sa rotation, la derni&egrave;re
+ligne &eacute;tant (0,&nbsp;0,&nbsp;0,&nbsp;1).</p>
 </div>
 
 <p>Et l'inverse d'une transformation homog&egrave;ne, quand on a besoin de lire dans
@@ -617,8 +802,10 @@ l'autre sens&nbsp;:</p>
     <td>&Agrave; droite&nbsp;: dans le rep&egrave;re qu'on vient de construire. &Agrave; gauche&nbsp;:
     dans celui de d&eacute;part.</td></tr>
 <tr><td><strong>Degr&eacute;s ou radians</strong></td>
-    <td><code class="k">hg.rot_z</code> prend des <strong>radians</strong>. Une cote
-    d'atelier est en degr&eacute;s&nbsp;: <code class="k">np.radians(...)</code>.</td></tr>
+    <td>Une cote d'atelier se lit en <strong>degr&eacute;s</strong>&nbsp;;
+    <code class="k">np.cos</code> et <code class="k">np.sin</code> attendent des
+    <strong>radians</strong>. Convertissez avant de remplir la matrice&nbsp;:
+    <code class="k">c,&nbsp;s&nbsp;=&nbsp;np.cos(np.radians(a)),&nbsp;np.sin(np.radians(a))</code>.</td></tr>
 <tr><td><strong>La derni&egrave;re ligne</strong></td>
     <td>Une 4&times;4 sans sa ligne (0,&nbsp;0,&nbsp;0,&nbsp;1) n'est pas homog&egrave;ne, et
     le produit donnera n'importe quoi.</td></tr>
