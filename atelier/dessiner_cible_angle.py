@@ -134,6 +134,18 @@ def panneau(cx, cy, r, retourne, noms, projections):
     out.append(texte(u[0] + 10, u[1] - 8, noms[0], 14, ROUGE, "700"))
 
     signe = -1.0 if retourne else 1.0          # Rx(180) retourne le y
+    if retourne:
+        # LE REPERE INTERMEDIAIRE, celui que Rz(a) a laisse. C'est
+        # autour de SON x -- autour de u -- que le demi-tour se fait,
+        # et c'est pour cela que v bascule de l'autre cote. Le montrer
+        # en pointilles repond a la seule question que la figure
+        # posait sans y repondre : pourquoi (sin a, -cos a) ?
+        vi = (cx - r * s, cy - r * c)
+        out.append(fleche(cx, cy, vi[0], vi[1], "#9fd3ae", 2.0, "5 4"))
+        out.append(texte(vi[0] - 8, vi[1] - 6, "v", 13, "#6aa87f", "700",
+                         "end"))
+        out.append(texte(vi[0] - 8, vi[1] + 10, "avant", 11, "#8aa894",
+                         "400", "end"))
     v = (cx - signe * r * s, cy - signe * r * c)
     out.append(fleche(cx, cy, v[0], v[1], VERT, 2.8))
     out.append(texte(v[0] + (10 if retourne else -10),
@@ -188,10 +200,13 @@ def main():
         titres=["u", "v", "w"], cotes=["x", "y", "z"])
 
     # -- 2. le demi-tour, et la cible --------------------------------------
-    corps.append(texte(40, 412, "2. puis Rx(180&#176;) : l&#8217;outil "
-                       "approche par le dessus", 14, ENCRE, "700"))
-    corps.append(texte(40, 432, "y et z se retournent &#8212; "
-                       "c&#8217;est toute la diff&#233;rence", 12, "#666"))
+    corps.append(texte(40, 412, "2. puis Rx(180&#176;), AUTOUR DE u : "
+                       "l&#8217;outil approche par le dessus", 14, ENCRE,
+                       "700"))
+    corps.append(texte(40, 432, "multiplier &#192; DROITE, c&#8217;est "
+                       "tourner dans le rep&#232;re INTERM&#201;DIAIRE "
+                       "(u, v, w) &#8212; u reste, v et w se retournent",
+                       12, "#666"))
     corps += panneau(180, 572, 84, True, ("Xo", "Yo", "Zo"), False)
     corps += matrice_4x4(
         428, 524, "cible =",

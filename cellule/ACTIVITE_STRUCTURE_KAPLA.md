@@ -188,15 +188,26 @@ Quatre matrices qui s'enchaînent, et chacune dit une chose : *le
 repère de la structure*, *la place de la pièce dedans*, *son
 orientation*, *l'outil qui approche par le dessus*.
 
+**Rappel de l'activité précédente, parce que c'est là que tout se
+joue :** `Rx(180°)` est écrit **à droite**, donc il tourne dans le
+repère **intermédiaire** `(u, v, w)` que `Rz(a)` vient de produire —
+autour de `u`, et non autour du `x` de la base. `u` est l'axe du
+demi-tour et ne bouge pas ; `v` et `w` se retournent. D'où `(sin a,
+−cos a, 0)` et `(0, 0, −1)`.
+
 Le produit redonne la matrice que vous aviez écrite à la main la fois
 dernière :
 
 | Colonne | Ce qu'elle dit |
 |---|---|
-| 0 : `(c, s, 0)` | l'axe x de l'outil — donc la **longueur** de la pièce. Ses composantes **sont** les projections `cos a` et `sin a` sur les axes de la base |
-| 1 : `(s, −c, 0)` | son y, **retourné** : c'est encore le demi-tour autour de x |
-| 2 : `(0, 0, −1)` | son z, vers le bas |
-| 3 | l'écart et la hauteur : où la pièce se pose |
+| <code>0&nbsp;:&nbsp;(c,&nbsp;s,&nbsp;0)</code> | l'axe x de l'outil : la **longueur** de la pièce |
+| <code>1&nbsp;:&nbsp;(s,&nbsp;−c,&nbsp;0)</code> | son y, **retourné** par le demi-tour autour de `u` |
+| <code>2&nbsp;:&nbsp;(0,&nbsp;0,&nbsp;−1)</code> | son z, vers le bas : la direction d'approche |
+| <code>3</code> | l'écart et la hauteur : où la pièce se pose |
+
+Les composantes de la première colonne **sont** les projections `cos a`
+et `sin a` sur les axes de la base — c'est tout ce que dit le premier
+panneau de la figure.
 
 Rien de neuf par rapport à l'activité précédente — **seul `a` change
 désormais d'une assise à l'autre**, et c'est tout ce qui fait vriller

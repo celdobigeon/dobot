@@ -124,10 +124,10 @@ se lit, et c'est exactement ce que dit la figure :
 
 | Colonne | Ce qu'elle dit |
 |---|---|
-| 0 : `(1, 0, 0)` | l'axe **x** de l'outil, celui de la bride : inchangé |
-| 1 : `(0, −1, 0)` | son **y**, retourné par le demi-tour |
-| 2 : `(0, 0, −1)` | son **z**, vers le **bas** : la direction d'approche |
-| 3 : `(0, 0, −L)` | la **pointe**, L millimètres sous la bride |
+| <code>0&nbsp;:&nbsp;(1,&nbsp;0,&nbsp;0)</code> | l'axe **x** de l'outil, celui de la bride : inchangé |
+| <code>1&nbsp;:&nbsp;(0,&nbsp;−1,&nbsp;0)</code> | son **y**, retourné par le demi-tour |
+| <code>2&nbsp;:&nbsp;(0,&nbsp;0,&nbsp;−1)</code> | son **z**, vers le **bas** : la direction d'approche |
+| <code>3&nbsp;:&nbsp;(0,&nbsp;0,&nbsp;−L)</code> | la **pointe**, L millimètres sous la bride |
 
 > **Question 3.** Les trois premières colonnes forment la partie
 > rotation. Vérifiez que c'est bien une rotation : colonnes unitaires,
@@ -217,14 +217,50 @@ Mais la composition **dit ce qu'on fait**, là où la liste de nombres
 demande d'être devinée. C'est elle qu'il faut écrire, et c'est pour
 cela que la figure part de `Rz(a)`.
 
+### Pourquoi la deuxième rotation n'est pas autour de `x`
+
+C'est le point qui décide de tout, et il tient au **côté** où l'on
+multiplie.
+
+Dans `Rz(a) @ Rx(180°)`, la seconde rotation est écrite **à droite** :
+elle s'effectue donc **dans le repère intermédiaire** — celui que
+`Rz(a)` vient de produire, le repère `(u, v, w)` de la figure. Le
+demi-tour se fait autour de **`u`**, et non autour du `x` de la base.
+
+Ce qu'il laisse et ce qu'il retourne se lit alors tout seul :
+
+| | avant | après le demi-tour autour de `u` |
+|---|---|---|
+| 1re colonne | <code>u&nbsp;=&nbsp;(cos&nbsp;a,&nbsp;sin&nbsp;a,&nbsp;0)</code> | **inchangée** : c'est l'axe du demi-tour |
+| 2e colonne | <code>v&nbsp;=&nbsp;(−sin&nbsp;a,&nbsp;cos&nbsp;a,&nbsp;0)</code> | <code>−v&nbsp;=&nbsp;(sin&nbsp;a,&nbsp;−cos&nbsp;a,&nbsp;0)</code> |
+| 3e colonne | <code>w&nbsp;=&nbsp;(0,&nbsp;0,&nbsp;1)</code> | <code>−w&nbsp;=&nbsp;(0,&nbsp;0,&nbsp;−1)</code> |
+
+Voilà d'où vient le signe qui surprend.
+
+**Multiplier à gauche donnerait autre chose** : `Rx(180°) @ Rz(a)`
+tourne autour du `x` **fixe**, celui de la base, et ne donne pas la
+même matrice. Essayez les deux :
+
+```python
+print(hg.rot_z(a) @ hg.rot_x(np.pi))    # autour de u : ce qu'on veut
+print(hg.rot_x(np.pi) @ hg.rot_z(a))    # autour du x fixe : autre chose
+```
+
+> **À retenir.** À droite, on tourne dans le repère qu'on vient de
+> construire ; à gauche, dans le repère de départ.
+
 Il reste à savoir lire le résultat :
 
 | Colonne | Ce qu'elle dit |
 |---|---|
-| 0 : `(c, s, 0)` | l'axe x de l'outil — donc la **longueur** de la pièce. Ses composantes **sont** les projections `cos a` et `sin a` sur les axes de la base |
-| 1 : `(s, −c, 0)` | son y, **retourné** : c'est encore le demi-tour autour de x |
-| 2 : `(0, 0, −1)` | son z, vers le bas |
-| 3 | où la pièce se pose |
+| <code>0&nbsp;:&nbsp;(c,&nbsp;s,&nbsp;0)</code> | l'axe x de l'outil : la **longueur** de la pièce |
+| <code>1&nbsp;:&nbsp;(s,&nbsp;−c,&nbsp;0)</code> | son y, **retourné** par le demi-tour autour de `u` |
+| <code>2&nbsp;:&nbsp;(0,&nbsp;0,&nbsp;−1)</code> | son z, vers le bas : la direction d'approche |
+| <code>3</code> | où la pièce se pose |
+
+Les composantes de la première colonne **sont** les projections `cos a`
+et `sin a` sur les axes de la base — c'est tout ce que dit le premier
+panneau de la figure.
 
 C'est `Rz(a) · Rx(180°)` écrit en clair. **À `a = 0`, la partie rotation
 redevient celle de la prise** : la prise est le cas particulier de la
