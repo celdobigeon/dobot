@@ -12,6 +12,23 @@ IUT, université de Bordeaux · Dobot Magician, ventouse et convoyeur
 Le tapis amène une pièce, un capteur la voit arriver, le tapis s'arrête,
 le robot la prend et la dépose à côté.
 
+![La cellule dans le simulateur, à l'instant de la prise](assets/convoyeur_simulateur.png)
+
+La même cellule dans le simulateur, **à l'instant de la prise**. On y
+lit, de gauche à droite, les trois postes du tapis :
+
+- le **socle de la caméra**, près de l'entrée — elle lira la couleur
+  des pièces, et n'est pas encore utilisée ;
+- le **capteur**, son barillet couché en travers de la bande, et la
+  pièce arrêtée juste devant ;
+- la **ventouse**, descendue dessus, avec le trièdre de la cible de
+  prise : son `z`, en bleu, **descend** vers la pièce, là où celui de
+  la base, à droite, monte.
+
+> **Les deux postes sont à des endroits différents, et c'est voulu.**
+> L'un regarde une pièce qui défile, l'autre arrête la bande ; leur
+> donner la même abscisse n'aurait aucun sens.
+
 Le geste est simple. Ce que l'activité demande, c'est de **savoir où est
 la pièce sans jamais y amener le bras à la main** — en composant trois
 matrices :
