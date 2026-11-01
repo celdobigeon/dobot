@@ -206,9 +206,14 @@ DEPOSE_2 = np.array([[_c,  _s,  0,         0.0],
                      [0,    0, -1,   EPAISSEUR],
                      [0,    0,  0,         1.0]], dtype=float)
 
-# et le produit qui la justifie, dans l'ordre de la figure
-assert np.allclose(DEPOSE_2, hg.translation(0.0, 240.0, EPAISSEUR)
-                   @ hg.rot_z(np.radians(ANGLE)) @ hg.rot_x(np.pi))
+# LE PRODUIT QUI LA JUSTIFIE, dans l'ordre de la figure : on va la,
+# on tourne de ANGLE autour de la verticale, on retourne l'outil. On
+# l'ecrit a part plutot que dans l'assertion : c'est la matiere de
+# l'activite, pas un detail de controle.
+produit = (hg.translation(0.0, 240.0, EPAISSEUR)
+           @ hg.rot_z(np.radians(ANGLE))
+           @ hg.rot_x(np.pi))
+assert np.allclose(DEPOSE_2, produit)
 
 # POURQUOI LES DEUX NE SONT PAS AU MEME ENDROIT. J4 = orientation - J1,
 # et J4 ne va que de -90 a +90. Le cas 1 garde l'orientation 0, il lui

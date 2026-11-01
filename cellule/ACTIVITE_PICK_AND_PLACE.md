@@ -243,18 +243,21 @@ DEPOSE_2 = np.array([[c,  s,  0,       ...],
 **À `a = 0` on retombe sur le cas 1** — le cas 1 est celui où l'on ne
 tourne rien.
 
-**D'où viennent ces nombres ?** De **deux** rotations cette fois, et
-l'ordre compte :
+**D'où viennent ces nombres ?** De **deux** rotations cette fois.
+Écrivez le produit à côté — trois facteurs, trois gestes — puis
+comparez :
 
 ```python
-assert np.allclose(DEPOSE_2,
-                   hg.translation(..., ..., EPAISSEUR)   # ou elle se pose
-                   @ hg.rot_z(np.radians(a))             # 1. Rz(a)
-                   @ hg.rot_x(np.pi))                    # 2. Rx(180 deg)
+produit = (hg.translation(..., ..., EPAISSEUR)   # on va la
+           @ hg.rot_z(np.radians(a))             # 1. on tourne de a
+           @ hg.rot_x(np.pi))                    # 2. on retourne l'outil
+
+assert np.allclose(DEPOSE_2, produit)
 ```
 
-Trois facteurs, trois gestes : *on va là*, *on tourne de `a`*, *on
-retourne l'outil pour qu'il approche par le dessus*.
+**Et l'ordre compte.** Les deux rotations ne commutent pas ; la
+section suivante dit pourquoi, et autour de quel axe tourne la
+seconde.
 
 > Le produit de deux matrices homogènes demande quelques précautions.
 > Si l'ordre, les repères successifs ou la lecture colonne par colonne
