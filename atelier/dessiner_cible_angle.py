@@ -118,11 +118,15 @@ def panneau(cx, cy, r, retourne, noms, projections):
     c, s = np.cos(a), np.sin(a)
     out = []
 
-    # le repere FIXE, en trait pale : x a droite, y en haut
-    out.append(fleche(cx, cy, cx + r + 34, cy, PALE, 1.8, tete=8))
-    out.append(fleche(cx, cy, cx, cy - r - 34, PALE, 1.8, tete=8))
-    out.append(texte(cx + r + 42, cy + 5, "x", 13, "#8d939c", "700"))
-    out.append(texte(cx - 2, cy - r - 42, "y", 13, "#8d939c", "700", "middle"))
+    # Le repere FIXE, en trait pale : x a droite, y en haut.
+    #
+    # Il ne depasse que de 16 px. Il en depassait 34, et la pointe du y
+    # montait dans le titre du panneau -- une fleche qui traverse une
+    # ligne de texte, c'est le lecteur qui trebuche.
+    out.append(fleche(cx, cy, cx + r + 16, cy, PALE, 1.8, tete=8))
+    out.append(fleche(cx, cy, cx, cy - r - 16, PALE, 1.8, tete=8))
+    out.append(texte(cx + r + 24, cy + 5, "x", 13, "#8d939c", "700"))
+    out.append(texte(cx - 2, cy - r - 24, "y", 13, "#8d939c", "700", "middle"))
 
     # le repere TOURNE
     u = (cx + r * c, cy - r * s)
@@ -163,7 +167,7 @@ def panneau(cx, cy, r, retourne, noms, projections):
 
 
 def main():
-    larg, haut = 760.0, 800.0
+    larg, haut = 760.0, 900.0
     corps = []
 
     corps.append(texte(40, 42, "la cible, en deux temps", 17, ENCRE, "600"))
@@ -174,9 +178,9 @@ def main():
     # -- 1. la rotation du cours ------------------------------------------
     corps.append(texte(40, 110, "1. Rz(a) : la rotation autour de la "
                        "verticale", 14, ENCRE, "700"))
-    corps += panneau(180, 240, 92, False, ("u", "v", "w"), True)
+    corps += panneau(180, 252, 84, False, ("u", "v", "w"), True)
     corps += matrice_4x4(
-        428, 190, "Rz(a) =",
+        428, 204, "Rz(a) =",
         [["cos a", "&#8722;sin a", "0"],
          ["sin a", "cos a", "0"],
          ["0", "0", "1"]],
@@ -184,13 +188,13 @@ def main():
         titres=["u", "v", "w"], cotes=["x", "y", "z"])
 
     # -- 2. le demi-tour, et la cible --------------------------------------
-    corps.append(texte(40, 390, "2. puis Rx(180&#176;) : l&#8217;outil "
+    corps.append(texte(40, 398, "2. puis Rx(180&#176;) : l&#8217;outil "
                        "approche par le dessus", 14, ENCRE, "700"))
-    corps.append(texte(40, 410, "y et z se retournent &#8212; "
+    corps.append(texte(40, 418, "y et z se retournent &#8212; "
                        "c&#8217;est toute la diff&#233;rence", 12, "#666"))
-    corps += panneau(180, 530, 92, True, ("Xo", "Yo", "Zo"), False)
+    corps += panneau(180, 548, 84, True, ("Xo", "Yo", "Zo"), False)
     corps += matrice_4x4(
-        428, 480, "cible =",
+        428, 500, "cible =",
         [["cos a", "sin a", "0"],
          ["sin a", "&#8722;cos a", "0"],
          ["0", "0", "&#8722;1"]],
@@ -198,11 +202,11 @@ def main():
         titres=["Xo", "Yo", "Zo"], cotes=["Xb", "Yb", "Zb"])
 
     # -- 3. et en homogene --------------------------------------------------
-    corps.append(texte(40, 660, "3. en matrice homog&#232;ne : la position "
+    corps.append(texte(40, 700, "3. en matrice homog&#232;ne : la position "
                        "s&#8217;ajoute en quatri&#232;me colonne", 14, ENCRE,
                        "700"))
     corps += matrice_4x4(
-        250, 700, "",
+        250, 738, "",
         [["cos a", "sin a", "0", "x"],
          ["sin a", "&#8722;cos a", "0", "y"],
          ["0", "0", "&#8722;1", "z"],
