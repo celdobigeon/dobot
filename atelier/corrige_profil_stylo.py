@@ -6,6 +6,8 @@ CORRIGE de l'activite du profil au stylo -- cellule/ACTIVITE_PROFIL_STYLO.md
     python corrige_profil_stylo.py              simulation
     python corrige_profil_stylo.py --reel       sur la machine
     python corrige_profil_stylo.py --sans-percage   le contour seul
+    python corrige_profil_stylo.py --lissage 100    les raccords arrondis
+    python corrige_profil_stylo.py --vif            sans conges, angles vifs
 
 Un profil ferme -- quatre droites et quatre arcs -- plus un cercle au
 milieu, traces au porte-stylo sur une feuille posee devant le robot.
@@ -61,6 +63,34 @@ from dobot_sim import Pilote, repere_travail
 
 REEL = "--reel" in sys.argv
 PERCAGE = "--sans-percage" not in sys.argv
+
+#: ANGLES VIFS : le meme rectangle sans ses conges, quatre movl et
+#: quatre coins a 90 degres. Sert a l'essai B de l'activite -- c'est la
+#: que le lissage se voit.
+VIF = "--vif" in sys.argv
+
+
+def option(nom, defaut):
+    if nom in sys.argv:
+        return float(sys.argv[sys.argv.index(nom) + 1])
+    return defaut
+
+
+#: pourcentage d'arrondi des raccords du TRACE. 0 par defaut : un
+#: dessin se trace comme il est cote.
+#:
+#: MESURE sur ce programme, percage et degagements compris :
+#:
+#:            A -- a conges            B -- a angles vifs
+#:     0 %      21,94 s / 0,00 mm        22,75 s / 0,00 mm
+#:    50 %      20,35 s / 0,00 mm        20,96 s / 0,44 mm
+#:   100 %      18,75 s / 0,16 mm        19,16 s / 3,05 mm
+#:
+#: Tout est la. Une droite et son conge se raccordent TANGENTIELLEMENT :
+#: la direction ne change pas d'un coup, il n'y a presque rien a couper,
+#: et les secondes sont rendues pour rien. Un angle vif, lui, est un
+#: changement brutal -- le lissage le mange, et cela se voit a l'oeil nu.
+LISSAGE = option("--lissage", 0.0)
 
 # ---------------------------------------------------------------------------
 # 1. L'OUTIL : LE PORTE-STYLO
@@ -182,24 +212,36 @@ BIAIS = RAYON * np.sqrt(2.0) / 2.0
 robot.repli()
 
 # approche au-dessus du depart, puis descente sur le papier
-robot.movj(point(-CX, -DY, LEVEE), lissage=60)
-robot.movl(point(-CX, -DY), vitesse=30, commentaire="le stylo se pose")
+DEPART = (-DX, -DY) if VIF else (-CX, -DY)
+robot.movj(point(DEPART[0], DEPART[1], LEVEE), lissage=60)
+robot.movl(point(*DEPART), vitesse=30, commentaire="le stylo se pose")
 
-# le contour, dans le sens trigonometrique
-robot.movl(point(CX, -DY), commentaire="bas")
-robot.movc(point(CX + BIAIS, -CY - BIAIS), point(DX, -CY),
-           commentaire="conge bas droite")
-robot.movl(point(DX, CY), commentaire="droite")
-robot.movc(point(CX + BIAIS, CY + BIAIS), point(CX, DY),
-           commentaire="conge haut droite")
-robot.movl(point(-CX, DY), commentaire="haut")
-robot.movc(point(-CX - BIAIS, CY + BIAIS), point(-DX, CY),
-           commentaire="conge haut gauche")
-robot.movl(point(-DX, -CY), commentaire="gauche")
-robot.movc(point(-CX - BIAIS, -CY - BIAIS), point(-CX, -DY),
-           commentaire="conge bas gauche, et le profil se referme")
+# le contour, dans le sens trigonometrique.
+#
+# LE LISSAGE PORTE SUR LES RACCORDS DU TRACE, jamais sur la descente ni
+# sur la levee : un point de contact lisse n'est pas atteint, et le
+# stylo commencerait son trait en l'air.
+if VIF:
+    # essai B de l'activite : quatre droites, quatre angles a 90 degres
+    for x, y in ((DX, -DY), (DX, DY), (-DX, DY), (-DX, -DY)):
+        robot.movl(point(x, y), lissage=LISSAGE)
+else:
+    robot.movl(point(CX, -DY), lissage=LISSAGE, commentaire="bas")
+    robot.movc(point(CX + BIAIS, -CY - BIAIS), point(DX, -CY),
+               lissage=LISSAGE, commentaire="conge bas droite")
+    robot.movl(point(DX, CY), lissage=LISSAGE, commentaire="droite")
+    robot.movc(point(CX + BIAIS, CY + BIAIS), point(CX, DY),
+               lissage=LISSAGE, commentaire="conge haut droite")
+    robot.movl(point(-CX, DY), lissage=LISSAGE, commentaire="haut")
+    robot.movc(point(-CX - BIAIS, CY + BIAIS), point(-DX, CY),
+               lissage=LISSAGE, commentaire="conge haut gauche")
+    robot.movl(point(-DX, -CY), lissage=LISSAGE, commentaire="gauche")
+    robot.movc(point(-CX - BIAIS, -CY - BIAIS), point(-CX, -DY),
+               lissage=LISSAGE,
+               commentaire="conge bas gauche, et le profil se referme")
 
-robot.movl(point(-CX, -DY, LEVEE), vitesse=30, commentaire="le stylo se leve")
+robot.movl(point(DEPART[0], DEPART[1], LEVEE), vitesse=30,
+           commentaire="le stylo se leve")
 
 if PERCAGE:
     # LE CERCLE : DEUX arcs, et non un seul. Un movc dont le depart et
@@ -227,6 +269,8 @@ if __name__ == "__main__":
     print("feuille  : x={:.0f}  z={:.0f} mm".format(FEUILLE[0, 3],
                                                     FEUILLE[2, 3]))
     print("stylo    : L = {:.1f} mm, levee {:.0f} mm".format(L_OUTIL, LEVEE))
+    print("lissage  : {:.0f} %{}".format(LISSAGE,
+                                         "   (angles VIFS)" if VIF else ""))
     print("")
 
     T = point(-CX, -DY)

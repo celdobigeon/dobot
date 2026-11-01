@@ -33,6 +33,8 @@ papier, c'est la trajectoire.
 3. **Tracer une droite** avec `movl`, **un arc** avec `movc`, et
    comprendre ce que `movc` réclame de plus.
 4. **Enchaîner** droites et arcs sans lever le stylo.
+5. **Le lissage**, et ce qu'il fait au tracé — cette fois cela se voit
+   sur le papier.
 
 > **La règle d'écriture, comme dans les activités précédentes.** Une
 > cible, un repère, une transformation se déclarent sous forme de
@@ -122,39 +124,44 @@ compte.**
 
 ---
 
-## 3. Le repère de la feuille
+## 3. Les points du dessin, écrits en matrices
 
-Tout le dessin s'exprime **dans la feuille**, pas dans la base du
-robot. C'est ce qui permet de déplacer la feuille sans retoucher une
-seule cote du profil.
+La feuille a son repère — vous savez le déclarer depuis la structure
+de kapla. Deux lignes suffisent ici :
 
 ```python
 FEUILLE = np.array([[1, 0, 0, ...],     # du centre de la base au centre
                     [0, 1, 0, ...],     # de la feuille
-                    [0, 0, 1, ...],     # l'altitude du papier : support
-                    [0, 0, 0,   1]], dtype=float)   # + epaisseur
+                    [0, 0, 1, ...],     # l'altitude du papier, support
+                    [0, 0, 0,   1]], dtype=float)   # et epaisseur comprises
 ```
 
-Partie rotation = identité, `z` vers le **haut** : c'est un repère de
-table, pas un outil.
-
-> **Mesurez l'altitude du papier**, support compris. C'est le `z` de
+> **Mesurez l'altitude du papier**, support compris : c'est le `z` de
 > ce repère, et c'est lui qui décide si le stylo touche.
 
-> **Question 3.** Vous déplacez la feuille de 2 cm vers la droite.
-> Combien de nombres changez-vous dans votre programme ? Et si vous la
-> posiez **en biais** ?
+**Un point du dessin est une matrice 4×4**, comme toutes les cibles
+depuis le début. Celle-ci est remarquable : **sa partie rotation ne
+change jamais**. Le stylo ne tourne pas, il se promène.
 
----
+```python
+#  le point (x, y) du dessin, a h millimetres AU-DESSUS du papier
+dans_la_feuille = np.array([[1,  0,  0, x],
+                            [0, -1,  0, y],
+                            [0,  0, -1, h],
+                            [0,  0,  0, 1]], dtype=float)
 
-## 4. Un point du dessin
+cible = FEUILLE @ dans_la_feuille
+```
 
-Une cible est toujours une matrice 4×4. Ici **la partie rotation ne
-change jamais** — le stylo ne tourne pas, il se promène :
+C'est l'exact contraire de la structure de kapla, où la position
+restait et où l'orientation travaillait. Ici l'orientation est figée et
+c'est la **dernière colonne** qui porte tout le dessin.
+
+Le profil en demande une quinzaine : écrivez-la **une fois**, dans une
+fonction, et donnez-lui les trois cotes.
 
 ```python
 def point(x, y, h=0.0):
-    """La cible au point (x, y) du dessin, a h millimetres AU-DESSUS."""
     dans_la_feuille = np.array([[1,  0,  0, x],
                                 [0, -1,  0, y],
                                 [0,  0, -1, h],
@@ -162,24 +169,20 @@ def point(x, y, h=0.0):
     return FEUILLE @ dans_la_feuille
 ```
 
-C'est l'exact contraire de la structure de kapla, où la position
-restait et où l'orientation travaillait. Ici l'orientation est figée et
-c'est la **dernière colonne** qui porte tout le dessin.
-
-> Si la composition `FEUILLE @ dans_la_feuille` ne vous est pas
-> familière, la [fiche sur les matrices
-> homogènes](fiches/fiche_matrices.html) la reprend depuis le cours.
-
-> **Question 4.** `h` est compté **vers le haut** depuis le papier,
+> **Question 3.** `h` est compté **vers le haut** depuis le papier,
 > mais il s'écrit tel quel dans une matrice dont le `z` descend.
 > Pourquoi n'y a-t-il pas de signe `−` ? Faites le calcul sur un point
 > à `h = 12` et vérifiez la cote obtenue dans la base.
 
+> **Question 4.** Vous déplacez la feuille de 2 cm. Combien de nombres
+> changez-vous ? Et si vous la posiez **en biais** — quelle partie de
+> quelle matrice ?
+
 ---
 
-## 5. Les droites, et les arcs
+## 4. Les droites, et les arcs
 
-### 5.1 Une droite
+### 4.1 Une droite
 
 ```python
 robot.movl(point(x, y))
@@ -187,7 +190,9 @@ robot.movl(point(x, y))
 
 Rien de neuf : le TCP va en ligne droite, et le stylo laisse un trait.
 
-### 5.2 Un arc : ce que `movc` réclame de plus
+### 4.2 Un arc : ce que `movc` réclame de plus
+
+![Les trois points d'un arc, et l'ordre des arguments](assets/arc_movc.svg)
 
 ```python
 robot.movc(point(xv, yv), point(x, y))
@@ -198,9 +203,18 @@ robot.movc(point(xv, yv), point(x, y))
 point de passage, et la cible. Trois points définissent un cercle et un
 seul — c'est toute l'affaire.
 
+Et **deux seulement se déclarent**, dans cet ordre :
+
+| | Le point | Comment il arrive dans l'appel |
+|---|---|---|
+| ① | là où l'on est déjà | il ne se déclare pas : c'est la fin du mouvement précédent |
+| ② | le point de passage | **premier** argument |
+| ③ | la cible | **second** argument |
+
 > **Le point de passage n'est pas le centre du cercle.** C'est l'erreur
 > à faire une fois : c'est un point **du tracé**, par lequel le stylo
-> passe réellement.
+> passe réellement. Le centre, lui, n'entre nulle part dans l'appel —
+> c'est pourquoi la figure le barre.
 
 Pour un **quart de cercle**, prenez-le à **45°** sur le congé. C'est le
 seul endroit qui se calcule sans effort, et c'est aussi le plus éloigné
@@ -221,7 +235,7 @@ Les quatre croix de la figure sont ces points-là.
 > `movc`. Expliquez pourquoi, en raisonnant sur les trois points. Puis
 > écrivez le perçage de la figure — il en faut **deux**.
 
-### 5.3 Lever et poser
+### 4.3 Lever et poser
 
 Le porte-stylo n'a pas d'actionneur : lever le stylo, c'est **aller à
 la même cible, plus haut**.
@@ -244,7 +258,7 @@ fait un point d'encre, et une remontée rapide une bavure.
 
 ---
 
-## 6. Le profil
+## 5. Le profil
 
 Le dessin se compose de constantes, pas de nombres recopiés :
 
@@ -274,6 +288,70 @@ ce qui distingue un *profil* d'une suite de traits.
 
 ---
 
+## 6. Le lissage, et ce qu'il fait au tracé
+
+Vous avez lissé des raccords au pick and place, et vous avez mesuré ce
+que cela rapportait en secondes. **Ici vous allez le voir sur le
+papier.**
+
+```python
+robot.movl(point(x, y), lissage=70)      # pourcentage, de 0 a 100
+```
+
+### 6.1 Deux essais, et ils ne disent pas la même chose
+
+**Essai A — votre profil.** Lissez tous les raccords, de 0 à 100 %,
+et mesurez l'écart au profil théorique.
+
+**Essai B — le même rectangle, mais à angles vifs.** Retirez les
+congés : quatre `movl`, quatre coins à 90°. Lissez de la même façon.
+
+> **Question 10.** Relevez pour les deux essais la **durée** et
+> l'**écart maximal au tracé voulu** :
+>
+> | `lissage` | A — à congés | B — à angles vifs |
+> |---|---|---|
+> | 0 % | … | … |
+> | 50 % | … | … |
+> | 100 % | … | … |
+>
+> Les deux colonnes ne se ressemblent pas du tout. Pourquoi ?
+
+### 6.2 Ce que le lissage coupe, et ce qu'il ne coupe pas
+
+Le lissage arrondit un **changement de direction**. Or dans votre
+profil, une droite et son congé se raccordent **tangentiellement** :
+la direction ne change pas d'un coup, elle tourne déjà. Il n'y a donc
+presque rien à couper — et le lissage rend ses secondes presque
+gratuitement.
+
+Un **angle vif**, lui, est un changement brutal de direction. Le
+lissage le mange, et cela se voit à l'œil nu sur le papier.
+
+> **Question 11.** À quel pourcentage l'écart dépasse-t-il le dixième
+> de millimètre dans chaque essai ? Et le demi-millimètre ?
+> **Jusqu'où peut-on lisser sans que le dessin change**, dans un cas
+> et dans l'autre ?
+
+> **Question 12.** Un bureau d'études vous donne un profil où toutes
+> les reprises sont tangentes. Que pouvez-vous vous permettre que vous
+> ne pourriez pas sur un profil à angles vifs ? Formulez-le comme une
+> règle d'atelier, en une phrase.
+
+### 6.3 Les deux points qu'on ne lisse jamais
+
+Ceux où le stylo **se pose** et où il **se lève**. Un point de contact
+lissé n'est pas atteint : le stylo commence son trait en l'air, ou le
+finit en appuyant. Laissez-les à `lissage=0` — c'est-à-dire ne mettez
+rien.
+
+> **Question 13.** Lissez volontairement la descente sur le papier à
+> 100 %, et regardez le début du trait dans la vue 3D. Puis dites
+> pourquoi on retrouve ici, mot pour mot, la règle du pick and place :
+> *on ne lisse jamais un point où l'outil agit.*
+
+---
+
 ## 7. Valider hors ligne, puis transférer sur la machine
 
 ```bash
@@ -290,7 +368,7 @@ La vue 3D montre le chemin du stylo : vous voyez le profil **avant**
 d'user du papier. Le menu **Affichage ▸ Vue épurée** (Ctrl+Shift+V) ne
 laisse que la cellule et le tracé.
 
-> **Question 10.** Éloignez la feuille de 5 cm et relancez
+> **Question 14.** Éloignez la feuille de 5 cm et relancez
 > `controler()`. Comptez les réserves, et regardez **quelle
 > instruction** la première met en défaut, puis **quelle articulation**
 > proteste. Pourquoi est-ce ce bord-là du profil et pas un autre ?
@@ -320,8 +398,10 @@ python votre_programme.py --reel
 ## Ce qu'il faut rendre
 
 1. Le programme, commenté — chaque cote doit dire **d'où elle vient**.
-2. Les réponses aux dix questions.
+2. Les réponses aux quatorze questions.
 3. **La feuille tracée**, avec au dos la valeur de `L_OUTIL` que vous
    avez retenue et la façon dont vous l'avez réglée.
 4. Votre relevé de la question 8 : le nombre de lignes reprises pour
    passer de R15 à R25.
+5. **Le tableau de la question 10**, les deux essais côte à côte, et
+   votre règle d'atelier de la question 12.
