@@ -22,8 +22,11 @@ une colonne par axe, la position en quatrième colonne, et le
 `0 0 0 1` qu'on oublie. Un produit de fonctions cache les seize
 nombres au moment précis où il faut les voir.
 
-**Le produit reste**, mais comme justification — il dit *d'où viennent*
-les nombres, et il se vérifie :
+**Le produit peut rester**, mais seulement comme justification — il dit
+*d'où viennent* les nombres, et il se vérifie. Quand la matrice se
+justifie plus simplement autrement — en la comparant à une autre déjà
+déclarée, par exemple — c'est cette comparaison qu'on écrit, et le
+produit disparaît :
 
 ```python
 # un demi-tour autour de x, a cet endroit

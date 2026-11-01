@@ -186,12 +186,13 @@ DEPOSE_1 = np.array([[1,  0,  0,       140.0],
                      [0,  0, -1,   EPAISSEUR],
                      [0,  0,  0,         1.0]], dtype=float)
 
-# D'OU VIENNENT CES SEIZE NOMBRES : un demi-tour autour de x, a cet
-# endroit. On DECLARE la matrice -- c'est elle qu'il faut savoir lire --
-# et on prouve par le produit qu'on ne s'est pas trompe de signe.
-assert np.allclose(DEPOSE_1,
-                   hg.translation(140.0, 200.0, EPAISSEUR) @ hg.rot_x(np.pi))
-assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3]),     "cas 1 : meme orientation qu'a la prise, c'est tout l'enonce"
+# D'OU VIENNENT CES SEIZE NOMBRES : les trois premieres colonnes sont
+# celles de l'outil -- le demi-tour qui le fait descendre -- et la
+# quatrieme porte l'endroit. Pas de produit a ecrire ici : la
+# comparaison avec la prise le dit mieux, et c'est l'enonce du cas 1.
+# les deux matrices ne different que par leur QUATRIEME COLONNE :
+# meme orientation, autre endroit. C'est tout l'enonce du cas 1.
+assert np.allclose(DEPOSE_1[:, :3], PRISE[:, :3]),     "cas 1 : meme orientation qu'a la prise"
 
 # CAS 2 -- on la repose TOURNEE. Deux rotations, dans l'ordre de la
 # figure : Rz(a) tourne la piece autour de la verticale, puis Rx(180)

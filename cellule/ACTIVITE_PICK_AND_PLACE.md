@@ -207,26 +207,22 @@ DEPOSE_1 = np.array([[1,  0,  0,       ...],
                      [0,  0,  0,         1]], dtype=float)
 ```
 
-La partie rotation est **exactement celle de la prise** — on ne tourne
-rien, on pose seulement ailleurs :
+Comparez-la à `PRISE`, écrite au paragraphe précédent : **les trois
+premières colonnes sont les mêmes**. Seule la quatrième change. C'est
+la définition du cas 1 — on ne tourne rien, on pose ailleurs.
 
 ```python
-assert np.allclose(DEPOSE_1[:3, :3], PRISE[:3, :3])
+assert np.allclose(DEPOSE_1[:, :3], PRISE[:, :3])   # memes trois colonnes
 ```
 
-**D'où viennent ces seize nombres ?** D'un demi-tour autour de `x`,
-appliqué à cet endroit. Le produit ne remplace pas la matrice : il la
-**justifie**, et il se vérifie.
+**D'où viennent ces seize nombres ?** Les trois premières colonnes
+sont celles de l'outil — le demi-tour qui le fait descendre, déjà vu
+au §2.3. La quatrième porte l'endroit où l'on pose. Il n'y a rien de
+plus à calculer : **le cas 1 est celui où l'on ne tourne rien.**
 
-```python
-assert np.allclose(DEPOSE_1,
-                   hg.translation(..., ..., EPAISSEUR) @ hg.rot_x(np.pi))
-```
-
-> **Question 6.** Écrivez la matrice à la main *avant* de lancer
-> Python, à partir du produit ci-dessus. Combien de ses seize nombres
-> dépendent de l'endroit où vous posez la pièce ? Combien de
-> l'orientation ?
+> **Question 6.** Combien des seize nombres dépendent de l'endroit où
+> vous posez la pièce ? Combien de son orientation ? Déplacez la
+> dépose de 3 cm et comptez ce que vous avez dû reprendre.
 
 ### 3.3 Cas 2 : la poser tournée
 
