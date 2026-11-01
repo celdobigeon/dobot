@@ -18,7 +18,8 @@ cellule/
     README.md             la documentation
     PROCEDURE_*.md        les procédures de mise en route
     ACTIVITE_*.md         les activités de TP (prendre et poser,
-                          convoyeur, structure de kapla)
+                          structure de kapla, profil au stylo,
+                          convoyeur)
 ```
 
 Les commandes des procédures se lisent **depuis ce dossier** :
