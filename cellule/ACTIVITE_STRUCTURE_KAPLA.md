@@ -173,23 +173,23 @@ pièces de 8 mm ne doivent demander qu'une ligne à changer.
 
 ![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
-L'assise *n* est tournée de `n × 75°`. Pour un angle `a` :
+L'assise *n* est tournée de `n × 75°`. Comme à l'activité précédente,
+la cible **se compose** — dans l'ordre même de la figure :
 
 ```python
-c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
-
-dans_la_structure = np.array([[c,  s,  0, ex],
-                              [s, -c,  0, ey],
-                              [0,  0, -1,  z],
-                              [0,  0,  0,  1]], dtype=float)
+dans_la_structure = (hg.translation(ex, ey, z)   # ou elle se pose
+                     @ hg.rot_z(np.radians(a))   # 1. Rz(a)
+                     @ hg.rot_x(np.pi))          # 2. Rx(180 deg)
 
 cible = STRUCTURE @ dans_la_structure
 ```
 
-La figure la construit en deux temps : `Rz(a)`, la rotation du cours,
-puis `Rx(180°)`, le demi-tour qui fait approcher l'outil par le dessus.
-Les colonnes y portent le nom des axes de l'outil, les lignes celui du
-repère de base.
+Quatre matrices qui s'enchaînent, et chacune dit une chose : *le
+repère de la structure*, *la place de la pièce dedans*, *son
+orientation*, *l'outil qui approche par le dessus*.
+
+Le produit redonne la matrice que vous aviez écrite à la main la fois
+dernière :
 
 | Colonne | Ce qu'elle dit |
 |---|---|

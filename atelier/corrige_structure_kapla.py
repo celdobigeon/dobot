@@ -302,10 +302,16 @@ def depose(assise, piece):
     ey = signe * DECALAGE * c
     z = (assise + 1) * EPAISSEUR
 
-    dans_la_structure = np.array([[c,  s,  0, ex],
-                                 [s, -c,  0, ey],
-                                 [0,  0, -1,  z],
-                                 [0,  0,  0,  1]], dtype=float)
+    # LA CIBLE SE COMPOSE : on va a sa place, on tourne de a autour de
+    # la verticale, puis on retourne l'outil pour qu'il approche par le
+    # dessus. Les seize nombres s'en deduisent -- l'assertion le dit.
+    dans_la_structure = (hg.translation(ex, ey, z)
+                         @ hg.rot_z(a)
+                         @ hg.rot_x(np.pi))
+    assert np.allclose(dans_la_structure, [[c,  s,  0, ex],
+                                           [s, -c,  0, ey],
+                                           [0,  0, -1,  z],
+                                           [0,  0,  0,  1]])
     return STRUCTURE @ dans_la_structure
 
 

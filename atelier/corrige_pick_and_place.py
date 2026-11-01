@@ -168,13 +168,24 @@ PRISE = np.array([[1,  0,  0,        60.0],
 #
 # A ANGLE = 0 cette matrice redevient celle de la prise, au point pres :
 # la prise est le cas particulier ou l'on ne tourne rien.
-_a = np.radians(ANGLE)
-_c, _s = np.cos(_a), np.sin(_a)
+# ELLE SE COMPOSE, elle ne se recopie pas. Deux rotations elementaires,
+# dans cet ordre, et la lecture du programme suit celle de la figure :
+#
+#   Rz(a)      on tourne la piece autour de la verticale
+#   Rx(180)    l'outil approche PAR LE DESSUS -- y et z se retournent
+#
+# Ecrire les seize nombres a la main donne le meme resultat, et
+# l'assertion ci-dessous le prouve ; mais la composition DIT ce qu'on
+# fait, la liste de nombres non.
+DEPOSE = (hg.translation(0.0, 240.0, EPAISSEUR)
+          @ hg.rot_z(np.radians(ANGLE))
+          @ hg.rot_x(np.pi))
 
-DEPOSE = np.array([[_c,  _s,  0,         0.0],
-                   [_s, -_c,  0,       240.0],
-                   [ 0,   0, -1,   EPAISSEUR],
-                   [ 0,   0,  0,         1.0]], dtype=float)
+_c, _s = np.cos(np.radians(ANGLE)), np.sin(np.radians(ANGLE))
+assert np.allclose(DEPOSE, [[_c,  _s,  0,         0.0],
+                            [_s, -_c,  0,       240.0],
+                            [0,    0, -1,   EPAISSEUR],
+                            [0,    0,  0,         1.0]])
 
 # la piece du simulateur : du decor, aucune instruction. magasin=True
 # en fait reapparaitre une des qu'on emporte celle-ci.

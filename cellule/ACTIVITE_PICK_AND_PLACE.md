@@ -188,21 +188,36 @@ fait `EPAISSEUR`, la ventouse se pose **dessus** : `z = EPAISSEUR`.
 
 ![La matrice d'une cible orientée, en deux temps](assets/cible_angle.svg)
 
-La pièce est posée sur la structure, tournée de `a` :
+La pièce est posée sur la structure, tournée de `a`. **Composez la
+cible plutôt que de la recopier** — c'est exactement ce que montre la
+figure, dans le même ordre :
+
+```python
+DEPOSE = (hg.translation(..., ..., EPAISSEUR)   # ou elle se pose
+          @ hg.rot_z(np.radians(a))             # 1. Rz(a)
+          @ hg.rot_x(np.pi))                    # 2. Rx(180 deg)
+```
+
+Trois lignes, trois gestes : *on va là*, *on tourne de `a`*, *on
+retourne l'outil pour qu'il approche par le dessus*.
+
+Écrire les seize nombres à la main donne exactement la même matrice —
+vérifiez-le plutôt que de le croire :
 
 ```python
 c, s = np.cos(np.radians(a)), np.sin(np.radians(a))
 
-DEPOSE = np.array([[c,  s,  0,       ...],
-                   [s, -c,  0,       ...],
-                   [0,  0, -1, EPAISSEUR],
-                   [0,  0,  0,         1]], dtype=float)
+assert np.allclose(DEPOSE, [[c,  s,  0,       ...],
+                            [s, -c,  0,       ...],
+                            [0,  0, -1, EPAISSEUR],
+                            [0,  0,  0,         1]])
 ```
 
-La figure la construit en deux temps : `Rz(a)`, la rotation du cours,
-puis `Rx(180°)`, le demi-tour qui fait approcher l'outil par le dessus.
-Les colonnes y portent le nom des axes de l'outil, les lignes celui du
-repère de base. Il n'y a rien d'autre à retenir :
+Mais la composition **dit ce qu'on fait**, là où la liste de nombres
+demande d'être devinée. C'est elle qu'il faut écrire, et c'est pour
+cela que la figure part de `Rz(a)`.
+
+Il reste à savoir lire le résultat :
 
 | Colonne | Ce qu'elle dit |
 |---|---|
