@@ -251,22 +251,40 @@ et le robot y reste attaché.
 ### Un délai n'est pas un capteur
 
 En simulation il n'y a pas de capteur : on remplace l'attente par le
-temps que la pièce met à parcourir la bande.
+temps que la pièce met à parcourir la bande. Le calcul évident donne :
 
 ```python
 DUREE_ARRIVEE = CAPTEUR_S / VITESSE_TAPIS      # 300 / 60 = 5 s
 ```
 
-Lancez la lecture et regardez où la pièce s'arrête. **Elle dépasse le
-capteur** — d'une quinzaine de millimètres sur cette cellule.
+**Et il est faux.** Écrivez-le ainsi, lancez la lecture, et regardez où
+la pièce s'arrête : **15 mm après le capteur**. La ventouse descend
+alors à côté.
 
-> **Question 12.** Mesurez ce dépassement dans le simulateur, puis
-> trouvez d'où il vient. *Indice : le tapis tourne-t-il vraiment
-> pendant 5,00 s ? Regardez la cadence que le programme produit.*
+Deux corrections, et chacune apprend quelque chose :
+
+```python
+ARRET_S = CAPTEUR_S + DERIVE                              # ou elle s'arrete vraiment
+DUREE_ARRIVEE = ARRET_S / VITESSE_TAPIS - DUREE_LOGIQUE   # le temps propre de convoyeur()
+```
+
+- **`− DUREE_LOGIQUE`** : l'instruction `convoyeur()` occupe elle-même
+  un quart de seconde, pendant lequel la bande tourne déjà. Le tapis
+  tourne donc 5,25 s et non 5,00 — d'où les 15 mm.
+- **`+ DERIVE`** : on ne vise pas le droit du capteur mais l'endroit où
+  la pièce s'immobilise, c'est-à-dire la cible que `PRISE` calcule déjà.
+
+Avec les deux, la pièce s'arrête **exactement** sur la cible de prise.
+
+> **Question 12.** Remettez le délai naïf, mesurez le dépassement, puis
+> retrouvez-le par le calcul à partir de la cadence que le programme
+> produit. *Indice : à quels instants le tapis démarre-t-il et
+> s'arrête-t-il vraiment ?*
 >
-> Qu'est-ce que cela dit de la différence entre **attendre un délai** et
-> **attendre un capteur** ? Et pourquoi la cellule réelle a-t-elle un
-> capteur plutôt qu'un chronomètre ?
+> Puis la vraie question : pour viser juste, il a fallu connaître la
+> **loi de la bande** et le **temps propre des instructions**. De quoi
+> le programme de la cellule réelle a-t-il besoin de savoir, lui ?
+> Qu'est-ce qu'un capteur vous épargne, au juste ?
 
 ---
 

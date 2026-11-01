@@ -43,6 +43,7 @@ import numpy as np
 from dobot_sim import Convoyeur, Pilote
 from dobot_sim import homogeneous as hg
 from dobot_sim.convoyeur import PORTS_GP
+from dobot_sim.program import DUREE_LOGIQUE
 
 REEL = "--reel" in sys.argv
 
@@ -223,16 +224,24 @@ CYCLES = 3
 # capteur. En simulation il n'y a pas de capteur : on remplace l'attente
 # par le temps que la piece met a parcourir la bande.
 #
-# ET LES DEUX NE DONNENT PAS LE MEME RESULTAT. Mesure sur ce programme :
-# le tapis tourne 5,25 s et non 5,00, parce que l'instruction
-# `convoyeur()` occupe elle-meme un quart de seconde pendant lequel la
-# bande avance deja. A 60 mm/s, cela fait 15 mm -- la piece simulee
-# depasse donc le capteur d'autant, et la ventouse la prend decalee.
+# ET LE DELAI NAIF NE TOMBE PAS JUSTE. `CAPTEUR_S / VITESSE_TAPIS` vaut
+# 5,00 s, mais le tapis tourne 5,25 s : l'instruction `convoyeur()`
+# occupe elle-meme un quart de seconde pendant lequel la bande avance
+# deja. A 60 mm/s, cela fait 15 mm -- la piece depassait le capteur
+# d'autant, et la ventouse la prenait decalee.
 #
-# On pourrait retrancher ce quart de seconde. On ne le fait pas : cet
-# ecart EST la lecon. Un delai suppose que tout se passe comme prevu ;
-# un capteur constate. C'est pourquoi la cellule reelle a un capteur.
-DUREE_ARRIVEE = CAPTEUR_S / VITESSE_TAPIS
+# On retranche donc ce temps propre. Et on ne vise pas le droit du
+# capteur mais L'ABSCISSE OU LA PIECE S'IMMOBILISE VRAIMENT : le
+# capteur plus la derive du retard, exactement ce que vise PRISE. La
+# piece simulee s'arrete alors la ou la vraie s'arrete, et la ventouse
+# se pose dessus.
+#
+# RIEN DE TOUT CELA N'EXISTE SUR LA MACHINE : la, le capteur constate,
+# et le programme n'a besoin de connaitre ni la loi de la bande ni le
+# temps propre des instructions. C'est tout l'interet d'un capteur, et
+# le prix de s'en passer tient dans ces deux lignes.
+ARRET_S = CAPTEUR_S + DERIVE
+DUREE_ARRIVEE = ARRET_S / VITESSE_TAPIS - DUREE_LOGIQUE
 
 robot.repli()
 for i in range(CYCLES):

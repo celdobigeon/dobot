@@ -53,6 +53,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dobot_sim import Convoyeur, Pilote, repere_travail          # noqa: E402
 from dobot_sim.convoyeur import PORTS_GP                         # noqa: E402
+from dobot_sim.program import DUREE_LOGIQUE                      # noqa: E402
 from dobot_sim import homogeneous as hg                          # noqa: E402
 
 REEL = "--reel" in sys.argv
@@ -383,7 +384,11 @@ def prise_depose(r):
 # figure comme instruction, et l'attente de la piece est remplacee par le
 # temps qu'elle met a parcourir le tapis -- un calcul, pas un capteur.
 robot.repli()
-duree_arrivee = TAPIS.capteur_s / VITESSE_TAPIS
+# LE DELAI NAIF DEPASSE. `convoyeur()` occupe un quart de seconde
+# pendant lequel la bande tourne deja : on le retranche. Et on vise
+# l'abscisse ou la piece s'immobilise vraiment -- le capteur plus la
+# derive du retard, celle que vise PRISE -- et non le droit du capteur.
+duree_arrivee = (TAPIS.capteur_s + DERIVE) / VITESSE_TAPIS - DUREE_LOGIQUE
 for i in range(CYCLES):
     robot.convoyeur(VITESSE_TAPIS, commentaire="le tapis amene")
     robot.attendre(duree_arrivee, commentaire="la piece arrive au capteur")
