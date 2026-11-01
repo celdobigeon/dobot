@@ -292,6 +292,14 @@ class Vue2D(QtWidgets.QWidget):
         self.c_bras.setVisible(actif)
         self.d_bras.setVisible(actif)
 
+    def afficher_trace(self, actif: bool) -> None:
+        self.c_trace.setVisible(actif)
+        self.d_trace.setVisible(actif)
+
+    def afficher_chemin(self, actif: bool) -> None:
+        self.c_chemin.setVisible(actif)
+        self.d_chemin.setVisible(actif)
+
     def afficher_maillages(self, actif: bool) -> None:
         pass
 

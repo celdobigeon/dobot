@@ -311,8 +311,35 @@ class TestLesDeuxVues(unittest.TestCase):
     Un `hasattr` silencieux se verifie donc ici, et non a l'ecran.
     """
 
+    #: le plancher : ces methodes-la, quoi qu'il arrive
     METHODES = ("definir_objets", "definir_convoyeur", "definir_rail",
                 "definir_chemin", "definir_cibles", "maj")
+
+    #: les seules dispensees, et il faut dire pourquoi. Y ajouter un nom
+    #: est une DECISION : sans cette liste, on l'aurait prise sans le
+    #: savoir, en oubliant d'ecrire la methode.
+    #:
+    #: Ces deux-la sont des MANQUES CONNUS, pas des impossibilites :
+    #: l'IHM les appelle derriere un `hasattr`, donc sur un poste sans
+    #: OpenGL le champ de la camera et la piece tenue par la pince ne
+    #: s'affichent pas, en silence. A ecrire le jour ou cela genera.
+    SANS_OBJET_EN_2D = {
+        "definir_camera": "pas encore ecrite pour la vue 2D",
+        "definir_tenue": "pas encore ecrite pour la vue 2D",
+    }
+
+    def _attendues(self, V3) -> list:
+        """
+        Tout ce que la vue 3D expose en `afficher_*` et `definir_*`.
+
+        Derivee, et non recopiee : une liste ecrite a la main ne protege
+        que des oublis qu'on a deja faits. `afficher_trace` a ete ajoutee
+        a la 3D sans l'etre a la 2D, et la liste d'alors ne l'a pas vue.
+        """
+        noms = {n for n in dir(V3)
+                if n.startswith(("afficher_", "definir_"))
+                and callable(getattr(V3, n))}
+        return sorted((noms | set(self.METHODES)) - set(self.SANS_OBJET_EN_2D))
 
     def test_meme_interface_de_decor(self):
         import inspect
@@ -324,7 +351,7 @@ class TestLesDeuxVues(unittest.TestCase):
             self.skipTest("vue 3D indisponible sur ce poste")
 
         V2, V3 = viewer2d.Vue2D, viewer3d.Vue3D
-        for nom in self.METHODES:
+        for nom in self._attendues(V3):
             with self.subTest(methode=nom):
                 self.assertTrue(hasattr(V2, nom), "manque a la vue 2D")
                 self.assertTrue(hasattr(V3, nom), "manque a la vue 3D")

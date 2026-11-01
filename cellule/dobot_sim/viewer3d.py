@@ -690,6 +690,14 @@ class Vue3D(gl.GLViewWidget):
     def afficher_squelette(self, actif: bool) -> None:
         self.squelette.setVisible(actif)
 
+    def afficher_trace(self, actif: bool) -> None:
+        """La trace orange du TCP. `effacer_trace` la vide, ceci la cache."""
+        self.trace.setVisible(actif)
+
+    def afficher_chemin(self, actif: bool) -> None:
+        """Le chemin theorique bleu de l'instruction en cours."""
+        self.chemin.setVisible(actif)
+
     def afficher_maillages(self, actif: bool) -> None:
         self._maillages_visibles = bool(actif)
         for item in self._items_pieces + self._items_outil:

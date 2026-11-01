@@ -3930,7 +3930,13 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         self.act_grille = self._bascule(aff, "Grille", True, self.vue.afficher_grille)
         self.act_enveloppe = self._bascule(aff, "Espace de travail", False,
                                            self.vue.afficher_enveloppe)
-        self.act_trace = self._bascule(aff, "Trace du TCP", True, lambda v: None)
+        self.act_chemin = self._bascule(aff, "Chemin du programme", True,
+                                        self.vue.afficher_chemin)
+        self.act_trace = self._bascule(aff, "Trace du TCP", True,
+                                       self._afficher_trace)
+        self.act_epuree = self._bascule(
+            aff, "Vue epuree  (pour une capture)", False, self._vue_epuree)
+        self.act_epuree.setShortcut("Ctrl+Shift+V")
         aff.addSeparator()
         self._action(aff, "Zoom avant", lambda: self.vue.zoomer(1.0 / 1.25),
                      "Ctrl++")
@@ -3942,7 +3948,7 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         aff.addSeparator()
         self._action(aff, "Basculer modele CAO / simplifie", self._basculer_modele)
         self._action(aff, "Calibrer le modele 3D...", self._calibrer)
-        self._action(aff, "Effacer la trace", self.vue.effacer_trace)
+        self._action(aff, "Effacer la trace", self.vue.effacer_trace, "Ctrl+E")
 
         exe = m.addMenu("&Execution")
         self._action(exe, "Lancer / Pause", self._basculer_lecture, "Space")
@@ -3981,6 +3987,42 @@ class FenetrePrincipale(QtWidgets.QMainWindow):
         trieds = getattr(self, "act_reperes_cibles", None)
         if actif and trieds is not None:
             self.vue.afficher_reperes_cibles(trieds.isChecked())
+
+    def _afficher_trace(self, actif: bool) -> None:
+        """
+        Decocher CACHE la trace et l'efface, en plus d'arreter de
+        l'enregistrer -- faute de quoi la rallumer donnerait une ligne
+        trouee, qui raconterait un trajet que le bras n'a pas fait.
+        """
+        self.vue.afficher_trace(bool(actif))
+        if not actif:
+            self.vue.effacer_trace()
+
+    def _vue_epuree(self, actif: bool) -> None:
+        """
+        Ne laisse que la cellule : plus de trace, de cibles, de grille,
+        de triedre ni de squelette. Un programme de cent instructions
+        couvre la vue de points jaunes, d'arcs bleus et d'un sillage
+        orange, et on ne voit plus ce qu'on est venu regarder -- la
+        piece posee.
+
+        L'etat d'avant est garde et revient en decochant : c'est un coup
+        d'oeil, pas un reglage.
+        """
+        bascules = (self.act_triedre, self.act_reperes, self.act_cibles,
+                    self.act_reperes_cibles, self.act_squelette,
+                    self.act_grille, self.act_enveloppe, self.act_chemin,
+                    self.act_trace)
+        if actif:
+            self._avant_epuree = [a.isChecked() for a in bascules]
+            for a in bascules:
+                a.setChecked(False)
+            return
+        etats = getattr(self, "_avant_epuree", None)
+        if etats is None:
+            return                       # jamais epuree : rien a restaurer
+        for a, etat in zip(bascules, etats):
+            a.setChecked(etat)
 
     def _afficher_reperes_cibles(self, actif: bool) -> None:
         marqueurs = getattr(self, "act_cibles", None)
