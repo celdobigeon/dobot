@@ -376,6 +376,7 @@ class DobotMagician:
         verifier_repere_outil(T, tolerance_deg)
         self._repere_outil = np.asarray(T, dtype=float).copy()
 
+
     @property
     def outil_est_par_defaut(self) -> bool:
         return self._repere_outil is None

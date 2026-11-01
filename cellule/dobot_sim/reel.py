@@ -574,6 +574,43 @@ class PontReel:
         self._preparer_file(li)
         return self._deposer(li, list(fabriquer()), progression, quoi)
 
+    def _avertir_longueur_outil(self) -> None:
+        """
+        Dit si le repere outil declare et `geo.lt` ne s'accordent pas.
+
+        POURQUOI CE N'EST PAS UN DETAIL. La conversion vers le
+        controleur commande `z + geo.lt` : c'est `geo.lt`, et non le
+        repere declare, qui decide de la hauteur reellement envoyee.
+
+        Or `definir_repere_outil` ne touche pas a `geo.lt` -- il reste
+        a la valeur du catalogue pour l'outil monte. Declarer une
+        ventouse de 89,3 mm sur un Pilote monte en "ventouse" laisse
+        donc geo.lt a 62, et la machine recoit une cote qui differe de
+        27,3 mm de ce que le simulateur montre. Le simulateur, lui, ne
+        montre rien : il se sert du repere, qui est juste.
+
+        ON NE CORRIGE PAS ICI, ON PREVIENT. Aligner geo.lt changerait
+        de 17 a 27 mm la cote commandee par des programmes regles sur
+        la cellule -- le convoyeur, la structure de kapla -- et les
+        ferait plonger ou survoler a la premiere execution. Laquelle
+        des deux valeurs est la bonne pour la MACHINE se tranche par
+        une mesure, pas par un raisonnement : voir
+        PROCEDURE_CONVOYEUR.md.
+        """
+        robot = self.robot
+        if robot.outil_est_par_defaut:
+            return
+        declare = float(-robot.repere_outil[2, 3])
+        ecart = declare - float(robot.geo.lt)
+        if abs(ecart) < 0.05:
+            return
+        self.journal(
+            "ATTENTION : outil declare a {:.1f} mm, mais geo.lt vaut "
+            "{:.1f}. La cote envoyee au controleur differe de {:+.1f} mm "
+            "de ce que montre le simulateur -- verifiez la hauteur par "
+            "une descente avant de lancer le cycle."
+            .format(declare, robot.geo.lt, -ecart))
+
     def _preparer_file(self, li: LiaisonDobot) -> None:
         """
         Arrete puis vide la file, et oublie ce qui la concernait.

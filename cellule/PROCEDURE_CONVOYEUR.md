@@ -641,8 +641,46 @@ Les deux produisent le **même repère outil**. Mais c'est `geo.lt`, et
 non le repère outil, qui entre dans la conversion du pont
 (`z_ctrl = z_tcp + lt − d1 + zBias`) : 27,3 mm d'écart à la commande.
 
+**D'où vient ce nombre, exactement** (relevé le 01/11/2026) :
+
+```
+89,3  la longueur mesurée, déclarée par la matrice
+62,0  la longueur de la ventouse au CATALOGUE, que geo.lt conserve
+----
+27,3  l'écart — et c'est toute l'explication
+```
+
+Ce n'est donc ni l'origine, ni la pose à l'équerre. Celles-ci déplacent
+bien la hauteur absolue, et c'est pour cela qu'il faut revérifier
+`L_OUTIL` à chaque séance — mais elles ne peuvent pas produire **cet**
+écart-là : les deux déclarations se font dans la même séance, avec la
+même origine, et ne diffèrent que par une ligne de code.
+
+**Et on ne le corrige pas, délibérément.** Aligner `geo.lt` sur le
+repère déclaré est une ligne, et elle rendrait les deux chemins
+identiques — mais elle déplacerait de 17 à 27 mm la cote commandée par
+des programmes **réglés sur la cellule** : le convoyeur, la structure
+de kapla. Ils plongeraient ou survoleraient dès la première exécution.
+C'est à la machine de dire laquelle des deux valeurs est la bonne.
+
+Depuis le 01/11/2026, **le pont le signale au téléversement** :
+
+```
+ATTENTION : outil declare a 89.3 mm, mais geo.lt vaut 62.0.
+La cote envoyee au controleur differe de -27.3 mm de ce que montre
+le simulateur -- verifiez la hauteur par une descente avant de
+lancer le cycle.
+```
+
+**L'essai qui tranchera**, et il tient en dix minutes : monter le
+porte-stylo — dont la longueur catalogue, 70 mm, est aussi celle qu'on
+déclare, donc sans écart — puis le descendre sur la feuille.
+`L_OUTIL` est alors réglé sans ambiguïté. Remonter ensuite la ventouse,
+refaire la même descente, et comparer la valeur qui écrit juste à la
+valeur mesurée au réglet. Si elle vaut 62, c'est `geo.lt` qui a raison
+et la mesure géométrique compte autre chose ; si elle vaut 89,3, c'est
+la conversion qu'il faut corriger.
+
 Les exemples s'en tiennent tous à la première forme, celle qui est
-validée sur la machine. Il faudra trancher par la mesure : amener la
-pointe au contact du plan, relever le z annoncé, et faire converger les
-deux chemins sur la valeur trouvée. Tant que ce n'est pas fait, **ne
-mélangez pas les deux déclarations dans un même programme**.
+validée sur la machine. Tant que l'essai n'est pas fait, **ne mélangez
+pas les deux déclarations dans un même programme**.
